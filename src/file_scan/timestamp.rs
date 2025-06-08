@@ -63,29 +63,30 @@ fn get_json_timestamp(path: &Path) -> Option<u64> {
     }
 }
 
-fn is_datetime(f: &Field, tag: Tag) -> Option<OffsetDateTime> {
-    let format = format_description!("[year]:[month]:[day] [hour]:[minute]:[second]");
-
-    fn single_ascii(value: &Value) -> Option<&str> {
-        match value {
-            Value::Ascii(v) if v.len() == 1 => from_utf8(&v[0]).ok(),
-            Value::Ascii(v) if v.len() > 1 => {
-                for t in &v[1..] {
-                    if !t.is_empty() {
-                        return None;
-                    }
+fn parse_date_from_field(field: &Field) -> Option<OffsetDateTime> {
+    let string = match &field.value {
+        Value::Ascii(v) if v.len() == 1 => from_utf8(&v[0]).ok()?,
+        Value::Ascii(v) if v.len() > 1 => {
+            for t in &v[1..] {
+                if !t.is_empty() {
+                    return None;
                 }
-                return from_utf8(&v[0]).ok();
             }
-            _ => None,
+            from_utf8(&v[0]).ok()?
         }
-    }
+        _ => return None,
+    };
 
-    if f.tag == tag {
-        single_ascii(&f.value).and_then(|s| OffsetDateTime::parse(s, &format).ok())
-    } else {
-        None
-    }
+    let format_simple = format_description!("[year]:[month]:[day] [hour]:[minute]:[second]");
+    let format_timezone = format_description!(
+        "[year]:[month]:[day] [hour]:[minute]:[second] [offset_hour]:[offset_minute]"
+    );
+
+    OffsetDateTime::parse(string, &format_timezone)
+        .or_else(|_| {
+            PrimitiveDateTime::parse(string, &format_simple).map(|date_time| date_time.assume_utc())
+        })
+        .ok()
 }
 
 fn get_exif_timestamp(path: &Path) -> Option<OffsetDateTime> {
@@ -100,15 +101,19 @@ fn get_exif_timestamp(path: &Path) -> Option<OffsetDateTime> {
         .read_from_container(&mut bufreader)
         .ok()?;
 
-    for f in reader.fields() {
-        if f.ifd_num == In::PRIMARY {
-            if let Some(d) = is_datetime(f, Tag::DateTimeOriginal) {
-                return Some(d);
-            } else if let Some(d) = is_datetime(f, Tag::DateTime) {
-                return Some(d);
-            } else if let Some(d) = is_datetime(f, Tag::DateTimeDigitized) {
-                return Some(d);
-            }
+    let time_tags = [
+        Tag::OffsetTimeOriginal,
+        Tag::OffsetTimeDigitized,
+        Tag::DateTimeOriginal,
+        Tag::DateTimeDigitized,
+    ];
+
+    for tag in time_tags {
+        if let Some(date) = reader
+            .get_field(tag, In::PRIMARY)
+            .and_then(parse_date_from_field)
+        {
+            return Some(date);
         }
     }
 

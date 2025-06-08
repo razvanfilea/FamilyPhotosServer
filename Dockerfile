@@ -1,6 +1,6 @@
 ARG TARGET_ARCH=x86_64-unknown-linux-musl
 
-FROM rust:1.86-alpine AS base
+FROM rust:1.87-alpine AS base
 ARG TARGET_ARCH
 USER root
 
@@ -29,11 +29,11 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=$SCCACHE_DIR,sharing=locked \
     cargo build --release --target $TARGET_ARCH
 
-FROM alpine:3.21
+FROM alpine:3.22
 
 ARG TARGET_ARCH
 
-RUN apk add --no-cache imagemagick imagemagick-heic ffmpegthumbnailer curl
+RUN apk add --no-cache imagemagick imagemagick-heic ffmpegthumbnailer
 
 COPY --from=builder /app/target/${TARGET_ARCH}/release/familyphotos ./
 

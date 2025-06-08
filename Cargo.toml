@@ -14,7 +14,6 @@ async-trait = "0.1"
 
 # Axum
 axum = { version = "0.8.1", features = ["multipart"] }
-tower = "0.5"
 tower-http = { version = "0.6", features = ["trace", "cors"] }
 axum-login = "0.17.0"
 tower-sessions-sqlx-store = { version = "0.15.0", features = ["sqlite"] }
