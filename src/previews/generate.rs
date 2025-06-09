@@ -40,8 +40,10 @@ where
     P: AsRef<Path>,
     R: AsRef<Path>,
 {
+    let load_path = load_path.as_ref();
+    let save_path = save_path.as_ref();
+    
     let ext = load_path
-        .as_ref()
         .extension()
         .context("Path has no extension")?
         .to_ascii_lowercase();
@@ -50,19 +52,19 @@ where
         MimeGuess::from_ext(ext.to_str().context("Invalid exception")?).first_or_octet_stream();
 
     if mime.type_() == "video" {
-        return generate_video_frame(&load_path, &save_path);
+        return generate_video_frame(load_path, save_path);
     }
 
-    let mut child = Command::new("convert")
+    let mut child = Command::new("magick")
+        .arg(load_path)
         .arg("-auto-orient")
-        .arg(load_path.as_ref())
         .arg("-thumbnail")
         .arg(format!("{PREVIEW_TARGET_SIZE}x{PREVIEW_TARGET_SIZE}^"))
-        .arg(save_path.as_ref())
+        .arg(save_path)
         .spawn()
-        .context("Failed to start 'convert' command")?;
+        .context("Failed to start 'magick' command")?;
 
-    match child.wait_timeout(Duration::from_secs(5)) {
+    match child.wait_timeout(Duration::from_secs(10)) {
         Ok(status) => status.map(|_| ()).context("Failed to get exit status"),
         Err(e) => {
             child.kill()?;
