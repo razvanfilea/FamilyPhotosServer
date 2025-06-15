@@ -1,23 +1,25 @@
+mod favorite;
+
 use std::string::ToString;
 
 use axum::response::ErrorResponse;
 use axum::{
+    Json, Router,
     extract::Multipart,
     extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     routing::{delete, get, post},
-    Json, Router,
 };
 use time::OffsetDateTime;
 use tokio::{fs, task};
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
-use crate::http::utils::status_error::StatusError;
-use crate::http::utils::{file_to_response, write_field_to_file, AuthSession, AxumResult};
 use crate::http::AppState;
+use crate::http::utils::status_error::StatusError;
+use crate::http::utils::{AuthSession, AxumResult, file_to_response, write_field_to_file};
 use crate::model::photo::{Photo, PhotoBase, PhotoBody};
-use crate::model::user::{User, PUBLIC_USER_ID};
+use crate::model::user::{PUBLIC_USER_ID, User};
 use crate::previews;
 use crate::utils::{internal_error, read_exif};
 use time::serde::timestamp;
@@ -31,9 +33,8 @@ pub fn router(app_state: AppState) -> Router {
         .route("/upload", post(upload_photo))
         .route("/delete/{photo_id}", delete(delete_photo))
         .route("/change_location/{photo_id}", post(change_photo_location))
-        .route("/favorite", get(get_favorites))
-        .route("/favorite/{photo_id}", post(add_favorite))
-        .route("/favorite/{photo_id}", delete(delete_favorite))
+        .route("/rename_folder", post(rename_folder))
+        .nest("/favorite", favorite::router())
         .with_state(app_state)
 }
 
@@ -89,7 +90,7 @@ async fn preview_photo(
             previews::generate_preview(photo_path_clone, preview_path_clone)
         })
         .await
-        .unwrap()
+        .map_err(internal_error)?
     } else {
         Ok(())
     };
@@ -215,25 +216,27 @@ async fn delete_photo(
     State(state): State<AppState>,
     Path(photo_id): Path<i64>,
     auth: AuthSession,
-) -> impl IntoResponse {
+) -> AxumResult<impl IntoResponse> {
     let photo = state.photos_repo.get_photo(photo_id).await?;
     check_has_access(auth.user, &photo)?;
 
     let _ = fs::remove_file(state.storage.resolve_preview(photo.partial_preview_path())).await;
 
-    match fs::remove_file(state.storage.resolve_photo(photo.partial_path())).await {
-        Ok(_) => match state.photos_repo.delete_photo(photo_id).await {
-            Ok(_count) => Ok("{\"deleted\": true}".to_string()),
-            _ => Err(StatusError::create("Failed to remove photo from database")),
-        },
-        Err(e) => Err(StatusError::create(format!("Failed to delete file: {e}"))),
+    let photo_path = state.storage.resolve_photo(photo.partial_path());
+    if photo_path.exists() {
+        fs::remove_file(photo_path)
+            .await
+            .map_err(|e| StatusError::create(format!("Failed to delete file: {e}")))?;
     }
+
+    state.photos_repo.delete_photo(photo_id).await?;
+
+    Ok(())
 }
 
 #[derive(serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct ChangeLocationQuery {
-    target_user_name: Option<String>,
+    make_public: bool,
     target_folder_name: Option<String>,
 }
 
@@ -245,11 +248,13 @@ async fn change_photo_location(
 ) -> AxumResult<impl IntoResponse> {
     let storage = state.storage;
     let photo = state.photos_repo.get_photo(photo_id).await?;
-    check_has_access(auth.user, &photo)?;
+    let user = check_has_access(auth.user, &photo)?;
 
-    let target_user_name = query
-        .target_user_name
-        .unwrap_or(String::from(PUBLIC_USER_ID));
+    let target_user_name = if query.make_public {
+        PUBLIC_USER_ID.to_string()
+    } else {
+        user.id
+    };
 
     let changed_photo = Photo {
         id: photo.id(),
@@ -262,6 +267,13 @@ async fn change_photo_location(
 
     let source_path = photo.partial_path();
     let destination_path = changed_photo.partial_path();
+
+    if source_path == destination_path {
+        return Err(StatusError::new_status(
+            "Source and destination are the same",
+            StatusCode::BAD_REQUEST,
+        ));
+    }
 
     info!("Moving photo from {source_path} to {destination_path}");
 
@@ -278,33 +290,59 @@ async fn change_photo_location(
     Ok(Json(changed_photo))
 }
 
-async fn get_favorites(
-    State(state): State<AppState>,
-    auth_session: AuthSession,
-) -> AxumResult<impl IntoResponse> {
-    let user = auth_session.user.unwrap();
-
-    Ok(Json(state.photos_repo.get_favorite_photos(user.id).await?))
+#[derive(serde::Deserialize)]
+struct RenameFolderQuery {
+    source_is_public: bool,
+    source_folder_name: String,
+    target_make_public: bool,
+    target_folder_name: Option<String>,
 }
 
-async fn add_favorite(
+async fn rename_folder(
     State(state): State<AppState>,
-    Path(photo_id): Path<i64>,
-    auth_session: AuthSession,
+    Query(query): Query<RenameFolderQuery>,
+    auth: AuthSession,
 ) -> AxumResult<impl IntoResponse> {
-    let photo = state.photos_repo.get_photo(photo_id).await?;
-    let user = check_has_access(auth_session.user, &photo)?;
+    let user = auth.user.expect("User should be logged in");
+    let storage = state.storage;
 
-    state.photos_repo.insert_favorite(photo_id, user.id).await
-}
+    let source_user_name = if query.source_is_public {
+        PUBLIC_USER_ID
+    } else {
+        &user.id
+    };
+    let target_user_name = if query.target_make_public {
+        PUBLIC_USER_ID
+    } else {
+        &user.id
+    };
 
-async fn delete_favorite(
-    State(state): State<AppState>,
-    Path(photo_id): Path<i64>,
-    auth_session: AuthSession,
-) -> AxumResult<impl IntoResponse> {
-    let photo = state.photos_repo.get_photo(photo_id).await?;
-    let user = check_has_access(auth_session.user, &photo)?;
+    let photos_to_move = state
+        .photos_repo
+        .get_photos_in_folder(source_user_name, query.source_folder_name)
+        .await?;
+    let mut moved_photos = Vec::with_capacity(photos_to_move.len());
 
-    state.photos_repo.delete_favorite(photo_id, user.id).await
+    for mut photo in photos_to_move {
+        let source_path = photo.partial_path();
+
+        photo.user_id = target_user_name.to_owned();
+        photo.folder = query.target_folder_name.clone();
+        let destination_path = photo.partial_path();
+
+        if let Err(e) = storage.move_photo(&source_path, &destination_path) {
+            warn!("Failed to move the photo: {e}");
+            continue;
+        }
+
+        if let Err(e) = state.photos_repo.update_photo(&photo).await {
+            // If the database operation failed for some reason, try to move the image back
+            error!("Failed to update the photo: {e:?}");
+            let _ = storage.move_photo(&destination_path, &source_path);
+        }
+
+        moved_photos.push(photo);
+    }
+
+    Ok(Json(moved_photos))
 }

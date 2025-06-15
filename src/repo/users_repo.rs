@@ -3,7 +3,7 @@ use crate::utils::password_hash::validate_credentials;
 use argon2::password_hash;
 use async_trait::async_trait;
 use axum_login::{AuthnBackend, UserId};
-use sqlx::{query, query_as, Error, SqlitePool};
+use sqlx::{Error, SqlitePool, query, query_as};
 use tokio::task;
 
 #[derive(Clone)]

@@ -37,7 +37,7 @@ async fn login(
             return Err(StatusError::new_status(
                 "Wrong user name or password",
                 StatusCode::UNAUTHORIZED,
-            ))
+            ));
         }
         Some(user) => user,
     };

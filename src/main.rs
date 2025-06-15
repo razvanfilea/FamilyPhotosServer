@@ -1,17 +1,17 @@
 use anyhow::Context;
 use axum_login::tower_sessions::ExpiredDeletion;
-use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
+use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
 use std::net::SocketAddr;
 use std::str::FromStr;
 use tokio::net::TcpListener;
 use tower_sessions_sqlx_store::SqliteStore;
 use tracing::info;
+use tracing_subscriber::EnvFilter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::EnvFilter;
 
 use crate::http::AppState;
-use crate::model::user::{User, PUBLIC_USER_ID};
+use crate::model::user::{PUBLIC_USER_ID, User};
 use crate::repo::users_repo::UsersRepository;
 use crate::utils::env_reader::EnvVariables;
 use crate::utils::password_hash::{generate_hash_from_password, generate_random_password};
@@ -28,7 +28,7 @@ mod utils;
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let vars = EnvVariables::get_all();
-    // Creates necessary folders
+    // Creates the necessary folders
     let storage_resolver = StorageResolver::new(vars.storage_path, vars.previews_path);
 
     // Logging
@@ -43,12 +43,13 @@ async fn main() -> anyhow::Result<()> {
         .expect("Failed to parse Database URL")
         .foreign_keys(true)
         .journal_mode(SqliteJournalMode::Wal)
+        .synchronous(SqliteSynchronous::Normal)
         .pragma("temp_store", "memory")
         .pragma("cache_size", "-20000")
         .optimize_on_close(true, None);
 
     let pool = SqlitePoolOptions::new()
-        .min_connections(0)
+        .min_connections(1)
         .max_connections(4)
         .connect_with(connection_options)
         .await

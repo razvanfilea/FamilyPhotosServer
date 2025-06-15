@@ -18,7 +18,9 @@ pub type AxumResult<T> = axum::response::Result<T>;
 
 pub type AuthSession = axum_login::AuthSession<UsersRepository>;
 
-pub async fn file_to_response(photo_path: &std::path::Path) -> AxumResult<impl IntoResponse + use<>> {
+pub async fn file_to_response(
+    photo_path: &std::path::Path,
+) -> AxumResult<impl IntoResponse + use<>> {
     let mime = mime_guess::from_path(photo_path)
         .first_or_octet_stream()
         .as_ref()

@@ -42,7 +42,7 @@ where
 {
     let load_path = load_path.as_ref();
     let save_path = save_path.as_ref();
-    
+
     let ext = load_path
         .extension()
         .context("Path has no extension")?

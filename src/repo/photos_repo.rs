@@ -2,7 +2,7 @@ use crate::model::photo::{Photo, PhotoBase, PhotoBody};
 use crate::model::user::PUBLIC_USER_ID;
 use crate::utils::internal_error;
 use axum::response::ErrorResponse;
-use sqlx::{query, query_as, QueryBuilder, Sqlite, SqlitePool};
+use sqlx::{QueryBuilder, Sqlite, SqlitePool, query, query_as};
 
 #[derive(Clone)]
 pub struct PhotosRepository {
@@ -68,6 +68,25 @@ impl PhotosRepository {
             "select * from photos where user_id = $1 or user_id = $2 order by created_at desc",
             user_id,
             PUBLIC_USER_ID
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(internal_error)
+    }
+
+    pub async fn get_photos_in_folder(
+        &self,
+        user_id: impl AsRef<str>,
+        folder_name: impl AsRef<str>,
+    ) -> Result<Vec<Photo>, ErrorResponse> {
+        let user_id = user_id.as_ref();
+        let folder_name = folder_name.as_ref();
+
+        query_as!(
+            Photo,
+            "select * from photos where user_id = $1 and folder = $2 order by created_at desc",
+            user_id,
+            folder_name,
         )
         .fetch_all(&self.pool)
         .await
@@ -167,11 +186,11 @@ impl PhotosRepository {
             .map_err(internal_error)
     }
 
-    pub async fn delete_photo(&self, id: i64) -> Result<(), ErrorResponse> {
+    pub async fn delete_photo(&self, id: i64) -> Result<u64, ErrorResponse> {
         query!("delete from photos where id = $1", id)
             .execute(&self.pool)
             .await
-            .map(|_| ())
+            .map(|result| result.rows_affected())
             .map_err(internal_error)
     }
 

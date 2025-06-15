@@ -129,7 +129,9 @@ async fn user_commands(state: &AppState, command: UsersCommand) {
             }
         }
         UsersCommand::Remove { user_id } => {
-            println!("Are you sure you want to delete the user {user_id}? Its files won't be affected. [y/N]");
+            println!(
+                "Are you sure you want to delete the user {user_id}? Its files won't be affected. [y/N]"
+            );
             let mut input = String::new();
             std::io::stdin().read_line(&mut input).unwrap();
             let delete = input.to_lowercase().starts_with('y');

@@ -39,10 +39,8 @@ walkdir = "2.5"
 mime_guess = "2"
 anyhow = "1"
 kamadak-exif = "0.6"
-rand = "0.8"
-
-# Crypto
-argon2 = { version = "0.5", features = ["std"] }
+rand = "0.9.1"
+argon2 = { version = "=0.6.0-rc.0" }
 
 [profile.dev.package.sqlx-macros]
 opt-level = 3

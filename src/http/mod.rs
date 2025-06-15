@@ -1,8 +1,8 @@
+use axum::Router;
 use axum::extract::DefaultBodyLimit;
 use axum::routing::get;
-use axum::Router;
-use axum_login::tower_sessions::{Expiry, SessionManagerLayer};
 use axum_login::AuthManagerLayerBuilder;
+use axum_login::tower_sessions::{Expiry, SessionManagerLayer};
 use sqlx::SqlitePool;
 use time::Duration;
 use tokio::signal;
@@ -10,7 +10,7 @@ use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 use tower_http::{cors, trace};
 use tower_sessions_sqlx_store::SqliteStore;
-use tracing::{warn, Level};
+use tracing::{Level, warn};
 
 use crate::repo::photos_repo::PhotosRepository;
 use crate::repo::users_repo::UsersRepository;
