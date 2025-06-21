@@ -1,3 +1,10 @@
+use crate::http::AppState;
+use crate::model::user::{PUBLIC_USER_ID, User};
+use crate::repo::users_repo::UsersRepository;
+use crate::utils::env_reader::EnvVariables;
+use crate::utils::hash::compute_hashes;
+use crate::utils::password_hash::{generate_hash_from_password, generate_random_password};
+use crate::utils::storage_resolver::StorageResolver;
 use anyhow::Context;
 use axum_login::tower_sessions::ExpiredDeletion;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
@@ -5,17 +12,11 @@ use std::net::SocketAddr;
 use std::str::FromStr;
 use tokio::net::TcpListener;
 use tower_sessions_sqlx_store::SqliteStore;
-use tracing::info;
+use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-
-use crate::http::AppState;
-use crate::model::user::{PUBLIC_USER_ID, User};
-use crate::repo::users_repo::UsersRepository;
-use crate::utils::env_reader::EnvVariables;
-use crate::utils::password_hash::{generate_hash_from_password, generate_random_password};
-use crate::utils::storage_resolver::StorageResolver;
+use crate::utils::resolve_duplicates_db_entry;
 
 mod cli;
 mod file_scan;
@@ -57,6 +58,8 @@ async fn main() -> anyhow::Result<()> {
 
     sqlx::migrate!().run(&pool).await?;
 
+    let pool_clone = pool.clone();
+    let storage_clone = storage_resolver.clone();
     let app_state = AppState::new(pool.clone(), storage_resolver);
 
     // Migrate the sessions store and delete expired sessions
@@ -68,13 +71,25 @@ async fn main() -> anyhow::Result<()> {
 
     session_store.delete_expired().await?;
 
-    // Create default public user
+    // Create a default public user
     create_public_user(&app_state.users_repo).await?;
 
     // Run the CLI
     if cli::run_cli(&app_state).await {
         return Ok(());
     }
+
+    tokio::spawn(async move {
+        if let Err(e) = compute_hashes(pool_clone, storage_clone).await {
+            error!("Failed to compute hashes: {}", e);
+        }
+    });
+    let app_state_clone = app_state.clone();
+    tokio::spawn(async move {
+        if let Err(e) = resolve_duplicates_db_entry(app_state_clone).await {
+            error!("Failed to resolve db duplicates: {:?}", e);
+        }
+    });
 
     // Scan the storage directory for new photos in the background
     if vars.scan_new_files {

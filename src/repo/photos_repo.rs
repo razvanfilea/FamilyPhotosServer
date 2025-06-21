@@ -3,6 +3,7 @@ use crate::model::user::PUBLIC_USER_ID;
 use crate::utils::internal_error;
 use axum::response::ErrorResponse;
 use sqlx::{QueryBuilder, Sqlite, SqlitePool, query, query_as};
+use std::num::ParseIntError;
 
 #[derive(Clone)]
 pub struct PhotosRepository {
@@ -88,6 +89,49 @@ impl PhotosRepository {
             user_id,
             folder_name,
         )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(internal_error)
+    }
+
+    pub async fn get_photos_with_same_location(&self) -> Result<Vec<Photo>, ErrorResponse> {
+        query_as!(
+            Photo,
+            "SELECT *
+            FROM photos
+            WHERE (user_id, folder, name) IN (
+                SELECT user_id, folder, name
+                FROM photos
+                GROUP BY user_id, folder, name
+                HAVING COUNT(*) > 1
+            )",
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(internal_error)
+    }
+
+    pub async fn get_duplicates_for_user(
+        &self,
+        user_id: impl AsRef<str>,
+    ) -> Result<Vec<Vec<i64>>, ErrorResponse> {
+        let user_id = user_id.as_ref();
+        query!(
+            "select group_concat(e.id) as 'ids!: String' from photos_extras e
+            join photos p on p.id = e.id
+            where p.user_id = $1 or p.user_id = $2
+            group by e.sha having count(*) > 1",
+            user_id,
+            PUBLIC_USER_ID
+        )
+        .map(|record| {
+            record
+                .ids
+                .split(',')
+                .map(|id| id.parse::<i64>())
+                .collect::<Result<Vec<_>, ParseIntError>>()
+                .expect("Photo id must be a valid i64")
+        })
         .fetch_all(&self.pool)
         .await
         .map_err(internal_error)
@@ -202,8 +246,8 @@ impl PhotosRepository {
         let mut query_builder: QueryBuilder<Sqlite> =
             QueryBuilder::new("delete from photos where id in (");
 
-        // One element vector is handled correctly but an empty vector
-        // would cause a sql syntax error
+        // One element vector is handled correctly, but an empty vector
+        // would cause a SQL syntax error
         let mut separated = query_builder.separated(", ");
         for photos in photo_ids.iter() {
             separated.push_bind(photos);

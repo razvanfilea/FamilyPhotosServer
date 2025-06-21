@@ -47,8 +47,11 @@ impl StorageResolver {
         dest_relative: P2,
     ) -> std::io::Result<()> {
         let destination_path = self.resolve_photo(dest_relative);
+        if destination_path.exists() {
+            return Err(std::io::Error::new(std::io::ErrorKind::AlreadyExists, "Photo already exists"))
+        }
 
-        // Create parent directory if it doesn't exist
+        // Create a parent directory if it doesn't exist
         if let Some(parent) = destination_path.parent() {
             if !parent.exists() {
                 fs::create_dir_all(parent)?;
