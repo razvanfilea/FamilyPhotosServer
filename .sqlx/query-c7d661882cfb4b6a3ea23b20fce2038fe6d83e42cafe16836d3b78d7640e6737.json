@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT *\n            FROM photos\n            WHERE (user_id, folder, name) IN (\n                SELECT user_id, folder, name\n                FROM photos\n                GROUP BY user_id, folder, name\n                HAVING COUNT(*) > 1\n            )",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "user_id",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "name",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at",
+        "ordinal": 3,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "file_size",
+        "ordinal": 4,
+        "type_info": "Integer"
+      },
+      {
+        "name": "folder",
+        "ordinal": 5,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "c7d661882cfb4b6a3ea23b20fce2038fe6d83e42cafe16836d3b78d7640e6737"
+}

@@ -4,22 +4,22 @@ use std::string::ToString;
 
 use axum::response::ErrorResponse;
 use axum::{
-    Json, Router,
-    extract::Multipart,
-    extract::{Path, Query, State},
+    extract::Multipart, extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     routing::{delete, get, post},
+    Json,
+    Router,
 };
 use time::OffsetDateTime;
 use tokio::{fs, task};
 use tracing::{error, info, warn};
 
-use crate::http::AppState;
 use crate::http::utils::status_error::StatusError;
-use crate::http::utils::{AuthSession, AxumResult, file_to_response, write_field_to_file};
+use crate::http::utils::{file_to_response, write_field_to_file, AuthSession, AxumResult};
+use crate::http::AppState;
 use crate::model::photo::{Photo, PhotoBase, PhotoBody};
-use crate::model::user::{PUBLIC_USER_ID, User};
+use crate::model::user::{User, PUBLIC_USER_ID};
 use crate::previews;
 use crate::utils::{internal_error, read_exif};
 use time::serde::timestamp;
@@ -27,6 +27,7 @@ use time::serde::timestamp;
 pub fn router(app_state: AppState) -> Router {
     Router::new()
         .route("/", get(photos_list))
+        .route("/duplicates", get(get_duplicates))
         .route("/download/{photo_id}", get(download_photo))
         .route("/preview/{photo_id}", get(preview_photo))
         .route("/exif/{photo_id}", get(get_photo_exif))
@@ -61,6 +62,20 @@ async fn photos_list(
         state
             .photos_repo
             .get_photos_by_user_and_public(user.id)
+            .await?,
+    ))
+}
+
+async fn get_duplicates(
+    State(state): State<AppState>,
+    auth: AuthSession,
+) -> AxumResult<impl IntoResponse> {
+    let user = auth.user.ok_or(StatusCode::BAD_REQUEST)?;
+
+    Ok(Json(
+        state
+            .photos_repo
+            .get_duplicates_for_user(user.id)
             .await?,
     ))
 }
@@ -224,9 +239,12 @@ async fn delete_photo(
 
     let photo_path = state.storage.resolve_photo(photo.partial_path());
     if photo_path.exists() {
-        fs::remove_file(photo_path)
+        fs::remove_file(&photo_path)
             .await
             .map_err(|e| StatusError::create(format!("Failed to delete file: {e}")))?;
+        info!("Id {photo_id}: Removed file at {}", photo_path.display());
+    } else { 
+        info!("Id {photo_id}: No such file exists at {}", photo_path.display());
     }
 
     state.photos_repo.delete_photo(photo_id).await?;
