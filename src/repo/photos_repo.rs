@@ -3,7 +3,6 @@ use crate::model::user::PUBLIC_USER_ID;
 use crate::utils::internal_error;
 use axum::response::ErrorResponse;
 use sqlx::{QueryBuilder, Sqlite, SqlitePool, query, query_as};
-use std::num::ParseIntError;
 
 #[derive(Clone)]
 pub struct PhotosRepository {
@@ -27,21 +26,6 @@ impl PhotosRepository {
             .fetch_all(&self.pool)
             .await
             .map_err(internal_error)
-    }
-
-    pub async fn get_favorite_photos(
-        &self,
-        user_id: impl AsRef<str>,
-    ) -> Result<Vec<i64>, ErrorResponse> {
-        let user_id = user_id.as_ref();
-        query!(
-            "select photo_id from favorite_photos where user_id = $1",
-            user_id
-        )
-        .fetch_all(&self.pool)
-        .await
-        .map(|list| list.into_iter().map(|record| record.photo_id).collect())
-        .map_err(internal_error)
     }
 
     pub async fn get_photos_by_user(
@@ -111,32 +95,6 @@ impl PhotosRepository {
         .map_err(internal_error)
     }
 
-    pub async fn get_duplicates_for_user(
-        &self,
-        user_id: impl AsRef<str>,
-    ) -> Result<Vec<Vec<i64>>, ErrorResponse> {
-        let user_id = user_id.as_ref();
-        query!(
-            "select group_concat(e.id) as 'ids!: String' from photos_extras e
-            join photos p on p.id = e.id
-            where p.user_id = $1 or p.user_id = $2
-            group by e.sha having count(*) > 1",
-            user_id,
-            PUBLIC_USER_ID
-        )
-        .map(|record| {
-            record
-                .ids
-                .split(',')
-                .map(|id| id.parse::<i64>())
-                .collect::<Result<Vec<_>, ParseIntError>>()
-                .expect("Photo id must be a valid i64")
-        })
-        .fetch_all(&self.pool)
-        .await
-        .map_err(internal_error)
-    }
-
     pub async fn insert_photo(&self, photo: &PhotoBody) -> Result<Photo, ErrorResponse> {
         let user_id = photo.user_id();
         let name = photo.name();
@@ -171,40 +129,6 @@ impl PhotosRepository {
         });
 
         query_builder.build().execute(&self.pool).await.map(|_| ())
-    }
-
-    pub async fn insert_favorite<T: AsRef<str>>(
-        &self,
-        photo_id: i64,
-        user_id: T,
-    ) -> Result<(), ErrorResponse> {
-        let user_id = user_id.as_ref();
-        query!(
-            "insert into favorite_photos (photo_id, user_id) values ($1, $2)",
-            photo_id,
-            user_id
-        )
-        .execute(&self.pool)
-        .await
-        .map(|_| ())
-        .map_err(internal_error)
-    }
-
-    pub async fn delete_favorite<T: AsRef<str>>(
-        &self,
-        photo_id: i64,
-        user_id: T,
-    ) -> Result<(), ErrorResponse> {
-        let user_id = user_id.as_ref();
-        query!(
-            "delete from favorite_photos where photo_id = $1 and user_id = $2",
-            photo_id,
-            user_id
-        )
-        .execute(&self.pool)
-        .await
-        .map(|_| ())
-        .map_err(internal_error)
     }
 
     pub async fn update_photo(&self, photo: &Photo) -> Result<(), ErrorResponse> {

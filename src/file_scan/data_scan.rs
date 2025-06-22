@@ -9,6 +9,7 @@ use tracing::{debug, error, info, warn};
 use walkdir::{DirEntry, WalkDir};
 
 use crate::file_scan::timestamp;
+use crate::http::AppStateRef;
 use crate::model::photo::{Photo, PhotoBase, PhotoBody};
 use crate::{AppState, StorageResolver, User};
 
@@ -17,7 +18,7 @@ pub struct DataScan {
 }
 
 impl DataScan {
-    pub fn run(app_state: AppState) -> JoinHandle<()> {
+    pub fn run(app_state: AppStateRef) -> JoinHandle<()> {
         task::spawn(async move {
             let users: Vec<User> = app_state
                 .users_repo

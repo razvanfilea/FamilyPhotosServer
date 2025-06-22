@@ -1,3 +1,5 @@
+use crate::http::AppStateRef;
+use crate::model::photo::PhotoBase;
 use axum::http::StatusCode;
 use axum::response::{ErrorResponse, IntoResponse};
 use exif::In;
@@ -6,13 +8,12 @@ use std::fs;
 use std::io::BufReader;
 use std::path::Path;
 use tracing::{debug, info};
-use crate::http::AppState;
-use crate::model::photo::PhotoBase;
+use crate::model::user::PUBLIC_USER_ID;
 
 pub mod env_reader;
+pub mod hash;
 pub mod password_hash;
 pub mod storage_resolver;
-pub mod hash;
 
 #[derive(Debug, Serialize)]
 pub struct ExifField {
@@ -41,14 +42,23 @@ pub fn read_exif<P: AsRef<Path>>(absolute_path: P) -> Option<Vec<ExifField>> {
     Some(exif_data)
 }
 
-pub async fn resolve_duplicates_db_entry(app_state: AppState) -> Result<(), ErrorResponse> {
+pub async fn resolve_duplicates_db_entry(app_state: AppStateRef) -> Result<(), ErrorResponse> {
     debug!("Started resolving duplicates");
 
-    let photos = app_state.photos_repo.get_photos_with_same_location().await?;
+    let photos = app_state
+        .photos_repo
+        .get_photos_with_same_location()
+        .await?;
+    
     for photo in photos {
-        info!("Removing duplicate DB entry with path: {}", photo.partial_path());
+        info!(
+            "Removing duplicate DB entry with path: {}",
+            photo.partial_path()
+        );
         app_state.photos_repo.delete_photo(photo.id).await?;
     }
+    
+    app_state.duplicates_repo.get_duplicates_for_user(PUBLIC_USER_ID).await.map_err(internal_error)?;
 
     Ok(())
 }

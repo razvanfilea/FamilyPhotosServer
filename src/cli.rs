@@ -1,4 +1,4 @@
-use crate::http::AppState;
+use crate::http::AppStateRef;
 use crate::model::user::User;
 use crate::utils::password_hash::{generate_hash_from_password, generate_random_password};
 use crate::{file_scan, previews};
@@ -61,7 +61,7 @@ enum SessionsCommand {
 /**
  * @return true if the program should exit
  */
-pub async fn run_cli(state: &AppState) -> bool {
+pub async fn run_cli(state: AppStateRef) -> bool {
     let cli = Cli::parse();
 
     let cmd = cli.commands;
@@ -77,7 +77,7 @@ pub async fn run_cli(state: &AppState) -> bool {
     true
 }
 
-async fn user_commands(state: &AppState, command: UsersCommand) {
+async fn user_commands(state: AppStateRef, command: UsersCommand) {
     match command {
         UsersCommand::Create {
             user_id,
@@ -146,10 +146,10 @@ async fn user_commands(state: &AppState, command: UsersCommand) {
     }
 }
 
-async fn photos_commands(state: &AppState, command: PhotosCommand) {
+async fn photos_commands(state: AppStateRef, command: PhotosCommand) {
     match command {
         PhotosCommand::ScanPhotos => {
-            file_scan::scan_new_files(state.clone())
+            file_scan::scan_new_files(state)
                 .await
                 .expect("Failed to join task");
         }

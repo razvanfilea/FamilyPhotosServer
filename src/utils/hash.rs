@@ -1,19 +1,14 @@
-use std::fs::File;
+use crate::http::AppStateRef;
+use crate::model::photo::{Photo, PhotoBase};
+use crate::utils::storage_resolver::StorageResolver;
 use memmap2::Mmap;
 use rayon::prelude::*;
 use sha2::Digest;
-use sqlx::{query_as, SqlitePool};
+use std::fs::File;
 use tracing::info;
-use crate::model::photo::{Photo, PhotoBase};
-use crate::utils::storage_resolver::StorageResolver;
 
-pub async fn compute_hashes(pool: SqlitePool, storage: StorageResolver) -> Result<(), sqlx::Error> {
-    let photos = query_as!(
-        Photo,
-        "select p.* from photos p left join photos_extras e on p.id = e.id where e.sha is null"
-    )
-        .fetch_all(&pool)
-        .await?;
+pub async fn compute_hashes(app_state: AppStateRef) -> Result<(), sqlx::Error> {
+    let photos = app_state.duplicates_repo.get_photos_without_hash().await?;
 
     info!("Computing sha for {} photos", photos.len());
     if photos.is_empty() {
@@ -22,20 +17,15 @@ pub async fn compute_hashes(pool: SqlitePool, storage: StorageResolver) -> Resul
 
     let photos_hashes: Vec<_> = photos
         .into_par_iter()
-        .filter_map(|photo| compute_hash(&storage, photo))
+        .filter_map(|photo| compute_hash(&app_state.storage, photo))
         .collect();
 
     info!("Computed sha for {} photos", photos_hashes.len());
 
-    for (id, sha) in photos_hashes {
-        sqlx::query!(
-            "insert into photos_extras (id, sha) VALUES ($1, $2)",
-            id,
-            sha
-        )
-            .execute(&pool)
-            .await?;
-    }
+    app_state
+        .duplicates_repo
+        .insert_hashes(&photos_hashes)
+        .await?;
 
     Ok(())
 }
@@ -51,4 +41,3 @@ fn compute_hash(storage: &StorageResolver, photo: Photo) -> Option<(i64, String)
 
     Some((photo.id, hex_hash))
 }
-
