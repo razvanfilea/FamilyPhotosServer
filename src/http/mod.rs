@@ -11,7 +11,8 @@ use tower_http::trace::TraceLayer;
 use tower_http::{cors, trace};
 use tower_sessions_sqlx_store::SqliteStore;
 use tracing::{Level, warn};
-
+use crate::repo::duplicates_repo::DuplicatesRepository;
+use crate::repo::favorites_repo::FavoritesRepository;
 use crate::repo::photos_repo::PhotosRepository;
 use crate::repo::users_repo::UsersRepository;
 use crate::utils::storage_resolver::StorageResolver;
@@ -20,7 +21,7 @@ mod photos_api;
 mod users_api;
 mod utils;
 
-pub fn router(app_state: AppState, session_store: SqliteStore) -> Router {
+pub fn router(app_state: AppStateRef, session_store: SqliteStore) -> Router {
     let session_layer = SessionManagerLayer::new(session_store)
         .with_expiry(Expiry::OnInactivity(Duration::days(90)));
 
@@ -41,11 +42,12 @@ pub fn router(app_state: AppState, session_store: SqliteStore) -> Router {
         .layer(DefaultBodyLimit::max(1024 * 1024 * 1024)) // 1GB
 }
 
-#[derive(Clone)]
 pub struct AppState {
     pub storage: StorageResolver,
     pub users_repo: UsersRepository,
     pub photos_repo: PhotosRepository,
+    pub favorites_repo: FavoritesRepository,
+    pub duplicates_repo: DuplicatesRepository,
 }
 
 impl AppState {
@@ -53,10 +55,14 @@ impl AppState {
         Self {
             storage,
             users_repo: UsersRepository::new(pool.clone()),
-            photos_repo: PhotosRepository::new(pool),
+            photos_repo: PhotosRepository::new(pool.clone()),
+            favorites_repo: FavoritesRepository::new(pool.clone()),
+            duplicates_repo: DuplicatesRepository::new(pool.clone()),
         }
     }
 }
+
+pub type AppStateRef = &'static AppState;
 
 pub async fn shutdown_signal() {
     let ctrl_c = async {

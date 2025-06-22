@@ -4,27 +4,27 @@ use std::string::ToString;
 
 use axum::response::ErrorResponse;
 use axum::{
-    extract::Multipart, extract::{Path, Query, State},
+    Json, Router,
+    extract::Multipart,
+    extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     routing::{delete, get, post},
-    Json,
-    Router,
 };
 use time::OffsetDateTime;
 use tokio::{fs, task};
 use tracing::{error, info, warn};
 
+use crate::http::AppStateRef;
 use crate::http::utils::status_error::StatusError;
-use crate::http::utils::{file_to_response, write_field_to_file, AuthSession, AxumResult};
-use crate::http::AppState;
+use crate::http::utils::{AuthSession, AxumResult, file_to_response, write_field_to_file};
 use crate::model::photo::{Photo, PhotoBase, PhotoBody};
-use crate::model::user::{User, PUBLIC_USER_ID};
+use crate::model::user::{PUBLIC_USER_ID, User};
 use crate::previews;
 use crate::utils::{internal_error, read_exif};
 use time::serde::timestamp;
 
-pub fn router(app_state: AppState) -> Router {
+pub fn router(app_state: AppStateRef) -> Router {
     Router::new()
         .route("/", get(photos_list))
         .route("/duplicates", get(get_duplicates))
@@ -53,7 +53,7 @@ fn check_has_access(user: Option<User>, photo: &Photo) -> Result<User, ErrorResp
 }
 
 async fn photos_list(
-    State(state): State<AppState>,
+    State(state): State<AppStateRef>,
     auth: AuthSession,
 ) -> AxumResult<impl IntoResponse> {
     let user = auth.user.ok_or(StatusCode::BAD_REQUEST)?;
@@ -67,29 +67,27 @@ async fn photos_list(
 }
 
 async fn get_duplicates(
-    State(state): State<AppState>,
+    State(state): State<AppStateRef>,
     auth: AuthSession,
 ) -> AxumResult<impl IntoResponse> {
     let user = auth.user.ok_or(StatusCode::BAD_REQUEST)?;
 
-    Ok(Json(
-        state
-            .photos_repo
-            .get_duplicates_for_user(user.id)
-            .await?,
-    ))
+    let photos = state
+        .duplicates_repo
+        .get_duplicates_for_user(user.id)
+        .await
+        .map_err(internal_error)?;
+
+    Ok(Json(photos))
 }
 
 async fn preview_photo(
-    State(state): State<AppState>,
+    State(state): State<AppStateRef>,
     Path(photo_id): Path<i64>,
     auth: AuthSession,
 ) -> impl IntoResponse {
-    let AppState {
-        storage,
-        users_repo: _users_repo,
-        photos_repo,
-    } = state;
+    let storage = &state.storage;
+    let photos_repo = &state.photos_repo;
 
     let photo = photos_repo.get_photo(photo_id).await?;
     check_has_access(auth.user, &photo)?;
@@ -125,7 +123,7 @@ async fn preview_photo(
 }
 
 async fn download_photo(
-    State(state): State<AppState>,
+    State(state): State<AppStateRef>,
     Path(photo_id): Path<i64>,
     auth: AuthSession,
 ) -> impl IntoResponse {
@@ -138,7 +136,7 @@ async fn download_photo(
 }
 
 async fn get_photo_exif(
-    State(state): State<AppState>,
+    State(state): State<AppStateRef>,
     Path(photo_id): Path<i64>,
     auth: AuthSession,
 ) -> impl IntoResponse {
@@ -170,7 +168,7 @@ struct UploadDataQuery {
 }
 
 async fn upload_photo(
-    State(state): State<AppState>,
+    State(state): State<AppStateRef>,
     Query(query): Query<UploadDataQuery>,
     auth: AuthSession,
     mut payload: Multipart,
@@ -228,7 +226,7 @@ async fn upload_photo(
 }
 
 async fn delete_photo(
-    State(state): State<AppState>,
+    State(state): State<AppStateRef>,
     Path(photo_id): Path<i64>,
     auth: AuthSession,
 ) -> AxumResult<impl IntoResponse> {
@@ -243,8 +241,11 @@ async fn delete_photo(
             .await
             .map_err(|e| StatusError::create(format!("Failed to delete file: {e}")))?;
         info!("Id {photo_id}: Removed file at {}", photo_path.display());
-    } else { 
-        info!("Id {photo_id}: No such file exists at {}", photo_path.display());
+    } else {
+        info!(
+            "Id {photo_id}: No such file exists at {}",
+            photo_path.display()
+        );
     }
 
     state.photos_repo.delete_photo(photo_id).await?;
@@ -259,12 +260,12 @@ struct ChangeLocationQuery {
 }
 
 async fn change_photo_location(
-    State(state): State<AppState>,
+    State(state): State<AppStateRef>,
     Path(photo_id): Path<i64>,
     Query(query): Query<ChangeLocationQuery>,
     auth: AuthSession,
 ) -> AxumResult<impl IntoResponse> {
-    let storage = state.storage;
+    let storage = &state.storage;
     let photo = state.photos_repo.get_photo(photo_id).await?;
     let user = check_has_access(auth.user, &photo)?;
 
@@ -317,12 +318,12 @@ struct RenameFolderQuery {
 }
 
 async fn rename_folder(
-    State(state): State<AppState>,
+    State(state): State<AppStateRef>,
     Query(query): Query<RenameFolderQuery>,
     auth: AuthSession,
 ) -> AxumResult<impl IntoResponse> {
     let user = auth.user.expect("User should be logged in");
-    let storage = state.storage;
+    let storage = &state.storage;
 
     let source_user_name = if query.source_is_public {
         PUBLIC_USER_ID

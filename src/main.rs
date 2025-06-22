@@ -58,9 +58,8 @@ async fn main() -> anyhow::Result<()> {
 
     sqlx::migrate!().run(&pool).await?;
 
-    let pool_clone = pool.clone();
-    let storage_clone = storage_resolver.clone();
     let app_state = AppState::new(pool.clone(), storage_resolver);
+    let app_state = Box::leak(Box::new(app_state));
 
     // Migrate the sessions store and delete expired sessions
     let session_store = SqliteStore::new(pool);
@@ -75,25 +74,24 @@ async fn main() -> anyhow::Result<()> {
     create_public_user(&app_state.users_repo).await?;
 
     // Run the CLI
-    if cli::run_cli(&app_state).await {
+    if cli::run_cli(app_state).await {
         return Ok(());
     }
 
-    tokio::spawn(async move {
-        if let Err(e) = compute_hashes(pool_clone, storage_clone).await {
+    tokio::spawn(async {
+        if let Err(e) = compute_hashes(app_state).await {
             error!("Failed to compute hashes: {}", e);
         }
     });
-    let app_state_clone = app_state.clone();
-    tokio::spawn(async move {
-        if let Err(e) = resolve_duplicates_db_entry(app_state_clone).await {
+    tokio::spawn(async {
+        if let Err(e) = resolve_duplicates_db_entry(app_state).await {
             error!("Failed to resolve db duplicates: {:?}", e);
         }
     });
 
     // Scan the storage directory for new photos in the background
     if vars.scan_new_files {
-        file_scan::scan_new_files(app_state.clone());
+        file_scan::scan_new_files(app_state);
     }
 
     info!("Server listening on port {}", vars.server_port);
