@@ -3,8 +3,8 @@ use std::path::{Path, PathBuf};
 
 #[derive(Clone)]
 pub struct StorageResolver {
-    storage_folder: PathBuf,
-    preview_folder: PathBuf,
+    pub storage_folder: PathBuf,
+    pub preview_folder: PathBuf,
 }
 
 impl StorageResolver {
