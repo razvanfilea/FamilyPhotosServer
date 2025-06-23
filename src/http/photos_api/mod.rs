@@ -278,7 +278,7 @@ async fn change_photo_location(
     let changed_photo = Photo {
         id: photo.id(),
         user_id: target_user_name,
-        name: photo.name().clone(),
+        name: photo.name().to_string(),
         created_at: photo.created_at(),
         file_size: photo.file_size(),
         folder: query.target_folder_name.clone(),

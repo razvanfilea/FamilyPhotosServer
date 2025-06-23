@@ -81,14 +81,11 @@ impl PhotosRepository {
     pub async fn get_photos_with_same_location(&self) -> Result<Vec<Photo>, ErrorResponse> {
         query_as!(
             Photo,
-            "SELECT *
-            FROM photos
-            WHERE (user_id, folder, name) IN (
-                SELECT user_id, folder, name
-                FROM photos
-                GROUP BY user_id, folder, name
-                HAVING COUNT(*) > 1
-            )",
+            "select * from photos
+            where rowid not in (
+                select min(rowid)
+                from photos
+                group by user_id, folder, name)",
         )
         .fetch_all(&self.pool)
         .await
