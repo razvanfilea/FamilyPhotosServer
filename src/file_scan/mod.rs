@@ -1,4 +1,5 @@
-mod hash;
+mod exif;
+mod extras;
 mod scan;
 mod timestamp_parsing;
 
@@ -8,15 +9,13 @@ use std::time::Duration;
 use tracing::{debug, error, info};
 
 use crate::file_scan;
+use crate::file_scan::extras::compute_photos_extras;
 use crate::http::AppStateRef;
 use crate::model::photo::PhotoBase;
-use crate::model::user::PUBLIC_USER_ID;
-use crate::utils::internal_error;
-use hash::compute_hashes;
 
 pub fn start_period_file_scanning_task(app_state: AppStateRef, scan_new_files: bool) {
     const MINUTE: u64 = 60;
-    
+
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_secs(MINUTE * 120));
 
@@ -27,7 +26,7 @@ pub fn start_period_file_scanning_task(app_state: AppStateRef, scan_new_files: b
                 error!("Failed to resolve db duplicates: {:?}", e);
             }
 
-            if let Err(e) = compute_hashes(app_state).await {
+            if let Err(e) = compute_photos_extras(app_state).await {
                 error!("Failed to compute hashes: {}", e);
             }
 

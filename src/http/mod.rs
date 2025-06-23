@@ -11,7 +11,7 @@ use tower_http::trace::TraceLayer;
 use tower_http::{cors, trace};
 use tower_sessions_sqlx_store::SqliteStore;
 use tracing::{Level, warn};
-use crate::repo::duplicates_repo::DuplicatesRepository;
+use crate::repo::photos_extras_repo::PhotosExtrasRepository;
 use crate::repo::favorites_repo::FavoritesRepository;
 use crate::repo::photos_repo::PhotosRepository;
 use crate::repo::users_repo::UsersRepository;
@@ -47,7 +47,7 @@ pub struct AppState {
     pub users_repo: UsersRepository,
     pub photos_repo: PhotosRepository,
     pub favorites_repo: FavoritesRepository,
-    pub duplicates_repo: DuplicatesRepository,
+    pub photo_extras_repo: PhotosExtrasRepository,
 }
 
 impl AppState {
@@ -57,7 +57,7 @@ impl AppState {
             users_repo: UsersRepository::new(pool.clone()),
             photos_repo: PhotosRepository::new(pool.clone()),
             favorites_repo: FavoritesRepository::new(pool.clone()),
-            duplicates_repo: DuplicatesRepository::new(pool.clone()),
+            photo_extras_repo: PhotosExtrasRepository::new(pool.clone()),
         }
     }
 }

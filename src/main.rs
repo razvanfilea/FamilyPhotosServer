@@ -82,7 +82,7 @@ async fn main() -> anyhow::Result<()> {
     info!("Server listening on port {}", vars.server_port);
 
     let http_service = http::router(app_state, session_store).into_make_service();
-    let addr = SocketAddr::from(([127, 0, 0, 1], vars.server_port));
+    let addr = SocketAddr::from(([0, 0, 0, 0], vars.server_port));
     let listener = TcpListener::bind(addr).await?;
 
     axum::serve(listener, http_service)
