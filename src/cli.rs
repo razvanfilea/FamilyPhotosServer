@@ -148,11 +148,7 @@ async fn user_commands(state: AppStateRef, command: UsersCommand) {
 
 async fn photos_commands(state: AppStateRef, command: PhotosCommand) {
     match command {
-        PhotosCommand::ScanPhotos => {
-            file_scan::scan_new_files(state)
-                .await
-                .expect("Failed to join task");
-        }
+        PhotosCommand::ScanPhotos => file_scan::scan_new_files(state).await,
         PhotosCommand::GeneratePreviews => match previews::generate_all_previews(state).await {
             Ok(_) => println!("Preview generation finished"),
             Err(e) => eprintln!("Preview generation failed: {e}"),

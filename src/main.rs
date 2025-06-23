@@ -1,8 +1,8 @@
+use crate::file_scan::start_period_file_scanning_task;
 use crate::http::AppState;
 use crate::model::user::{PUBLIC_USER_ID, User};
 use crate::repo::users_repo::UsersRepository;
 use crate::utils::env_reader::EnvVariables;
-use crate::utils::hash::compute_hashes;
 use crate::utils::password_hash::{generate_hash_from_password, generate_random_password};
 use crate::utils::storage_resolver::StorageResolver;
 use anyhow::Context;
@@ -12,11 +12,10 @@ use std::net::SocketAddr;
 use std::str::FromStr;
 use tokio::net::TcpListener;
 use tower_sessions_sqlx_store::SqliteStore;
-use tracing::{error, info};
+use tracing::info;
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-use crate::utils::resolve_duplicates_db_entry;
 
 mod cli;
 mod file_scan;
@@ -78,21 +77,7 @@ async fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    tokio::spawn(async {
-        if let Err(e) = compute_hashes(app_state).await {
-            error!("Failed to compute hashes: {}", e);
-        }
-    });
-    tokio::spawn(async {
-        if let Err(e) = resolve_duplicates_db_entry(app_state).await {
-            error!("Failed to resolve db duplicates: {:?}", e);
-        }
-    });
-
-    // Scan the storage directory for new photos in the background
-    if vars.scan_new_files {
-        file_scan::scan_new_files(app_state);
-    }
+    start_period_file_scanning_task(app_state, vars.scan_new_files);
 
     info!("Server listening on port {}", vars.server_port);
 

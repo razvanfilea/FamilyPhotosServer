@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT *\n            FROM photos\n            WHERE (user_id, folder, name) IN (\n                SELECT user_id, folder, name\n                FROM photos\n                GROUP BY user_id, folder, name\n                HAVING COUNT(*) > 1\n            )",
+  "query": "select * from photos\n            where rowid not in (\n                select min(rowid)\n                from photos\n                group by user_id, folder, name)",
   "describe": {
     "columns": [
       {
@@ -46,5 +46,5 @@
       true
     ]
   },
-  "hash": "c7d661882cfb4b6a3ea23b20fce2038fe6d83e42cafe16836d3b78d7640e6737"
+  "hash": "1f5d0cb229818497eac52a9281fbf94d1b67696de39ee857976c17ea81e07cb7"
 }

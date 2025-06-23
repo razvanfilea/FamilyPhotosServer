@@ -4,27 +4,33 @@ use time::OffsetDateTime;
 use time::serde::timestamp;
 
 pub trait PhotoBase {
-    fn user_id(&self) -> &String;
+    fn user_id(&self) -> &str;
 
-    fn name(&self) -> &String;
+    fn name(&self) -> &str;
 
     fn created_at(&self) -> OffsetDateTime;
 
     fn file_size(&self) -> i64;
 
-    fn folder_name(&self) -> Option<&String>;
+    fn folder_name(&self) -> Option<&str>;
 
     fn full_name(&self) -> String {
-        let folder_path = match self.folder_name().as_ref() {
-            None => String::new(),
-            Some(folder) => format!("{folder}/"),
-        };
-
-        folder_path + self.name().as_str()
+        Self::construct_full_name(self.name(), self.folder_name())
     }
 
     fn partial_path(&self) -> String {
         format!("{}/{}", self.user_id(), self.full_name())
+    }
+    
+    fn construct_full_name(name: &str, folder: Option<&str>) -> String {
+        // TODO if let chains
+        if let Some(folder) = folder {
+            if !folder.is_empty() {
+                return format!("{}/{}", folder, name);
+            }
+        }
+
+        name.to_string()
     }
 }
 
@@ -41,11 +47,11 @@ pub struct Photo {
 }
 
 impl PhotoBase for Photo {
-    fn user_id(&self) -> &String {
+    fn user_id(&self) -> &str {
         &self.user_id
     }
 
-    fn name(&self) -> &String {
+    fn name(&self) -> &str {
         &self.name
     }
 
@@ -57,8 +63,8 @@ impl PhotoBase for Photo {
         self.file_size
     }
 
-    fn folder_name(&self) -> Option<&String> {
-        self.folder.as_ref()
+    fn folder_name(&self) -> Option<&str> {
+        self.folder.as_deref()
     }
 }
 
@@ -82,11 +88,11 @@ pub struct PhotoBody {
 }
 
 impl PhotoBase for PhotoBody {
-    fn user_id(&self) -> &String {
+    fn user_id(&self) -> &str {
         &self.user_name
     }
 
-    fn name(&self) -> &String {
+    fn name(&self) -> &str {
         &self.name
     }
 
@@ -98,8 +104,8 @@ impl PhotoBase for PhotoBody {
         self.file_size
     }
 
-    fn folder_name(&self) -> Option<&String> {
-        self.folder.as_ref()
+    fn folder_name(&self) -> Option<&str> {
+        self.folder.as_deref()
     }
 }
 
