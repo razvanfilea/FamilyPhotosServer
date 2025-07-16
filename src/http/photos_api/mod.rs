@@ -3,7 +3,6 @@ mod sync;
 
 use std::string::ToString;
 
-use axum::response::ErrorResponse;
 use axum::{
     Json, Router,
     extract::Multipart,
@@ -17,7 +16,6 @@ use tokio::{fs, task};
 use tracing::{error, info, warn};
 
 use crate::http::AppStateRef;
-use crate::http::utils::status_error::StatusError;
 use crate::http::utils::{AuthSession, AxumResult, file_to_response, write_field_to_file};
 use crate::model::photo::Photo;
 use crate::model::user::{PUBLIC_USER_ID, User};
@@ -42,16 +40,13 @@ pub fn router(app_state: AppStateRef) -> Router {
         .with_state(app_state)
 }
 
-fn check_has_access(user: Option<User>, photo: &Photo) -> Result<User, ErrorResponse> {
+fn check_has_access(user: Option<User>, photo: &Photo) -> Result<User, StatusCode> {
     let user = user.ok_or(StatusCode::UNAUTHORIZED)?;
 
     if photo.user_id == user.id || photo.user_id == PUBLIC_USER_ID {
         Ok(user)
     } else {
-        Err(StatusError::new_status(
-            "You don't have access to this resource",
-            StatusCode::FORBIDDEN,
-        ))
+        Err(StatusCode::FORBIDDEN)
     }
 }
 
@@ -150,7 +145,7 @@ async fn get_photo_exif(
     State(state): State<AppStateRef>,
     Path(photo_id): Path<i64>,
     auth: AuthSession,
-) -> impl IntoResponse {
+) -> AxumResult<impl IntoResponse> {
     let photo = state
         .photos_repo
         .get_photo(photo_id)
@@ -164,11 +159,8 @@ async fn get_photo_exif(
         .map_err(internal_error)?;
 
     match exif {
-        Some(exif) => Ok(Json(exif)),
-        None => Err(StatusError::new_status(
-            "Exif data not found",
-            StatusCode::NOT_FOUND,
-        )),
+        Some(exif) => Ok(Json(exif).into_response()),
+        None => Ok((StatusCode::NOT_FOUND, "Exif data not found").into_response()),
     }
 }
 
@@ -193,12 +185,12 @@ async fn upload_photo(
     let field = payload
         .next_field()
         .await?
-        .ok_or_else(|| StatusError::new_status("Multipart is empty", StatusCode::BAD_REQUEST))?;
+        .ok_or((StatusCode::UNPROCESSABLE_ENTITY, "Multipart is empty"))?;
 
     let file_name = field
         .file_name()
         .or(field.name())
-        .ok_or_else(|| StatusError::new_status("Multipart has no name", StatusCode::BAD_REQUEST))?;
+        .ok_or((StatusCode::BAD_REQUEST, "Multipart has no name"))?;
 
     let mut new_photo = Photo {
         id: 0,
@@ -257,9 +249,12 @@ async fn delete_photo(
 
     let photo_path = state.storage.resolve_photo(photo.partial_path());
     if photo_path.exists() {
-        fs::remove_file(&photo_path)
-            .await
-            .map_err(|e| StatusError::create(format!("Failed to delete file: {e}")))?;
+        fs::remove_file(&photo_path).await.map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to delete file: {e}"),
+            )
+        })?;
         info!("Id {photo_id}: Removed file at {}", photo_path.display());
     } else {
         info!(
@@ -315,23 +310,35 @@ async fn change_photo_location(
     let destination_path = changed_photo.partial_path();
 
     if source_path == destination_path {
-        return Err(StatusError::new_status(
-            "Source and destination are the same",
+        return Err((
             StatusCode::BAD_REQUEST,
-        ));
+            "Source and destination are the same",
+        )
+            .into_response()
+            .into());
     }
 
     info!("Moving photo from {source_path} to {destination_path}");
 
     storage
         .move_photo(&source_path, &destination_path)
-        .map_err(|e| StatusError::create(format!("Failed moving the photo: {e}")))?;
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed moving the photo: {e}"),
+            )
+        })?;
 
     state
         .photos_repo
         .update_photo(&changed_photo)
         .await
-        .map_err(|_| StatusError::create("Something went wrong moving the photo"))?;
+        .inspect_err(|e| {
+            error!("Failed to update photo: {e}");
+            // Try to undo the move
+            let _ = storage.move_photo(&destination_path, &source_path);
+        })
+        .map_err(internal_error)?;
 
     Ok(Json(changed_photo))
 }

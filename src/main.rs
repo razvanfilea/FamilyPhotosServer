@@ -1,7 +1,7 @@
-use crate::tasks::start_period_tasks;
 use crate::http::AppState;
 use crate::model::user::{PUBLIC_USER_ID, User};
 use crate::repo::users_repo::UsersRepository;
+use crate::tasks::start_period_tasks;
 use crate::utils::env_reader::EnvVariables;
 use crate::utils::password_hash::{generate_hash_from_password, generate_random_password};
 use crate::utils::storage_resolver::StorageResolver;
@@ -22,11 +22,11 @@ use tracing_subscriber::util::SubscriberInitExt;
 static GLOBAL: MiMalloc = MiMalloc;
 
 mod cli;
-mod tasks;
 mod http;
 mod model;
 mod previews;
 mod repo;
+mod tasks;
 mod utils;
 
 #[tokio::main]

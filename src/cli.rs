@@ -1,7 +1,7 @@
 use crate::http::AppStateRef;
 use crate::model::user::User;
 use crate::utils::password_hash::{generate_hash_from_password, generate_random_password};
-use crate::{tasks, previews};
+use crate::{previews, tasks};
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
