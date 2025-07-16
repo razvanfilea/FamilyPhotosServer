@@ -21,13 +21,12 @@ pub trait PhotoBase {
     fn partial_path(&self) -> String {
         format!("{}/{}", self.user_id(), self.full_name())
     }
-    
+
     fn construct_full_name(name: &str, folder: Option<&str>) -> String {
-        // TODO if let chains
-        if let Some(folder) = folder {
-            if !folder.is_empty() {
-                return format!("{}/{}", folder, name);
-            }
+        if let Some(folder) = folder
+            && !folder.is_empty()
+        {
+            return format!("{folder}/{name}");
         }
 
         name.to_string()
