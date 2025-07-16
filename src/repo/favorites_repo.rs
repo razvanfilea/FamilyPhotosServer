@@ -2,7 +2,6 @@ use axum::response::ErrorResponse;
 use sqlx::{query, SqlitePool};
 use crate::utils::internal_error;
 
-#[derive(Clone)]
 pub struct FavoritesRepository {
     pool: SqlitePool,
 }

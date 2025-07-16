@@ -43,4 +43,4 @@ impl AuthUser for User {
     }
 }
 
-pub const PUBLIC_USER_ID: &str = "public";
+pub const PUBLIC_USER_ID: &str = "public"; // TODO public user id should be null instead

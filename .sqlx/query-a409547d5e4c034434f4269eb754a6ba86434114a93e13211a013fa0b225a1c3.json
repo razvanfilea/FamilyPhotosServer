@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "insert into photos_event_log (photo_id, user_id, data) values ($1, $2, $3)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "a409547d5e4c034434f4269eb754a6ba86434114a93e13211a013fa0b225a1c3"
+}

@@ -41,7 +41,7 @@ pub fn start_period_file_scanning_task(app_state: AppStateRef, scan_new_files: b
         }
     });
 }
-async fn resolve_duplicates_db_entry(app_state: AppStateRef) -> Result<(), ErrorResponse> {
+async fn resolve_duplicates_db_entry(app_state: AppStateRef) -> Result<(), sqlx::Error> {
     debug!("Started resolving duplicates");
 
     let photos = app_state
@@ -54,7 +54,7 @@ async fn resolve_duplicates_db_entry(app_state: AppStateRef) -> Result<(), Error
             "Removing duplicate DB entry with path: {}",
             photo.partial_path()
         );
-        app_state.photos_repo.delete_photo(photo.id).await?;
+        app_state.photos_repo.delete_photo(&photo).await?;
     }
 
     Ok(())
