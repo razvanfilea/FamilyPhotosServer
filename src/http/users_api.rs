@@ -4,7 +4,6 @@ use axum::routing::{get, post};
 use axum::{Form, Json, Router};
 use tracing::{debug, error};
 
-use crate::http::utils::status_error::StatusError;
 use crate::http::utils::{AuthSession, AxumResult};
 use crate::model::user::{SimpleUser, UserCredentials};
 
@@ -27,24 +26,25 @@ async fn login(
     mut auth: AuthSession,
     Form(login_user): Form<UserCredentials>,
 ) -> AxumResult<impl IntoResponse> {
-    let valid_user = auth
-        .authenticate(login_user)
-        .await
-        .map_err(|e| StatusError::create(format!("Failed to validate credentials: {e}")))?;
+    let valid_user = auth.authenticate(login_user).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to validate credentials: {e}"),
+        )
+    })?;
 
     let user = match valid_user {
         None => {
-            return Err(StatusError::new_status(
-                "Wrong user name or password",
-                StatusCode::UNAUTHORIZED,
-            ));
+            return Err((StatusCode::UNAUTHORIZED, "Wrong user name or password")
+                .into_response()
+                .into());
         }
         Some(user) => user,
     };
 
     auth.login(&user).await.map_err(|e| {
         error!("Failed to login user with {}: {}", user.id, e);
-        StatusError::create("Failed to login")
+        (StatusCode::INTERNAL_SERVER_ERROR, "Failed to login")
     })?;
 
     Ok(Json(SimpleUser::from(user)))

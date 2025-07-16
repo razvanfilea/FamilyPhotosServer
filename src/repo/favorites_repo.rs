@@ -1,6 +1,6 @@
-use axum::response::ErrorResponse;
-use sqlx::{query, SqlitePool};
 use crate::utils::internal_error;
+use axum::response::ErrorResponse;
+use sqlx::{SqlitePool, query};
 
 pub struct FavoritesRepository {
     pool: SqlitePool,
@@ -20,12 +20,12 @@ impl FavoritesRepository {
             "select photo_id from favorite_photos where user_id = $1",
             user_id
         )
-            .fetch_all(&self.pool)
-            .await
-            .map(|list| list.into_iter().map(|record| record.photo_id).collect())
-            .map_err(internal_error)
+        .fetch_all(&self.pool)
+        .await
+        .map(|list| list.into_iter().map(|record| record.photo_id).collect())
+        .map_err(internal_error)
     }
-    
+
     pub async fn insert_favorite<T: AsRef<str>>(
         &self,
         photo_id: i64,
@@ -37,10 +37,10 @@ impl FavoritesRepository {
             photo_id,
             user_id
         )
-            .execute(&self.pool)
-            .await
-            .map(|_| ())
-            .map_err(internal_error)
+        .execute(&self.pool)
+        .await
+        .map(|_| ())
+        .map_err(internal_error)
     }
 
     pub async fn delete_favorite<T: AsRef<str>>(
@@ -54,10 +54,9 @@ impl FavoritesRepository {
             photo_id,
             user_id
         )
-            .execute(&self.pool)
-            .await
-            .map(|_| ())
-            .map_err(internal_error)
+        .execute(&self.pool)
+        .await
+        .map(|_| ())
+        .map_err(internal_error)
     }
-
 }

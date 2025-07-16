@@ -131,7 +131,7 @@ impl PhotosRepository {
         .push_values(photos, |mut b, photo| {
             b.push_bind(&photo.user_id)
                 .push_bind(&photo.name)
-                .push_bind(&photo.created_at)
+                .push_bind(photo.created_at)
                 .push_bind(photo.file_size)
                 .push_bind(&photo.folder);
         })

@@ -8,9 +8,9 @@ use tracing::{debug, error, info, warn};
 use walkdir::{DirEntry, WalkDir};
 
 use crate::User;
-use crate::tasks::timestamp_parsing;
 use crate::http::AppStateRef;
 use crate::model::photo::Photo;
+use crate::tasks::timestamp_parsing;
 
 pub async fn scan_new_files(app_state: AppStateRef) {
     let instant = Instant::now();
@@ -38,7 +38,7 @@ pub async fn scan_new_files(app_state: AppStateRef) {
 
         if !removed_photo_ids.is_empty() {
             for chunk in removed_photo_ids.chunks(1024) {
-                if let Err(e) = app_state.photos_repo.delete_photos(&chunk).await {
+                if let Err(e) = app_state.photos_repo.delete_photos(chunk).await {
                     error!("Failed deleting photos: {}", e.to_string())
                 }
             }
