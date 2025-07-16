@@ -1,5 +1,4 @@
 use crate::http::AppStateRef;
-use crate::model::photo::PhotoBase;
 use crate::model::photo_hash::PhotoHash;
 use rayon::prelude::*;
 use sha2::Digest;
@@ -24,7 +23,7 @@ pub async fn compute_photos_hash(app_state: AppStateRef) -> Result<(), sqlx::Err
             let path = app_state.storage.resolve_photo(photo.partial_path());
 
             compute_hash(&path)
-                .inspect_err(|e| error!("Failed to comput extras for {}: {e}", path.display()))
+                .inspect_err(|e| error!("Failed to comput hash for {}: {e}", path.display()))
                 .ok()
                 .map(|hash| PhotoHash { id: photo.id, hash })
         })

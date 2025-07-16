@@ -8,7 +8,7 @@ use tracing::{debug, error, info, warn};
 use walkdir::{DirEntry, WalkDir};
 
 use crate::User;
-use crate::file_scan::timestamp_parsing;
+use crate::tasks::timestamp_parsing;
 use crate::http::AppStateRef;
 use crate::model::photo::Photo;
 
