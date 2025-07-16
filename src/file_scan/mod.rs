@@ -5,6 +5,8 @@ mod timestamp_parsing;
 
 use axum::response::ErrorResponse;
 pub use scan::scan_new_files;
+use std::collections::HashSet;
+use std::fs;
 use std::time::Duration;
 use tracing::{debug, error, info};
 
@@ -24,6 +26,10 @@ pub fn start_period_file_scanning_task(app_state: AppStateRef, scan_new_files: b
 
             if let Err(e) = resolve_duplicates_db_entry(app_state).await {
                 error!("Failed to resolve db duplicates: {:?}", e);
+            }
+
+            if let Err(e) = delete_invalid_photo_previews(app_state).await {
+                error!("Failed to delete invalid photo previews: {:?}", e);
             }
 
             if let Err(e) = compute_photos_extras(app_state).await {
@@ -50,6 +56,35 @@ async fn resolve_duplicates_db_entry(app_state: AppStateRef) -> Result<(), Error
             photo.partial_path()
         );
         app_state.photos_repo.delete_photo(photo.id).await?;
+    }
+
+    Ok(())
+}
+
+async fn delete_invalid_photo_previews(app_state: AppStateRef) -> Result<(), ErrorResponse> {
+    let photos: HashSet<i64> = app_state
+        .photos_repo
+        .get_all_photos()
+        .await?
+        .into_iter()
+        .map(|p| p.id)
+        .collect();
+
+    let count = walkdir::WalkDir::new(&app_state.storage.preview_folder)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter_map(|entry| {
+            let path = entry.into_path();
+            path.file_stem()
+                .and_then(|s| s.to_string_lossy().parse::<i64>().ok())
+                .map(|id| (path, id))
+        })
+        .filter(|(_, photo_id)| !photos.contains(photo_id))
+        .filter_map(|(path, _)| fs::remove_file(path).ok())
+        .count();
+    
+    if count != 0 {
+        info!("Deleted {count} invalid photo previews");
     }
 
     Ok(())
