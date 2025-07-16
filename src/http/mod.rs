@@ -11,6 +11,7 @@ use tower_http::trace::TraceLayer;
 use tower_http::{cors, trace};
 use tower_sessions_sqlx_store::SqliteStore;
 use tracing::{Level, warn};
+use crate::repo::event_log::EventLogRepository;
 use crate::repo::photos_hash_repo::PhotosHashRepository;
 use crate::repo::favorites_repo::FavoritesRepository;
 use crate::repo::photos_repo::PhotosRepository;
@@ -48,6 +49,7 @@ pub struct AppState {
     pub photos_repo: PhotosRepository,
     pub favorites_repo: FavoritesRepository,
     pub photo_hash_repo: PhotosHashRepository,
+    pub event_log_repo: EventLogRepository,
 }
 
 impl AppState {
@@ -58,6 +60,7 @@ impl AppState {
             photos_repo: PhotosRepository::new(pool.clone()),
             favorites_repo: FavoritesRepository::new(pool.clone()),
             photo_hash_repo: PhotosHashRepository::new(pool.clone()),
+            event_log_repo: EventLogRepository::new(pool),
         }
     }
 }

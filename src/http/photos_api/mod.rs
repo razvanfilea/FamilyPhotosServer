@@ -1,4 +1,5 @@
 mod favorite;
+mod sync;
 
 use std::string::ToString;
 
@@ -37,13 +38,14 @@ pub fn router(app_state: AppStateRef) -> Router {
         .route("/change_location/{photo_id}", post(change_photo_location))
         .route("/rename_folder", post(rename_folder))
         .nest("/favorite", favorite::router())
+        .nest("/sync", sync::router())
         .with_state(app_state)
 }
 
 fn check_has_access(user: Option<User>, photo: &Photo) -> Result<User, ErrorResponse> {
     let user = user.ok_or(StatusCode::UNAUTHORIZED)?;
 
-    if photo.user_id() == &user.id || photo.user_id() == PUBLIC_USER_ID {
+    if photo.user_id() == user.id || photo.user_id() == PUBLIC_USER_ID {
         Ok(user)
     } else {
         Err(StatusError::new_status(
@@ -208,7 +210,7 @@ async fn upload_photo(
     info!("Uploading file to {}", photo_path.display());
 
     match write_field_to_file(field, &photo_path).await {
-        Ok(file_size) => new_photo_body.set_file_size(file_size as i64),
+        Ok(file_size) => new_photo_body.file_size = file_size as i64,
         Err(e) => {
             // Upload failed, delete the file
             let _ = fs::remove_file(photo_path).await;
@@ -221,7 +223,7 @@ async fn upload_photo(
         Err(e) => {
             // Insertion failed, delete the file
             let _ = fs::remove_file(photo_path).await;
-            Err(e)
+            Err(internal_error(e))
         }
     }
 }
@@ -249,7 +251,11 @@ async fn delete_photo(
         );
     }
 
-    state.photos_repo.delete_photo(photo_id).await?;
+    state
+        .photos_repo
+        .delete_photo(&photo)
+        .await
+        .map_err(internal_error)?;
 
     Ok(())
 }

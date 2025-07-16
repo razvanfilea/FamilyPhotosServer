@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "delete from photos_event_log where event_id <= (select max(event_id) from photos_event_log) - $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "833a18747820c7e428fea72380a110f2eff8eb5cc81ed573794a2470679fc847"
+}

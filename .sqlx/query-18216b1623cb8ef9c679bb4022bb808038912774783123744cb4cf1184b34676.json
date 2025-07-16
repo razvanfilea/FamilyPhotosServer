@@ -1,0 +1,32 @@
+{
+  "db_name": "SQLite",
+  "query": "select event_id, photo_id, data from photos_event_log where event_id > $1 and (user_id = $2 or user_id = $3 or user_id is null) order by event_id",
+  "describe": {
+    "columns": [
+      {
+        "name": "event_id",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "photo_id",
+        "ordinal": 1,
+        "type_info": "Integer"
+      },
+      {
+        "name": "data",
+        "ordinal": 2,
+        "type_info": "Blob"
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "18216b1623cb8ef9c679bb4022bb808038912774783123744cb4cf1184b34676"
+}

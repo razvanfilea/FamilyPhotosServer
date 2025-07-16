@@ -33,7 +33,7 @@ pub trait PhotoBase {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, sqlx::FromRow)]
 #[serde(rename_all = "camelCase")]
 pub struct Photo {
     pub id: i64,
@@ -79,11 +79,11 @@ impl Photo {
 
 #[derive(Debug, Clone)]
 pub struct PhotoBody {
-    user_name: String,
-    name: String,
-    created_at: OffsetDateTime,
-    file_size: i64,
-    folder: Option<String>,
+    pub user_name: String,
+    pub name: String,
+    pub created_at: OffsetDateTime,
+    pub file_size: i64,
+    pub folder: Option<String>,
 }
 
 impl PhotoBase for PhotoBody {
@@ -124,8 +124,15 @@ impl PhotoBody {
             folder,
         }
     }
-
-    pub fn set_file_size(&mut self, value: i64) {
-        self.file_size = value;
+    
+    pub fn with_id(self, id: i64) -> Photo {
+        Photo {
+            id,
+            user_id: self.user_name,
+            name: self.name,
+            created_at: self.created_at,
+            file_size: self.file_size,
+            folder: self.folder,
+        }
     }
 }
