@@ -1,23 +1,22 @@
 mod hash;
-mod scan;
+mod file_scan;
 mod timestamp_parsing;
 
-use axum::response::ErrorResponse;
-pub use scan::scan_new_files;
+pub use file_scan::scan_new_files;
 use std::collections::HashSet;
 use std::fs;
 use std::time::Duration;
 use tracing::{debug, error, info};
 
-use crate::file_scan;
-use crate::file_scan::hash::compute_photos_hash;
 use crate::http::AppStateRef;
+pub use crate::tasks::hash::compute_photos_hash;
 
-pub fn start_period_file_scanning_task(app_state: AppStateRef, scan_new_files: bool) {
+pub fn start_period_tasks(app_state: AppStateRef, scan_new_files: bool) {
     const MINUTE: u64 = 60;
+    const HOUR: u64 = 60;
 
     tokio::spawn(async move {
-        let mut interval = tokio::time::interval(Duration::from_secs(MINUTE * 120));
+        let mut interval = tokio::time::interval(Duration::from_secs(MINUTE * HOUR * 2));
 
         loop {
             interval.tick().await;
@@ -27,15 +26,19 @@ pub fn start_period_file_scanning_task(app_state: AppStateRef, scan_new_files: b
             }
 
             if let Err(e) = resolve_duplicates_db_entry(app_state).await {
-                error!("Failed to resolve db duplicates: {:?}", e);
+                error!("Failed to resolve db duplicates: {e}");
             }
 
             if let Err(e) = delete_invalid_photo_previews(app_state).await {
-                error!("Failed to delete invalid photo previews: {:?}", e);
+                error!("Failed to delete invalid photo previews: {e}");
             }
 
             if let Err(e) = compute_photos_hash(app_state).await {
-                error!("Failed to compute hashes: {}", e);
+                error!("Failed to compute hashes: {e}");
+            }
+
+            if let Err(e) = delete_old_event_logs(app_state).await {
+                error!("Failed to delete old events: {e}");
             }
         }
     });
@@ -59,7 +62,7 @@ async fn resolve_duplicates_db_entry(app_state: AppStateRef) -> Result<(), sqlx:
     Ok(())
 }
 
-async fn delete_invalid_photo_previews(app_state: AppStateRef) -> Result<(), ErrorResponse> {
+async fn delete_invalid_photo_previews(app_state: AppStateRef) -> Result<(), sqlx::Error> {
     let photos: HashSet<i64> = app_state
         .photos_repo
         .get_all_photos()
@@ -80,10 +83,19 @@ async fn delete_invalid_photo_previews(app_state: AppStateRef) -> Result<(), Err
         .filter(|(_, photo_id)| !photos.contains(photo_id))
         .filter_map(|(path, _)| fs::remove_file(path).ok())
         .count();
-    
+
     if count != 0 {
         info!("Deleted {count} invalid photo previews");
     }
 
     Ok(())
+}
+
+async fn delete_old_event_logs(app_state: AppStateRef) -> Result<(), sqlx::Error> {
+    const MAX_EVENT_LONG_ROWS_TO_KEEP: u32 = 512;
+
+    app_state
+        .event_log_repo
+        .delete_older_than(MAX_EVENT_LONG_ROWS_TO_KEEP)
+        .await
 }

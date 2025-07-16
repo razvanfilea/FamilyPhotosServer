@@ -1,4 +1,4 @@
-use crate::file_scan::start_period_file_scanning_task;
+use crate::tasks::start_period_tasks;
 use crate::http::AppState;
 use crate::model::user::{PUBLIC_USER_ID, User};
 use crate::repo::users_repo::UsersRepository;
@@ -22,7 +22,7 @@ use tracing_subscriber::util::SubscriberInitExt;
 static GLOBAL: MiMalloc = MiMalloc;
 
 mod cli;
-mod file_scan;
+mod tasks;
 mod http;
 mod model;
 mod previews;
@@ -81,7 +81,7 @@ async fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    start_period_file_scanning_task(app_state, vars.scan_new_files);
+    start_period_tasks(app_state, vars.scan_new_files);
 
     info!("Server listening on port {}", vars.server_port);
 

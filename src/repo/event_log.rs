@@ -45,7 +45,7 @@ impl EventLogRepository {
         Ok(Some(event_logs))
     }
 
-    pub async fn delete_older_than(&self, last_rows_to_keep: i64) -> Result<(), sqlx::Error> {
+    pub async fn delete_older_than(&self, last_rows_to_keep: u32) -> Result<(), sqlx::Error> {
         query!("delete from photos_event_log where event_id <= (select max(event_id) from photos_event_log) - $1", last_rows_to_keep)
             .execute(&self.pool)
             .await

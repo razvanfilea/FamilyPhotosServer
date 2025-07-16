@@ -65,7 +65,8 @@ async fn photos_list(
         state
             .photos_repo
             .get_photos_by_user_and_public(user.id)
-            .await?,
+            .await
+            .map_err(internal_error)?,
     ))
 }
 
@@ -92,7 +93,10 @@ async fn preview_photo(
     let storage = &state.storage;
     let photos_repo = &state.photos_repo;
 
-    let photo = photos_repo.get_photo(photo_id).await?;
+    let photo = photos_repo
+        .get_photo(photo_id)
+        .await
+        .map_err(internal_error)?;
     check_has_access(auth.user, &photo)?;
 
     let photo_path = storage.resolve_photo(photo.partial_path());
@@ -130,7 +134,11 @@ async fn download_photo(
     Path(photo_id): Path<i64>,
     auth: AuthSession,
 ) -> impl IntoResponse {
-    let photo = state.photos_repo.get_photo(photo_id).await?;
+    let photo = state
+        .photos_repo
+        .get_photo(photo_id)
+        .await
+        .map_err(internal_error)?;
     check_has_access(auth.user, &photo)?;
 
     let photo_path = state.storage.resolve_photo(photo.partial_path());
@@ -143,7 +151,11 @@ async fn get_photo_exif(
     Path(photo_id): Path<i64>,
     auth: AuthSession,
 ) -> impl IntoResponse {
-    let photo = state.photos_repo.get_photo(photo_id).await?;
+    let photo = state
+        .photos_repo
+        .get_photo(photo_id)
+        .await
+        .map_err(internal_error)?;
     check_has_access(auth.user, &photo)?;
 
     let path = state.storage.resolve_photo(photo.partial_path());
@@ -234,7 +246,11 @@ async fn delete_photo(
     Path(photo_id): Path<i64>,
     auth: AuthSession,
 ) -> AxumResult<impl IntoResponse> {
-    let photo = state.photos_repo.get_photo(photo_id).await?;
+    let photo = state
+        .photos_repo
+        .get_photo(photo_id)
+        .await
+        .map_err(internal_error)?;
     check_has_access(auth.user, &photo)?;
 
     let _ = fs::remove_file(state.storage.resolve_preview(photo.partial_preview_path())).await;
@@ -274,7 +290,11 @@ async fn change_photo_location(
     auth: AuthSession,
 ) -> AxumResult<impl IntoResponse> {
     let storage = &state.storage;
-    let photo = state.photos_repo.get_photo(photo_id).await?;
+    let photo = state
+        .photos_repo
+        .get_photo(photo_id)
+        .await
+        .map_err(internal_error)?;
     let user = check_has_access(auth.user, &photo)?;
 
     let target_user_name = if query.make_public {
@@ -346,7 +366,8 @@ async fn rename_folder(
     let photos_to_move = state
         .photos_repo
         .get_photos_in_folder(source_user_name, query.source_folder_name)
-        .await?;
+        .await
+        .map_err(internal_error)?;
     let mut moved_photos = Vec::with_capacity(photos_to_move.len());
 
     for mut photo in photos_to_move {

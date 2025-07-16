@@ -24,7 +24,8 @@ async fn full_photos_list(
         state
             .photos_repo
             .get_photos_by_user_and_public(user.id)
-            .await?,
+            .await
+            .map_err(internal_error)?,
     ))
 }
 

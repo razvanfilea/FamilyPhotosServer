@@ -1,7 +1,5 @@
 use crate::model::photo::Photo;
 use crate::model::user::PUBLIC_USER_ID;
-use crate::utils::internal_error;
-use axum::response::ErrorResponse;
 use sqlx::{FromRow, QueryBuilder, Sqlite, SqlitePool, query, query_as};
 
 pub struct PhotosRepository {
@@ -13,24 +11,22 @@ impl PhotosRepository {
         Self { pool }
     }
 
-    pub async fn get_photo(&self, id: i64) -> Result<Photo, ErrorResponse> {
+    pub async fn get_photo(&self, id: i64) -> Result<Photo, sqlx::Error> {
         query_as!(Photo, "select * from photos where id = $1", id)
             .fetch_one(&self.pool) // fetch_optional
             .await
-            .map_err(internal_error)
     }
 
-    pub async fn get_all_photos(&self) -> Result<Vec<Photo>, ErrorResponse> {
+    pub async fn get_all_photos(&self) -> Result<Vec<Photo>, sqlx::Error> {
         query_as!(Photo, "select * from photos order by created_at desc")
             .fetch_all(&self.pool)
             .await
-            .map_err(internal_error)
     }
 
     pub async fn get_photos_by_user(
         &self,
         user_id: impl AsRef<str>,
-    ) -> Result<Vec<Photo>, ErrorResponse> {
+    ) -> Result<Vec<Photo>, sqlx::Error> {
         let user_id = user_id.as_ref();
         query_as!(
             Photo,
@@ -39,13 +35,12 @@ impl PhotosRepository {
         )
         .fetch_all(&self.pool)
         .await
-        .map_err(internal_error)
     }
 
     pub async fn get_photos_by_user_and_public(
         &self,
         user_id: impl AsRef<str>,
-    ) -> Result<Vec<Photo>, ErrorResponse> {
+    ) -> Result<Vec<Photo>, sqlx::Error> {
         let user_id = user_id.as_ref();
         query_as!(
             Photo,
@@ -55,14 +50,13 @@ impl PhotosRepository {
         )
         .fetch_all(&self.pool)
         .await
-        .map_err(internal_error)
     }
 
     pub async fn get_photos_in_folder(
         &self,
         user_id: impl AsRef<str>,
         folder_name: impl AsRef<str>,
-    ) -> Result<Vec<Photo>, ErrorResponse> {
+    ) -> Result<Vec<Photo>, sqlx::Error> {
         let user_id = user_id.as_ref();
         let folder_name = folder_name.as_ref();
 
@@ -74,7 +68,6 @@ impl PhotosRepository {
         )
         .fetch_all(&self.pool)
         .await
-        .map_err(internal_error)
     }
 
     pub async fn get_photos_with_same_location(&self) -> Result<Vec<Photo>, sqlx::Error> {
