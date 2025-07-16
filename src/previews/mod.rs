@@ -4,7 +4,6 @@ use tracing::error;
 pub use generate::*;
 
 use crate::http::AppState;
-use crate::model::photo::PhotoBase;
 
 mod generate;
 

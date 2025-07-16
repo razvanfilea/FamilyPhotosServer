@@ -19,7 +19,7 @@ use tracing::{error, info, warn};
 use crate::http::AppStateRef;
 use crate::http::utils::status_error::StatusError;
 use crate::http::utils::{AuthSession, AxumResult, file_to_response, write_field_to_file};
-use crate::model::photo::{Photo, PhotoBase, PhotoBody};
+use crate::model::photo::Photo;
 use crate::model::user::{PUBLIC_USER_ID, User};
 use crate::previews;
 use crate::utils::internal_error;
@@ -45,7 +45,7 @@ pub fn router(app_state: AppStateRef) -> Router {
 fn check_has_access(user: Option<User>, photo: &Photo) -> Result<User, ErrorResponse> {
     let user = user.ok_or(StatusCode::UNAUTHORIZED)?;
 
-    if photo.user_id() == user.id || photo.user_id() == PUBLIC_USER_ID {
+    if photo.user_id == user.id || photo.user_id == PUBLIC_USER_ID {
         Ok(user)
     } else {
         Err(StatusError::new_status(
@@ -188,19 +188,20 @@ async fn upload_photo(
         .or(field.name())
         .ok_or_else(|| StatusError::new_status("Multipart has no name", StatusCode::BAD_REQUEST))?;
 
-    let mut new_photo_body = PhotoBody::new(
-        if query.make_public {
+    let mut new_photo = Photo {
+        id: 0,
+        user_id: if query.make_public {
             String::from(PUBLIC_USER_ID)
         } else {
             user.id
         },
-        String::from(file_name),
-        query.time_created,
-        0, // To be set after it is written to disk
-        query.folder_name,
-    );
+        name: String::from(file_name),
+        created_at: query.time_created,
+        file_size: 0, // To be set after it is written to disk
+        folder: query.folder_name,
+    };
 
-    let photo_path = state.storage.resolve_photo(new_photo_body.partial_path());
+    let photo_path = state.storage.resolve_photo(new_photo.partial_path());
     if let Some(parent) = photo_path.parent() {
         if !parent.exists() {
             fs::create_dir_all(parent).await.map_err(internal_error)?;
@@ -210,7 +211,7 @@ async fn upload_photo(
     info!("Uploading file to {}", photo_path.display());
 
     match write_field_to_file(field, &photo_path).await {
-        Ok(file_size) => new_photo_body.file_size = file_size as i64,
+        Ok(file_size) => new_photo.file_size = file_size as i64,
         Err(e) => {
             // Upload failed, delete the file
             let _ = fs::remove_file(photo_path).await;
@@ -218,7 +219,7 @@ async fn upload_photo(
         }
     }
 
-    match state.photos_repo.insert_photo(&new_photo_body).await {
+    match state.photos_repo.insert_photo(&new_photo).await {
         Ok(photo) => Ok(Json(photo)),
         Err(e) => {
             // Insertion failed, delete the file
@@ -282,16 +283,15 @@ async fn change_photo_location(
         user.id
     };
 
+    let source_path = photo.partial_path();
     let changed_photo = Photo {
         id: photo.id(),
         user_id: target_user_name,
-        name: photo.name().to_string(),
-        created_at: photo.created_at(),
-        file_size: photo.file_size(),
-        folder: query.target_folder_name.clone(),
+        name: photo.name,
+        created_at: photo.created_at,
+        file_size: photo.file_size,
+        folder: query.target_folder_name,
     };
-
-    let source_path = photo.partial_path();
     let destination_path = changed_photo.partial_path();
 
     if source_path == destination_path {

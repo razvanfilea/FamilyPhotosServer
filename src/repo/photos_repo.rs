@@ -1,4 +1,4 @@
-use crate::model::photo::{Photo, PhotoBase, PhotoBody};
+use crate::model::photo::Photo;
 use crate::model::user::PUBLIC_USER_ID;
 use crate::utils::internal_error;
 use axum::response::ErrorResponse;
@@ -90,23 +90,18 @@ impl PhotosRepository {
         .await
     }
 
-    pub async fn insert_photo(&self, photo: &PhotoBody) -> Result<Photo, sqlx::Error> {
-        let user_id = photo.user_id();
-        let name = photo.name();
-        let created_at = photo.created_at();
-        let file_size = photo.file_size();
-        let folder_name = photo.folder_name();
-
+    /// photo.id is ignored
+    pub async fn insert_photo(&self, photo: &Photo) -> Result<Photo, sqlx::Error> {
         let mut tx = self.pool.begin().await?;
 
         let photo = query_as!(
             Photo,
             "insert into photos (user_id, name, created_at, file_size, folder) values ($1, $2, $3, $4, $5) returning *",
-            user_id,
-            name,
-            created_at,
-            file_size,
-            folder_name
+            photo.user_id,
+            photo.name,
+            photo.created_at,
+            photo.file_size,
+            photo.folder
         )
             .fetch_one(tx.as_mut())
             .await?;
@@ -127,7 +122,8 @@ impl PhotosRepository {
         Ok(photo)
     }
 
-    pub async fn insert_photos(&self, photos: &[PhotoBody]) -> Result<(), sqlx::Error> {
+    /// photo.id is ignored
+    pub async fn insert_photos(&self, photos: &[Photo]) -> Result<(), sqlx::Error> {
         if photos.is_empty() {
             // One element vector is handled correctly, but an empty vector
             // would cause a SQL syntax error
@@ -140,11 +136,11 @@ impl PhotosRepository {
             "insert into photos (user_id, name, created_at, file_size, folder) ",
         )
         .push_values(photos, |mut b, photo| {
-            b.push_bind(photo.user_id())
-                .push_bind(photo.name())
-                .push_bind(photo.created_at())
-                .push_bind(photo.file_size())
-                .push_bind(photo.folder_name());
+            b.push_bind(&photo.user_id)
+                .push_bind(&photo.name)
+                .push_bind(&photo.created_at)
+                .push_bind(photo.file_size)
+                .push_bind(&photo.folder);
         })
         .push(" returning *")
         .build()

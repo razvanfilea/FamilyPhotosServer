@@ -12,7 +12,6 @@ use tracing::{debug, error, info};
 use crate::file_scan;
 use crate::file_scan::hash::compute_photos_hash;
 use crate::http::AppStateRef;
-use crate::model::photo::PhotoBase;
 
 pub fn start_period_file_scanning_task(app_state: AppStateRef, scan_new_files: bool) {
     const MINUTE: u64 = 60;

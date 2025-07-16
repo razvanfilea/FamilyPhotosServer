@@ -26,7 +26,7 @@ impl EventLogRepository {
         )
         .fetch_one(tx.as_mut()).await?.id;
 
-        if last_event_id < min_event_id.unwrap_or_default() {
+        if last_event_id < min_event_id.unwrap_or(i64::MAX) {
             return Ok(None);
         }
 
