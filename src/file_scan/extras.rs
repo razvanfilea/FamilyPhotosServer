@@ -29,7 +29,7 @@ pub async fn compute_photos_extras(app_state: AppStateRef) -> Result<(), sqlx::E
 
             compute_extras(&path).ok().map(|(hash, exif)| PhotoExtras {
                 id: photo.id,
-                sha: hash,
+                hash,
                 exif_json: exif.map(Into::into),
             })
         })
@@ -44,7 +44,7 @@ pub async fn compute_photos_extras(app_state: AppStateRef) -> Result<(), sqlx::E
     Ok(())
 }
 
-fn compute_extras(path: &Path) -> std::io::Result<(String, Option<ExifFields>)> {
+fn compute_extras(path: &Path) -> std::io::Result<(Vec<u8>, Option<ExifFields>)> {
     let mut file_contents = Vec::new();
     File::open(path)?.read_to_end(&mut file_contents)?;
 
@@ -67,7 +67,8 @@ fn is_image(path: &Path) -> bool {
     mime.type_() == mime::IMAGE
 }
 
-fn compute_hash(bytes: &[u8]) -> String {
+fn compute_hash(bytes: &[u8]) -> Vec<u8> {
     let hash = sha2::Sha256::digest(bytes);
-    base16ct::lower::encode_string(&hash)
+    let slice = hash.as_slice();
+    slice[..slice.len() / 2].to_vec()
 }

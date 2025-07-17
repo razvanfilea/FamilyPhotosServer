@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "select p.* from photos p left join photos_extras e on p.id = e.id where e.sha is null",
+  "query": "select p.* from photos p left join photos_extras e on p.id = e.id where e.hash is null",
   "describe": {
     "columns": [
       {
@@ -46,5 +46,5 @@
       true
     ]
   },
-  "hash": "1a7a905c29b0cc5875d70cde6a355c0b02a6c874553a1034c922c5e34c6acf6a"
+  "hash": "68b347ea106011f98e1a1d893917af68ec714882d46a276373e9250079d30f4d"
 }

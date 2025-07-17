@@ -19,7 +19,7 @@ impl PhotosExtrasRepository {
     pub async fn get_photos_without_extras(&self) -> Result<Vec<Photo>, sqlx::Error> {
         query_as!(
             Photo,
-            "select p.* from photos p left join photos_extras e on p.id = e.id where e.sha is null"
+            "select p.* from photos p left join photos_extras e on p.id = e.id where e.hash is null"
         )
         .fetch_all(&self.pool)
         .await
@@ -34,7 +34,7 @@ impl PhotosExtrasRepository {
             "select group_concat(e.id) as 'ids!: String' from photos_extras e
             join photos p on p.id = e.id
             where p.user_id = $1 or p.user_id = $2
-            group by e.sha having count(*) > 1",
+            group by e.hash having count(*) > 1",
             user_id,
             PUBLIC_USER_ID
         )
@@ -67,7 +67,7 @@ impl PhotosExtrasRepository {
 
         query_builder.push_values(photos, |mut b, photo| {
             b.push_bind(photo.id)
-                .push_bind(&photo.sha)
+                .push_bind(&photo.hash)
                 .push_bind(&photo.exif_json);
         });
 
