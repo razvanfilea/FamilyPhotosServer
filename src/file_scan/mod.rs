@@ -1,5 +1,4 @@
-mod exif;
-mod extras;
+mod hash;
 mod scan;
 mod timestamp_parsing;
 
@@ -11,7 +10,7 @@ use std::time::Duration;
 use tracing::{debug, error, info};
 
 use crate::file_scan;
-use crate::file_scan::extras::compute_photos_extras;
+use crate::file_scan::hash::compute_photos_hash;
 use crate::http::AppStateRef;
 use crate::model::photo::PhotoBase;
 
@@ -24,6 +23,10 @@ pub fn start_period_file_scanning_task(app_state: AppStateRef, scan_new_files: b
         loop {
             interval.tick().await;
 
+            if scan_new_files {
+                file_scan::scan_new_files(app_state).await;
+            }
+
             if let Err(e) = resolve_duplicates_db_entry(app_state).await {
                 error!("Failed to resolve db duplicates: {:?}", e);
             }
@@ -32,12 +35,8 @@ pub fn start_period_file_scanning_task(app_state: AppStateRef, scan_new_files: b
                 error!("Failed to delete invalid photo previews: {:?}", e);
             }
 
-            if let Err(e) = compute_photos_extras(app_state).await {
+            if let Err(e) = compute_photos_hash(app_state).await {
                 error!("Failed to compute hashes: {}", e);
-            }
-
-            if scan_new_files {
-                file_scan::scan_new_files(app_state).await;
             }
         }
     });

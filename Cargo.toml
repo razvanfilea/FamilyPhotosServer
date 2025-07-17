@@ -23,7 +23,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Database
-sqlx = { version = "0.8", features = ["runtime-tokio", "macros", "time", "sqlite", "migrate", "json"] }
+sqlx = { version = "0.8", features = ["runtime-tokio", "macros", "time", "sqlite", "migrate"] }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
@@ -43,6 +43,7 @@ rand = "0.9.1"
 argon2 = { version = "=0.6.0-rc.0" }
 sha2 = "0.11.0-rc.0"
 mimalloc = "0.1"
+memmap2 = "0.9"
 
 [profile.dev.package.sqlx-macros]
 opt-level = 3

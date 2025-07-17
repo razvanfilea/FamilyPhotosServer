@@ -23,6 +23,7 @@ use crate::model::user::{PUBLIC_USER_ID, User};
 use crate::previews;
 use crate::utils::internal_error;
 use time::serde::timestamp;
+use crate::utils::exif::read_exif;
 
 pub fn router(app_state: AppStateRef) -> Router {
     Router::new()
@@ -73,7 +74,7 @@ async fn get_duplicates(
     let user = auth.user.ok_or(StatusCode::BAD_REQUEST)?;
 
     let photos = state
-        .photo_extras_repo
+        .photo_hash_repo
         .get_duplicates_for_user(user.id)
         .await
         .map_err(internal_error)?;
@@ -143,9 +144,8 @@ async fn get_photo_exif(
     let photo = state.photos_repo.get_photo(photo_id).await?;
     check_has_access(auth.user, &photo)?;
 
-    let exif = state
-        .photo_extras_repo
-        .get_photo_exif_json(photo.id)
+    let path = state.storage.resolve_photo(photo.partial_path());
+    let exif = task::spawn_blocking(move || read_exif(path))
         .await
         .map_err(internal_error)?;
 
