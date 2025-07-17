@@ -7,10 +7,7 @@ use std::path::Path;
 use tracing::{error, info};
 
 pub async fn compute_photos_hash(app_state: AppStateRef) -> Result<(), sqlx::Error> {
-    let photos = app_state
-        .photo_hash_repo
-        .get_photos_without_hash()
-        .await?;
+    let photos = app_state.photo_hash_repo.get_photos_without_hash().await?;
 
     if photos.is_empty() {
         return Ok(());

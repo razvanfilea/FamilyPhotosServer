@@ -2,9 +2,8 @@ use axum::body::Body;
 use axum::extract::multipart;
 use axum::http::{StatusCode, header};
 use axum::response::IntoResponse;
-use futures_util::TryStreamExt;
 use tokio::fs;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncWriteExt, BufWriter};
 use tokio_util::io::ReaderStream;
 use tracing::error;
 
@@ -56,7 +55,7 @@ pub async fn write_field_to_file<'a, 'b>(
     mut field: multipart::Field<'a>,
     file_path: &'b std::path::Path,
 ) -> AxumResult<usize> {
-    let mut file = fs::File::create(file_path).await.map_err(|e| {
+    let file = fs::File::create(file_path).await.map_err(|e| {
         error!("Failed creating photo file: {e}");
         (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -64,12 +63,13 @@ pub async fn write_field_to_file<'a, 'b>(
         )
     })?;
 
-    let mut file_size = 0;
+    let mut writer = BufWriter::new(file);
+    let mut written_bytes = 0;
 
-    while let Some(chunk) = field.try_next().await? {
-        file_size += chunk.len();
-        file.write_all(&chunk).await.map_err(internal_error)?;
+    while let Some(chunk) = field.chunk().await? {
+        written_bytes += chunk.len();
+        writer.write_all(&chunk).await.map_err(internal_error)?;
     }
 
-    Ok(file_size)
+    Ok(written_bytes)
 }

@@ -1,12 +1,13 @@
 use crate::http::AppStateRef;
 use crate::http::utils::{AuthSession, AxumResult};
+use crate::model::event_log::EventLogNetwork;
 use crate::utils::internal_error;
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::routing::get;
 use axum::{Json, Router};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 pub fn router() -> Router<AppStateRef> {
     Router::new()
@@ -20,13 +21,13 @@ async fn full_photos_list(
 ) -> AxumResult<impl IntoResponse> {
     let user = auth.user.ok_or(StatusCode::BAD_REQUEST)?;
 
-    Ok(Json(
-        state
-            .photos_repo
-            .get_photos_by_user_and_public(user.id)
-            .await
-            .map_err(internal_error)?,
-    ))
+    let photos = state
+        .photos_repo
+        .get_photos_by_user_and_public(user.id)
+        .await
+        .map_err(internal_error)?;
+
+    Ok(Json(photos))
 }
 
 #[derive(Deserialize)]
@@ -52,5 +53,27 @@ async fn partial_photos_list(
         return Err(StatusCode::CONFLICT.into());
     };
 
-    Ok(Json(events))
+    let event_log_id = events
+        .iter()
+        .map(|event| event.event_id)
+        .max()
+        .unwrap_or(last_synced_event_id);
+    let events: Vec<_> = events
+        .into_iter()
+        .map(|event| EventLogNetwork {
+            photo_id: event.photo_id,
+            data: event.data,
+        })
+        .collect();
+
+    #[derive(Serialize)]
+    struct PartialPhotosListResponse {
+        event_log_id: i64,
+        events: Vec<EventLogNetwork>,
+    }
+
+    Ok(Json(PartialPhotosListResponse {
+        event_log_id,
+        events,
+    }))
 }

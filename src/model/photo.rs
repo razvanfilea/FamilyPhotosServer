@@ -42,3 +42,9 @@ impl Photo {
         name.to_string()
     }
 }
+
+#[derive(Serialize)]
+pub struct FullPhotosList {
+    pub(crate) event_id: i64,
+    pub(crate) photos: Vec<Photo>,
+}

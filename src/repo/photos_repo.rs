@@ -1,4 +1,4 @@
-use crate::model::photo::Photo;
+use crate::model::photo::{FullPhotosList, Photo};
 use crate::model::user::PUBLIC_USER_ID;
 use sqlx::{FromRow, QueryBuilder, Sqlite, SqlitePool, query, query_as};
 
@@ -40,16 +40,29 @@ impl PhotosRepository {
     pub async fn get_photos_by_user_and_public(
         &self,
         user_id: impl AsRef<str>,
-    ) -> Result<Vec<Photo>, sqlx::Error> {
+    ) -> Result<FullPhotosList, sqlx::Error> {
         let user_id = user_id.as_ref();
-        query_as!(
+        let mut tx = self.pool.begin().await?;
+
+        let lastest_event_id = query!("select max(event_id) as 'event_id' from photos_event_log")
+            .map(|r| r.event_id)
+            .fetch_one(tx.as_mut())
+            .await?
+            .unwrap_or_default();
+
+        let photos = query_as!(
             Photo,
             "select * from photos where user_id = $1 or user_id = $2 order by created_at desc",
             user_id,
             PUBLIC_USER_ID
         )
-        .fetch_all(&self.pool)
-        .await
+        .fetch_all(tx.as_mut())
+        .await?;
+
+        Ok(FullPhotosList {
+            event_id: lastest_event_id,
+            photos,
+        })
     }
 
     pub async fn get_photos_in_folder(
