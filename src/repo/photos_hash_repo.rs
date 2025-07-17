@@ -52,15 +52,13 @@ impl PhotosHashRepository {
             return Ok(());
         }
 
-        QueryBuilder::<Sqlite>::new(
-            "insert or replace into photos_hash (photo_id, hash) ",
-        )
-        .push_values(photos, |mut b, photo| {
-            b.push_bind(photo.id).push_bind(&photo.hash);
-        })
-        .build()
-        .execute(&self.pool)
-        .await
-        .map(|_| {})
+        QueryBuilder::<Sqlite>::new("insert or replace into photos_hash (photo_id, hash) ")
+            .push_values(photos, |mut b, photo| {
+                b.push_bind(photo.id).push_bind(&photo.hash);
+            })
+            .build()
+            .execute(&self.pool)
+            .await
+            .map(|_| {})
     }
 }

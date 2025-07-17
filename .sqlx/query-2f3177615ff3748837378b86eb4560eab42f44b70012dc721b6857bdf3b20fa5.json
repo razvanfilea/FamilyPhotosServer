@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "select max(event_id) as 'event_id' from photos_event_log",
+  "describe": {
+    "columns": [
+      {
+        "name": "event_id",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "2f3177615ff3748837378b86eb4560eab42f44b70012dc721b6857bdf3b20fa5"
+}

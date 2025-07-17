@@ -20,13 +20,14 @@ use crate::http::utils::{AuthSession, AxumResult, file_to_response, write_field_
 use crate::model::photo::Photo;
 use crate::model::user::{PUBLIC_USER_ID, User};
 use crate::previews;
+use crate::utils::exif::read_exif;
 use crate::utils::internal_error;
 use time::serde::timestamp;
-use crate::utils::exif::read_exif;
 
 pub fn router(app_state: AppStateRef) -> Router {
     Router::new()
         .route("/", get(photos_list))
+        .nest("/sync", sync::router())
         .route("/duplicates", get(get_duplicates))
         .route("/download/{photo_id}", get(download_photo))
         .route("/preview/{photo_id}", get(preview_photo))
@@ -36,7 +37,6 @@ pub fn router(app_state: AppStateRef) -> Router {
         .route("/change_location/{photo_id}", post(change_photo_location))
         .route("/rename_folder", post(rename_folder))
         .nest("/favorite", favorite::router())
-        .nest("/sync", sync::router())
         .with_state(app_state)
 }
 
@@ -61,7 +61,8 @@ async fn photos_list(
             .photos_repo
             .get_photos_by_user_and_public(user.id)
             .await
-            .map_err(internal_error)?,
+            .map_err(internal_error)?
+            .photos,
     ))
 }
 
@@ -250,17 +251,15 @@ async fn delete_photo(
     let photo_path = state.storage.resolve_photo(photo.partial_path());
     if photo_path.exists() {
         fs::remove_file(&photo_path).await.map_err(|e| {
+            error!("Failed to remove file at {}: {e}", photo_path.display());
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 format!("Failed to delete file: {e}"),
             )
         })?;
-        info!("Id {photo_id}: Removed file at {}", photo_path.display());
+        info!("Removed file at {}", photo_path.display());
     } else {
-        info!(
-            "Id {photo_id}: No such file exists at {}",
-            photo_path.display()
-        );
+        warn!("No such file exists at {}", photo_path.display());
     }
 
     state

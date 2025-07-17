@@ -1,14 +1,13 @@
 [package]
 name = "familyphotos"
 authors = ["Filea Răzvan-Gheorghe"]
-version = "4.0.0"
+version = "4.1.0"
 edition = "2024"
 
 [dependencies]
 # Async Runtime
 tokio = { version = "1", features = ["rt-multi-thread", "fs", "io-std", "macros", "signal"] }
 tokio-util = { version = "0.7", features = ["io"] }
-futures-util = { version = "0.3", default-features = false, features = ["std"] }
 rayon = "1.10"
 async-trait = "0.1"
 

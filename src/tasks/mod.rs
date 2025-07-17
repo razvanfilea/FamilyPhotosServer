@@ -1,5 +1,5 @@
-mod hash;
 mod file_scan;
+mod hash;
 mod timestamp_parsing;
 
 pub use file_scan::scan_new_files;

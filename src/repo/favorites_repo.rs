@@ -1,5 +1,3 @@
-use crate::utils::internal_error;
-use axum::response::ErrorResponse;
 use sqlx::{SqlitePool, query};
 
 pub struct FavoritesRepository {
@@ -14,7 +12,7 @@ impl FavoritesRepository {
     pub async fn get_favorite_photos(
         &self,
         user_id: impl AsRef<str>,
-    ) -> Result<Vec<i64>, ErrorResponse> {
+    ) -> Result<Vec<i64>, sqlx::Error> {
         let user_id = user_id.as_ref();
         query!(
             "select photo_id from favorite_photos where user_id = $1",
@@ -23,14 +21,13 @@ impl FavoritesRepository {
         .fetch_all(&self.pool)
         .await
         .map(|list| list.into_iter().map(|record| record.photo_id).collect())
-        .map_err(internal_error)
     }
 
     pub async fn insert_favorite<T: AsRef<str>>(
         &self,
         photo_id: i64,
         user_id: T,
-    ) -> Result<(), ErrorResponse> {
+    ) -> Result<(), sqlx::Error> {
         let user_id = user_id.as_ref();
         query!(
             "insert into favorite_photos (photo_id, user_id) values ($1, $2)",
@@ -40,14 +37,13 @@ impl FavoritesRepository {
         .execute(&self.pool)
         .await
         .map(|_| ())
-        .map_err(internal_error)
     }
 
     pub async fn delete_favorite<T: AsRef<str>>(
         &self,
         photo_id: i64,
         user_id: T,
-    ) -> Result<(), ErrorResponse> {
+    ) -> Result<(), sqlx::Error> {
         let user_id = user_id.as_ref();
         query!(
             "delete from favorite_photos where photo_id = $1 and user_id = $2",
@@ -57,6 +53,5 @@ impl FavoritesRepository {
         .execute(&self.pool)
         .await
         .map(|_| ())
-        .map_err(internal_error)
     }
 }

@@ -20,7 +20,11 @@ async fn get_favorites(
     let user = auth_session.user.unwrap();
 
     Ok(Json(
-        state.favorites_repo.get_favorite_photos(user.id).await?,
+        state
+            .favorites_repo
+            .get_favorite_photos(user.id)
+            .await
+            .map_err(internal_error)?,
     ))
 }
 
@@ -40,6 +44,7 @@ async fn add_favorite(
         .favorites_repo
         .insert_favorite(photo_id, user.id)
         .await
+        .map_err(internal_error)
 }
 
 async fn delete_favorite(
@@ -58,4 +63,5 @@ async fn delete_favorite(
         .favorites_repo
         .delete_favorite(photo_id, user.id)
         .await
+        .map_err(internal_error)
 }

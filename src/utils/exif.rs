@@ -1,6 +1,6 @@
-use std::path::Path;
 use exif::In;
 use serde::Serialize;
+use std::path::Path;
 
 #[derive(Serialize)]
 pub struct ExifField {
