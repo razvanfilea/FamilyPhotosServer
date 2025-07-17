@@ -42,6 +42,7 @@ kamadak-exif = "0.6"
 rand = "0.9.1"
 argon2 = { version = "=0.6.0-rc.0" }
 sha2 = "0.11.0-rc.0"
+mimalloc = "0.1"
 
 [profile.dev.package.sqlx-macros]
 opt-level = 3

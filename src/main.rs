@@ -7,6 +7,7 @@ use crate::utils::password_hash::{generate_hash_from_password, generate_random_p
 use crate::utils::storage_resolver::StorageResolver;
 use anyhow::Context;
 use axum_login::tower_sessions::ExpiredDeletion;
+use mimalloc::MiMalloc;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
 use std::net::SocketAddr;
 use std::str::FromStr;
@@ -16,6 +17,9 @@ use tracing::info;
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
+
+#[global_allocator]
+static GLOBAL: MiMalloc = MiMalloc;
 
 mod cli;
 mod file_scan;
