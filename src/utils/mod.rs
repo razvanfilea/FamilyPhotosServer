@@ -4,6 +4,7 @@ use axum::response::{ErrorResponse, IntoResponse};
 pub mod env_reader;
 pub mod password_hash;
 pub mod storage_resolver;
+pub mod exif;
 
 /// Utility function for mapping any error into a `500 Internal Server Error`
 /// response.
