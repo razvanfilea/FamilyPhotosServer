@@ -8,7 +8,6 @@ use crate::http::AppStateRef;
 use crate::http::photos_api::check_has_access;
 use crate::http::utils::{AuthSession, AxumResult};
 use crate::model::photo::Photo;
-use crate::model::user::PUBLIC_USER_ID;
 use crate::utils::internal_error;
 
 
@@ -33,20 +32,12 @@ async fn move_folder(
     let user = auth.user.expect("User should be logged in");
     let storage = &state.storage;
 
-    let source_user_name = if query.source_is_public {
-        PUBLIC_USER_ID
-    } else {
-        &user.id
-    };
-    let target_user_name = if query.target_make_public {
-        PUBLIC_USER_ID
-    } else {
-        &user.id
-    };
+    let source_user_name = (!query.source_is_public).then_some(user.id.as_str());
+    let target_user_name = (!query.target_make_public).then_some(user.id.as_str());
 
     let photos_to_move = state
         .photos_repo
-        .get_photos_in_folder(source_user_name, query.source_folder_name)
+        .get_photos_in_folder(source_user_name, &query.source_folder_name)
         .await
         .map_err(internal_error)?;
     let mut moved_photos = Vec::with_capacity(photos_to_move.len());
@@ -54,7 +45,7 @@ async fn move_folder(
     for mut photo in photos_to_move {
         let source_path = photo.partial_path();
 
-        photo.user_id = target_user_name.to_owned();
+        photo.user_id = target_user_name.map(ToOwned::to_owned);
         photo.folder = query.target_folder_name.clone();
         let destination_path = photo.partial_path();
 
@@ -94,11 +85,7 @@ async fn move_photo(
         .map_err(internal_error)?;
     let user = check_has_access(auth.user, &photo)?;
 
-    let target_user_name = if query.make_public {
-        PUBLIC_USER_ID.to_string()
-    } else {
-        user.id
-    };
+    let target_user_name = (!query.make_public).then_some(user.id);
 
     let source_path = photo.partial_path();
     let changed_photo = Photo {

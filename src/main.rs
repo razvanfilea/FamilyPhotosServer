@@ -1,9 +1,6 @@
 use crate::http::AppState;
-use crate::model::user::{PUBLIC_USER_ID, User};
-use crate::repo::users_repo::UsersRepository;
 use crate::tasks::start_period_tasks;
 use crate::utils::env_reader::EnvVariables;
-use crate::utils::password_hash::{generate_hash_from_password, generate_random_password};
 use crate::utils::storage_resolver::StorageResolver;
 use anyhow::Context;
 use axum_login::tower_sessions::ExpiredDeletion;
@@ -73,9 +70,6 @@ async fn main() -> anyhow::Result<()> {
 
     session_store.delete_expired().await?;
 
-    // Create a default public user
-    create_public_user(&app_state.users_repo).await?;
-
     // Run the CLI
     if cli::run_cli(app_state).await {
         return Ok(());
@@ -93,22 +87,4 @@ async fn main() -> anyhow::Result<()> {
         .with_graceful_shutdown(http::shutdown_signal())
         .await
         .context("Failed to start server")
-}
-
-async fn create_public_user(repo: &UsersRepository) -> anyhow::Result<()> {
-    if repo.get_user(PUBLIC_USER_ID).await.is_some() {
-        return Ok(());
-    }
-
-    let user = User {
-        id: PUBLIC_USER_ID.to_string(),
-        name: PUBLIC_USER_ID.to_string(),
-        password_hash: generate_hash_from_password(generate_random_password()),
-    };
-
-    info!("No users found, creating public user");
-
-    repo.insert_user(&user)
-        .await
-        .context("Failed to create public user")
 }

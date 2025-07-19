@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "select group_concat(h.photo_id) as 'ids!: String' from photos_hash h\n            join photos p on p.id = h.photo_id\n            where p.user_id = $1 or p.user_id is null\n            group by h.hash having count(*) > 1",
+  "describe": {
+    "columns": [
+      {
+        "name": "ids!: String",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "b97967e5716755f08eb5da13106fa3c4fc667d7b835f9d2dcbea9dd502488706"
+}

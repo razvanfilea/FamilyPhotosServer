@@ -4,37 +4,37 @@ use std::ffi::OsStr;
 use std::fs;
 use std::path::PathBuf;
 use std::time::Instant;
-use tracing::{debug, error, info, warn};
+use tracing::{error, info, warn};
 use walkdir::{DirEntry, WalkDir};
 
-use crate::User;
 use crate::http::AppStateRef;
 use crate::model::photo::Photo;
+use crate::model::user::PUBLIC_USER_FOLDER;
 use crate::tasks::timestamp_parsing;
 
 pub async fn scan_new_files(app_state: AppStateRef) {
     let instant = Instant::now();
-    let users: Vec<User> = app_state
+    let mut users: Vec<_> = app_state
         .users_repo
         .get_users()
         .await
-        .expect("Could not load users");
+        .expect("Could not load users")
+        .into_iter()
+        .map(|user| Some(user.id))
+        .collect();
 
-    debug!(
-        "Started scanning user's photos: {:?}",
-        users.iter().map(|user| user.id.clone()).collect::<Vec<_>>()
-    );
+    users.push(None);
 
-    for user in users {
+    for user_id in users {
         let existing_photos: Vec<Photo> = app_state
             .photos_repo
-            .get_photos_by_user(&user.id)
+            .get_photos_by_user(user_id.as_deref())
             .await
             .expect("Failed to get user photos");
 
-        let user_folder_path = app_state.storage.resolve_photo(&user.id);
+        let user_folder_path = app_state.storage.resolve_photo(user_id.as_deref().unwrap_or(PUBLIC_USER_FOLDER));
         let (new_photos, removed_photo_ids) =
-            scan_user_photos(user, user_folder_path, existing_photos);
+            scan_user_photos(user_id.as_deref(), user_folder_path, existing_photos);
 
         if !removed_photo_ids.is_empty() {
             for chunk in removed_photo_ids.chunks(1024) {
@@ -47,7 +47,7 @@ pub async fn scan_new_files(app_state: AppStateRef) {
         if !new_photos.is_empty() {
             for chunk in new_photos.chunks(1024) {
                 if let Err(e) = app_state.photos_repo.insert_photos(chunk).await {
-                    error!("Failed inserting photos: {}", e.to_string())
+                    error!("Failed inserting photos: {e}")
                 }
             }
         }
@@ -60,13 +60,16 @@ pub async fn scan_new_files(app_state: AppStateRef) {
 }
 
 fn scan_user_photos(
-    user: User,
+    user_id: Option<&str>,
     user_folder_path: PathBuf,
     existing_photos: Vec<Photo>,
 ) -> (Vec<Photo>, Vec<i64>) {
     if !user_folder_path.exists() {
         if let Err(e) = fs::create_dir(user_folder_path) {
-            error!("Failed to create user's `{}` directory: {e}", user.id);
+            error!(
+                "Failed to create user's `{}` directory: {e}",
+                user_id.as_deref().unwrap_or(PUBLIC_USER_FOLDER)
+            );
         }
         // All existing photos are considered removed if the user directory doesn't exist
         let removed_ids = existing_photos.iter().map(|p| p.id()).collect();
@@ -109,12 +112,12 @@ fn scan_user_photos(
     let new_photos: Vec<Photo> = disk_entries_with_name
         .into_par_iter()
         .filter(|(full_name, _)| !existing_photos_names.contains(full_name))
-        .filter_map(|(_, entry)| parse_image(user.id.clone(), entry))
+        .filter_map(|(_, entry)| parse_image(user_id.clone(), entry))
         .collect();
 
     info!(
         "User {}: found {} new photos, {} removed photos",
-        user.id,
+        user_id.unwrap_or(PUBLIC_USER_FOLDER),
         new_photos.len(),
         removed_photo_ids.len()
     );
@@ -122,7 +125,7 @@ fn scan_user_photos(
     (new_photos, removed_photo_ids)
 }
 
-pub fn parse_image(user_name: String, entry: DirEntry) -> Option<Photo> {
+pub fn parse_image(user_id: Option<&str>, entry: DirEntry) -> Option<Photo> {
     let path = entry.path();
 
     if let Some(timestamp) = timestamp_parsing::get_timestamp_for_path(path) {
@@ -131,7 +134,7 @@ pub fn parse_image(user_name: String, entry: DirEntry) -> Option<Photo> {
 
         Some(Photo {
             id: 0,
-            user_id: user_name,
+            user_id: user_id.map(ToOwned::to_owned),
             name: entry.file_name().to_string_lossy().to_string(),
             created_at: timestamp,
             file_size,

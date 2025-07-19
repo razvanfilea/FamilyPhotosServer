@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "select min(event_id) as 'id: i64' from photos_event_log where user_id = $1 or user_id = $2 or user_id is null",
+  "query": "select min(event_id) as 'id: i64' from photos_event_log where user_id = $1 or user_id is null",
   "describe": {
     "columns": [
       {
@@ -10,11 +10,11 @@
       }
     ],
     "parameters": {
-      "Right": 2
+      "Right": 1
     },
     "nullable": [
       true
     ]
   },
-  "hash": "2ff09140c971d5583a3ececbec9f800eb19a59767ba71de0cd93cddcb2552cba"
+  "hash": "ee4fbf53e9f57074c495bc9fc5a34a18259f7e8471dee1249ad459eb824262e5"
 }
