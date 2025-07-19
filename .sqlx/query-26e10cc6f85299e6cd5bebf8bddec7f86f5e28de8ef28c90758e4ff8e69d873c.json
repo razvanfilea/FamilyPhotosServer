@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "select event_id, photo_id, data from photos_event_log where event_id > $1 and (user_id = $2 or user_id = $3 or user_id is null) order by event_id",
+  "query": "select event_id, photo_id, data from photos_event_log where event_id > $1 and (user_id = $2 or user_id is null) order by event_id",
   "describe": {
     "columns": [
       {
@@ -20,7 +20,7 @@
       }
     ],
     "parameters": {
-      "Right": 3
+      "Right": 2
     },
     "nullable": [
       false,
@@ -28,5 +28,5 @@
       true
     ]
   },
-  "hash": "18216b1623cb8ef9c679bb4022bb808038912774783123744cb4cf1184b34676"
+  "hash": "26e10cc6f85299e6cd5bebf8bddec7f86f5e28de8ef28c90758e4ff8e69d873c"
 }

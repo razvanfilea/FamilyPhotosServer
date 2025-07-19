@@ -1,6 +1,5 @@
 use crate::model::photo::Photo;
 use crate::model::photo_hash::PhotoHash;
-use crate::model::user::PUBLIC_USER_ID;
 use sqlx::{QueryBuilder, Sqlite, SqlitePool, query, query_as};
 use std::num::ParseIntError;
 
@@ -24,16 +23,14 @@ impl PhotosHashRepository {
 
     pub async fn get_duplicates_for_user(
         &self,
-        user_id: impl AsRef<str>,
+        user_id: &str,
     ) -> Result<Vec<Vec<i64>>, sqlx::Error> {
-        let user_id = user_id.as_ref();
         query!(
             "select group_concat(h.photo_id) as 'ids!: String' from photos_hash h
             join photos p on p.id = h.photo_id
-            where p.user_id = $1 or p.user_id = $2
+            where p.user_id = $1 or p.user_id is null
             group by h.hash having count(*) > 1",
             user_id,
-            PUBLIC_USER_ID
         )
         .map(|record| {
             record

@@ -1,5 +1,4 @@
 use crate::model::photo::{FullPhotosList, Photo};
-use crate::model::user::PUBLIC_USER_ID;
 use sqlx::{FromRow, QueryBuilder, Sqlite, SqlitePool, query, query_as};
 
 pub struct PhotosRepository {
@@ -25,9 +24,8 @@ impl PhotosRepository {
 
     pub async fn get_photos_by_user(
         &self,
-        user_id: impl AsRef<str>,
+        user_id: Option<&str>,
     ) -> Result<Vec<Photo>, sqlx::Error> {
-        let user_id = user_id.as_ref();
         query_as!(
             Photo,
             "select * from photos where photos.user_id = $1 order by photos.created_at desc",
@@ -39,9 +37,8 @@ impl PhotosRepository {
 
     pub async fn get_photos_by_user_and_public(
         &self,
-        user_id: impl AsRef<str>,
+        user_id: &str,
     ) -> Result<FullPhotosList, sqlx::Error> {
-        let user_id = user_id.as_ref();
         let mut tx = self.pool.begin().await?;
 
         let lastest_event_id = query!("select max(event_id) as 'event_id' from photos_event_log")
@@ -52,9 +49,8 @@ impl PhotosRepository {
 
         let photos = query_as!(
             Photo,
-            "select * from photos where user_id = $1 or user_id = $2 order by created_at desc",
+            "select * from photos where user_id is null or user_id = $1 order by created_at desc",
             user_id,
-            PUBLIC_USER_ID
         )
         .fetch_all(tx.as_mut())
         .await?;
@@ -67,12 +63,9 @@ impl PhotosRepository {
 
     pub async fn get_photos_in_folder(
         &self,
-        user_id: impl AsRef<str>,
-        folder_name: impl AsRef<str>,
+        user_id: Option<&str>,
+        folder_name: &str,
     ) -> Result<Vec<Photo>, sqlx::Error> {
-        let user_id = user_id.as_ref();
-        let folder_name = folder_name.as_ref();
-
         query_as!(
             Photo,
             "select * from photos where user_id = $1 and folder = $2 order by created_at desc",
@@ -209,7 +202,7 @@ impl PhotosRepository {
         query!(
             "insert into photos_event_log (photo_id, user_id, data) values ($1, $2, $3)",
             photo.id,
-            PUBLIC_USER_ID,
+            photo.user_id,
             None::<Vec<u8>>
         )
         .execute(tx.as_mut())
@@ -240,9 +233,9 @@ impl PhotosRepository {
 
         query_builder.build().execute(tx.as_mut()).await?;
 
-        QueryBuilder::<Sqlite>::new("insert into photos_event_log (photo_id, user_id) ")
+        QueryBuilder::<Sqlite>::new("insert into photos_event_log (photo_id) ")
             .push_values(photo_ids, |mut b, photo_id| {
-                b.push_bind(photo_id).push_bind(PUBLIC_USER_ID);
+                b.push_bind(photo_id);
             })
             .build()
             .execute(tx.as_mut())

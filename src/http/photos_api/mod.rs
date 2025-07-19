@@ -1,6 +1,6 @@
 mod favorite;
-mod sync;
 mod move_photos;
+mod sync;
 
 use axum::{
     Json, Router,
@@ -17,7 +17,7 @@ use tracing::{error, info, warn};
 use crate::http::AppStateRef;
 use crate::http::utils::{AuthSession, AxumResult, file_to_response, write_field_to_file};
 use crate::model::photo::Photo;
-use crate::model::user::{PUBLIC_USER_ID, User};
+use crate::model::user::User;
 use crate::previews;
 use crate::utils::exif::read_exif;
 use crate::utils::internal_error;
@@ -40,7 +40,7 @@ pub fn router(app_state: AppStateRef) -> Router {
 fn check_has_access(user: Option<User>, photo: &Photo) -> Result<User, StatusCode> {
     let user = user.ok_or(StatusCode::UNAUTHORIZED)?;
 
-    if photo.user_id == user.id || photo.user_id == PUBLIC_USER_ID {
+    if photo.user_id.is_none() || photo.user_id.as_ref() == Some(&user.id) {
         Ok(user)
     } else {
         Err(StatusCode::FORBIDDEN)
@@ -55,7 +55,7 @@ async fn get_duplicates(
 
     let photos = state
         .photo_hash_repo
-        .get_duplicates_for_user(user.id)
+        .get_duplicates_for_user(user.id.as_str())
         .await
         .map_err(internal_error)?;
 
@@ -176,9 +176,9 @@ async fn upload_photo(
     let mut new_photo = Photo {
         id: 0,
         user_id: if query.make_public {
-            String::from(PUBLIC_USER_ID)
+            None
         } else {
-            user.id
+            Some(user.id)
         },
         name: String::from(file_name),
         created_at: query.time_created,

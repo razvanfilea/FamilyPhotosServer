@@ -96,6 +96,6 @@ async fn delete_old_event_logs(app_state: AppStateRef) -> Result<(), sqlx::Error
 
     app_state
         .event_log_repo
-        .delete_older_than(MAX_EVENT_LONG_ROWS_TO_KEEP)
+        .delete_old_events(MAX_EVENT_LONG_ROWS_TO_KEEP)
         .await
 }

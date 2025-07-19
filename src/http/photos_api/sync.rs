@@ -23,7 +23,7 @@ async fn full_photos_list(
 
     let photos = state
         .photos_repo
-        .get_photos_by_user_and_public(user.id)
+        .get_photos_by_user_and_public(user.id.as_str())
         .await
         .map_err(internal_error)?;
 
@@ -45,7 +45,7 @@ async fn partial_photos_list(
 
     let events = state
         .event_log_repo
-        .get_events_for_user(last_synced_event_id, user.id)
+        .get_events_for_user(last_synced_event_id, user.id.as_str())
         .await
         .map_err(internal_error)?;
 

@@ -22,7 +22,7 @@ async fn get_favorites(
     Ok(Json(
         state
             .favorites_repo
-            .get_favorite_photos(user.id)
+            .get_favorite_photos(user.id.as_str())
             .await
             .map_err(internal_error)?,
     ))

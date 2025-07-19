@@ -51,10 +51,7 @@ Variables in bold **must** be specified.
 
 ### Creating user accounts
 
-On your first run, the server will generate a user account with the username "public" and a random password that will be
-printed in the console.<br>
-Knowing this password is not relevant as this user is only used for photos that belong to everyone.<br><br>
-To create new user accounts run the following command using the CLI:<br>
+To create new user accounts, run the following command using the CLI:<br>
 
 ```shell
 familyphotos user create -u <user_name> -d <display_name> [-p <password>]
