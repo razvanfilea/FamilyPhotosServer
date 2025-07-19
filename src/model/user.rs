@@ -9,7 +9,6 @@ pub struct User {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct SimpleUser {
     pub user_id: String,
     pub display_name: String,
@@ -25,7 +24,6 @@ impl From<User> for SimpleUser {
 }
 
 #[derive(Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct UserCredentials {
     pub user_id: String,
     pub password: String,
