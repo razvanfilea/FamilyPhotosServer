@@ -4,7 +4,6 @@ use time::OffsetDateTime;
 use time::serde::timestamp;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, sqlx::FromRow)]
-#[serde(rename_all = "camelCase")]
 pub struct Photo {
     pub id: i64,
     pub user_id: String,
