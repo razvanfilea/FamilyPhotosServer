@@ -2,7 +2,6 @@ use crate::http::AppState;
 use crate::tasks::start_period_tasks;
 use crate::utils::env_reader::EnvVariables;
 use crate::utils::storage_resolver::StorageResolver;
-use anyhow::Context;
 use axum_login::tower_sessions::ExpiredDeletion;
 use mimalloc::MiMalloc;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
@@ -27,7 +26,7 @@ mod tasks;
 mod utils;
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() {
     let vars = EnvVariables::get_all();
     // Creates the necessary folders
     let storage_resolver = StorageResolver::new(vars.storage_path, vars.previews_path);
@@ -56,7 +55,10 @@ async fn main() -> anyhow::Result<()> {
         .await
         .expect("Failed to create DB Pool");
 
-    sqlx::migrate!().run(&pool).await?;
+    sqlx::migrate!()
+        .run(&pool)
+        .await
+        .expect("Failed to run migrations");
 
     let app_state = AppState::new(pool.clone(), storage_resolver);
     let app_state = Box::leak(Box::new(app_state));
@@ -68,11 +70,14 @@ async fn main() -> anyhow::Result<()> {
         .await
         .expect("Failed to run schema migration for authentication");
 
-    session_store.delete_expired().await?;
+    session_store
+        .delete_expired()
+        .await
+        .expect("Failed to delete expired sessions");
 
     // Run the CLI
     if cli::run_cli(app_state).await {
-        return Ok(());
+        return;
     }
 
     start_period_tasks(app_state, vars.scan_new_files);
@@ -81,10 +86,12 @@ async fn main() -> anyhow::Result<()> {
 
     let http_service = http::router(app_state, session_store).into_make_service();
     let addr = SocketAddr::from(([0, 0, 0, 0], vars.server_port));
-    let listener = TcpListener::bind(addr).await?;
+    let listener = TcpListener::bind(addr)
+        .await
+        .expect("Failed to bind to port");
 
     axum::serve(listener, http_service)
         .with_graceful_shutdown(http::shutdown_signal())
         .await
-        .context("Failed to start server")
+        .expect("Failed to start server")
 }

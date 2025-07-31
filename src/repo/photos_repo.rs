@@ -56,7 +56,7 @@ impl PhotosRepository {
         .await?;
 
         Ok(FullPhotosList {
-            event_id: lastest_event_id,
+            event_log_id: lastest_event_id,
             photos,
         })
     }
