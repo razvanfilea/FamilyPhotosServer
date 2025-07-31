@@ -90,7 +90,7 @@ fn parse_date_from_field(field: &Field) -> Option<OffsetDateTime> {
 }
 
 fn get_exif_timestamp(path: &Path) -> Option<OffsetDateTime> {
-    let mime = MimeGuess::from_ext(path.extension()?.to_str()?).first_or_octet_stream();
+    let mime = MimeGuess::from_path(path).first_or_octet_stream();
     if mime.type_() != "image" {
         return None;
     }
