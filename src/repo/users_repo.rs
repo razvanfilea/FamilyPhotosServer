@@ -1,7 +1,6 @@
 use crate::model::user::{User, UserCredentials};
 use crate::utils::password_hash::validate_credentials;
 use argon2::password_hash;
-use async_trait::async_trait;
 use axum_login::{AuthnBackend, UserId};
 use sqlx::{Error, SqlitePool, query, query_as};
 use tokio::task;
@@ -51,7 +50,6 @@ impl UsersRepository {
     }
 }
 
-#[async_trait]
 impl AuthnBackend for UsersRepository {
     type User = User;
     type Credentials = UserCredentials;
