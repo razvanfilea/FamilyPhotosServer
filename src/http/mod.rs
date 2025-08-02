@@ -7,8 +7,8 @@ use crate::utils::storage_resolver::StorageResolver;
 use axum::Router;
 use axum::extract::DefaultBodyLimit;
 use axum::routing::get;
-use axum_login::AuthManagerLayerBuilder;
 use axum_login::tower_sessions::{Expiry, SessionManagerLayer};
+use axum_login::{AuthManagerLayerBuilder, login_required};
 use sqlx::SqlitePool;
 use time::Duration;
 use tokio::signal;
@@ -24,15 +24,19 @@ mod utils;
 
 pub fn router(app_state: AppStateRef, session_store: SqliteStore) -> Router {
     let session_layer = SessionManagerLayer::new(session_store)
-        .with_expiry(Expiry::OnInactivity(Duration::days(90)));
+        .with_expiry(Expiry::OnInactivity(Duration::days(60)));
 
     let auth_layer =
         AuthManagerLayerBuilder::new(app_state.users_repo.clone(), session_layer).build();
 
+    let authenticated_router = Router::new()
+        .nest("/photos", photos_api::router(app_state))
+        .route_layer(login_required!(UsersRepository));
+
     Router::new()
         .route("/", get(|| async { "Hello, World!" }))
         .merge(users_api::router())
-        .nest("/photos", photos_api::router(app_state))
+        .merge(authenticated_router)
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(trace::DefaultMakeSpan::new().level(Level::INFO))

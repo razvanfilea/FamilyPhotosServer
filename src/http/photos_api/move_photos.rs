@@ -2,6 +2,7 @@ use crate::http::AppStateRef;
 use crate::http::photos_api::check_has_access;
 use crate::http::utils::{AuthSession, AxumResult};
 use crate::model::photo::Photo;
+use crate::model::user::PUBLIC_USER_FOLDER;
 use crate::utils::internal_error;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
@@ -28,7 +29,7 @@ async fn move_folder(
     Query(query): Query<RenameFolderQuery>,
     auth: AuthSession,
 ) -> AxumResult<impl IntoResponse> {
-    let user = auth.user.expect("User should be logged in");
+    let user = auth.user.ok_or(StatusCode::UNAUTHORIZED)?;
     let storage = &state.storage;
 
     let source_user_name = (!query.source_is_public).then_some(user.id.as_str());
@@ -41,6 +42,16 @@ async fn move_folder(
         .get_photos_in_folder(source_user_name, &query.source_folder_name)
         .await
         .map_err(internal_error)?;
+
+    info!(
+        "Moving folder \"{}/{}\" to \"{}/{}\" with {} items",
+        source_user_name.unwrap_or(PUBLIC_USER_FOLDER),
+        query.source_folder_name,
+        target_user_name.unwrap_or(PUBLIC_USER_FOLDER),
+        target_folder_name.as_deref().unwrap_or(""),
+        photos_to_move.len(),
+    );
+
     let mut moved_photos = Vec::with_capacity(photos_to_move.len());
 
     for mut photo in photos_to_move {
@@ -57,10 +68,12 @@ async fn move_folder(
 
         if let Err(e) = state.photos_repo.update_photo(&photo).await {
             // If the database operation failed for some reason, try to move the image back
-            error!("Failed to update the photo: {e:?}");
+            error!("Failed to update the photo: {e}");
             let _ = storage.move_photo(&destination_path, &source_path);
+            continue;
         }
 
+        info!("Moved photo from {source_path} to {destination_path}");
         moved_photos.push(photo);
     }
 

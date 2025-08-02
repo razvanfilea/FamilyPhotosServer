@@ -29,9 +29,9 @@ services:
        - /path/to/photos/folder/:/mnt/photos/
      restart: always
      ports:
-        8080:80
+        8080:3000
      environment:
-       SERVER_PORT: 80
+       SERVER_PORT: 3000
        STORAGE_PATH: /mnt/photos/
 ```
 
@@ -47,7 +47,7 @@ Variables in bold **must** be specified.
   Must have the format "sqlite:://path/to/database.db" [default: in ${STORAGE_PATH}/.familyphotos.db]
 - PREVIEWS_PATH: Alternative storage path for photo previews (this, for example is useful when you want to store the
   photos on an HDD but the previews on an SSD) [default: in ${STORAGE_PATH}/.preview]
-- SCAN_NEW_FILES: Scan the storage for external changes at startup [default: true]
+- SCAN_NEW_FILES: Scan the storage for external changes at startup and periodically [default: true]
 
 ### Creating user accounts
 

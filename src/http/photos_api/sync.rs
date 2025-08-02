@@ -1,13 +1,14 @@
 use crate::http::AppStateRef;
 use crate::http::utils::{AuthSession, AxumResult};
-use crate::model::event_log::EventLogNetwork;
+use crate::repo::event_log::UserEventLogError;
 use crate::utils::internal_error;
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::routing::get;
 use axum::{Json, Router};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use tracing::error;
 
 pub fn router() -> Router<AppStateRef> {
     Router::new()
@@ -19,7 +20,7 @@ async fn full_photos_list(
     State(state): State<AppStateRef>,
     auth: AuthSession,
 ) -> AxumResult<impl IntoResponse> {
-    let user = auth.user.ok_or(StatusCode::BAD_REQUEST)?;
+    let user = auth.user.ok_or(StatusCode::UNAUTHORIZED)?;
 
     let photos = state
         .photos_repo
@@ -39,41 +40,23 @@ async fn partial_photos_list(
     State(state): State<AppStateRef>,
     auth: AuthSession,
     Query(query): Query<PartialPhotosListQuery>,
-) -> AxumResult<impl IntoResponse> {
-    let user = auth.user.ok_or(StatusCode::BAD_REQUEST)?;
+) -> Result<impl IntoResponse, StatusCode> {
+    let user = auth.user.ok_or(StatusCode::UNAUTHORIZED)?;
     let last_synced_event_id = query.last_synced_event_id;
 
     let events = state
         .event_log_repo
         .get_events_for_user(last_synced_event_id, user.id.as_str())
-        .await
-        .map_err(internal_error)?;
+        .await;
 
-    let Some(events) = events else {
-        return Err(StatusCode::CONFLICT.into());
-    };
-
-    let event_log_id = events
-        .iter()
-        .map(|event| event.event_id)
-        .max()
-        .unwrap_or(last_synced_event_id);
-    let events: Vec<_> = events
-        .into_iter()
-        .map(|event| EventLogNetwork {
-            photo_id: event.photo_id,
-            data: event.data,
-        })
-        .collect();
-
-    #[derive(Serialize)]
-    struct PartialPhotosListResponse {
-        event_log_id: i64,
-        events: Vec<EventLogNetwork>,
+    match events {
+        Ok(events) => Ok(Json(events)),
+        Err(UserEventLogError::NoEvents | UserEventLogError::InvalidEventId) => {
+            Err(StatusCode::CONFLICT)
+        }
+        Err(UserEventLogError::Database(err)) => {
+            error!("Database error: {}", err);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
     }
-
-    Ok(Json(PartialPhotosListResponse {
-        event_log_id,
-        events,
-    }))
 }
