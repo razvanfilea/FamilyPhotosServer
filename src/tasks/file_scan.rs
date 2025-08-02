@@ -32,7 +32,9 @@ pub async fn scan_new_files(app_state: AppStateRef) {
             .await
             .expect("Failed to get user photos");
 
-        let user_folder_path = app_state.storage.resolve_photo(user_id.as_deref().unwrap_or(PUBLIC_USER_FOLDER));
+        let user_folder_path = app_state
+            .storage
+            .resolve_photo(user_id.as_deref().unwrap_or(PUBLIC_USER_FOLDER));
         let (new_photos, removed_photo_ids) =
             scan_user_photos(user_id.as_deref(), user_folder_path, existing_photos);
 
@@ -68,7 +70,7 @@ fn scan_user_photos(
         if let Err(e) = fs::create_dir(user_folder_path) {
             error!(
                 "Failed to create user's `{}` directory: {e}",
-                user_id.as_deref().unwrap_or(PUBLIC_USER_FOLDER)
+                user_id.unwrap_or(PUBLIC_USER_FOLDER)
             );
         }
         // All existing photos are considered removed if the user directory doesn't exist
@@ -112,7 +114,7 @@ fn scan_user_photos(
     let new_photos: Vec<Photo> = disk_entries_with_name
         .into_par_iter()
         .filter(|(full_name, _)| !existing_photos_names.contains(full_name))
-        .filter_map(|(_, entry)| parse_image(user_id.clone(), entry))
+        .filter_map(|(_, entry)| parse_image(user_id, entry))
         .collect();
 
     info!(

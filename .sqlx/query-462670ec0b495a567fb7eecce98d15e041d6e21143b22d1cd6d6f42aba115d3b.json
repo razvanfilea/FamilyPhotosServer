@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "select min(event_id) as 'min_id!: i64', max(event_id) as 'max_id!: i64' from photos_event_log",
+  "describe": {
+    "columns": [
+      {
+        "name": "min_id!: i64",
+        "ordinal": 0,
+        "type_info": "Null"
+      },
+      {
+        "name": "max_id!: i64",
+        "ordinal": 1,
+        "type_info": "Null"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true,
+      true
+    ]
+  },
+  "hash": "462670ec0b495a567fb7eecce98d15e041d6e21143b22d1cd6d6f42aba115d3b"
+}

@@ -60,15 +60,15 @@ async fn main() {
         .await
         .expect("Failed to run migrations");
 
-    let app_state = AppState::new(pool.clone(), storage_resolver);
-    let app_state = Box::leak(Box::new(app_state));
-
     // Migrate the sessions store and delete expired sessions
-    let session_store = SqliteStore::new(pool);
+    let session_store = SqliteStore::new(pool.clone());
     session_store
         .migrate()
         .await
         .expect("Failed to run schema migration for authentication");
+
+    let app_state = AppState::new(pool, storage_resolver);
+    let app_state = Box::leak(Box::new(app_state));
 
     session_store
         .delete_expired()

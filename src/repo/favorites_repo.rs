@@ -9,10 +9,7 @@ impl FavoritesRepository {
         Self { pool }
     }
 
-    pub async fn get_favorite_photos(
-        &self,
-        user_id: &str,
-    ) -> Result<Vec<i64>, sqlx::Error> {
+    pub async fn get_favorite_photos(&self, user_id: &str) -> Result<Vec<i64>, sqlx::Error> {
         query!(
             "select photo_id from favorite_photos where user_id = $1",
             user_id
