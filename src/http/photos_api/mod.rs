@@ -51,7 +51,7 @@ async fn get_duplicates(
     State(state): State<AppStateRef>,
     auth: AuthSession,
 ) -> AxumResult<impl IntoResponse> {
-    let user = auth.user.ok_or(StatusCode::BAD_REQUEST)?;
+    let user = auth.user.ok_or(StatusCode::UNAUTHORIZED)?;
 
     let photos = state
         .photo_hash_repo

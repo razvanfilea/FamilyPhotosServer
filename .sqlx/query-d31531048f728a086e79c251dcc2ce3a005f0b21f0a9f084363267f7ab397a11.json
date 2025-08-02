@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "select * from photos where user_id is null order by created_at desc",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "user_id",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "name",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at",
+        "ordinal": 3,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "file_size",
+        "ordinal": 4,
+        "type_info": "Integer"
+      },
+      {
+        "name": "folder",
+        "ordinal": 5,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      true,
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "d31531048f728a086e79c251dcc2ce3a005f0b21f0a9f084363267f7ab397a11"
+}
