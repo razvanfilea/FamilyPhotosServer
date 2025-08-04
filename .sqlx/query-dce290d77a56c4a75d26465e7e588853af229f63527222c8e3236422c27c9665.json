@@ -32,6 +32,11 @@
         "name": "folder",
         "ordinal": 5,
         "type_info": "Text"
+      },
+      {
+        "name": "trashed_on",
+        "ordinal": 6,
+        "type_info": "Datetime"
       }
     ],
     "parameters": {
@@ -43,6 +48,7 @@
       false,
       false,
       false,
+      true,
       true
     ]
   },

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "update photos set user_id = $2, name = $3, created_at = $4, file_size = $5, folder = $6, trashed_on = $7 where id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 7
+    },
+    "nullable": []
+  },
+  "hash": "867da6e71dd9b3ca4b45dbd58cc608e75b254972b38de97bf8f6a5c833ce6eb3"
+}

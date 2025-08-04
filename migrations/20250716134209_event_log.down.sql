@@ -1,1 +1,0 @@
-DROP TABLE photos_event_log;

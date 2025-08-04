@@ -10,9 +10,9 @@ impl PhotosRepository {
         Self { pool }
     }
 
-    pub async fn get_photo(&self, id: i64) -> Result<Photo, sqlx::Error> {
+    pub async fn get_photo(&self, id: i64) -> Result<Option<Photo>, sqlx::Error> {
         query_as!(Photo, "select * from photos where id = $1", id)
-            .fetch_one(&self.pool) // fetch_optional
+            .fetch_optional(&self.pool)
             .await
     }
 
@@ -87,18 +87,25 @@ impl PhotosRepository {
         .await
     }
 
+    pub async fn get_expired_trash_photos(&self) -> Result<Vec<Photo>, sqlx::Error> {
+        query_as!(Photo, "select * from photos where trashed_on is not null and trashed_on <= datetime('now', '-30 days')")
+            .fetch_all(&self.pool)
+            .await
+    }
+
     /// photo.id is ignored
     pub async fn insert_photo(&self, photo: &Photo) -> Result<Photo, sqlx::Error> {
         let mut tx = self.pool.begin().await?;
 
         let photo = query_as!(
             Photo,
-            "insert into photos (user_id, name, created_at, file_size, folder) values ($1, $2, $3, $4, $5) returning *",
+            "insert into photos (user_id, name, created_at, file_size, folder, trashed_on) values ($1, $2, $3, $4, $5, $6) returning *",
             photo.user_id,
             photo.name,
             photo.created_at,
             photo.file_size,
-            photo.folder
+            photo.folder,
+            photo.trashed_on
         )
             .fetch_one(tx.as_mut())
             .await?;
@@ -130,14 +137,15 @@ impl PhotosRepository {
         let mut tx = self.pool.begin().await?;
 
         let photos = QueryBuilder::<Sqlite>::new(
-            "insert into photos (user_id, name, created_at, file_size, folder) ",
+            "insert into photos (user_id, name, created_at, file_size, folder, trashed_on) ",
         )
         .push_values(photos, |mut b, photo| {
             b.push_bind(&photo.user_id)
                 .push_bind(&photo.name)
                 .push_bind(photo.created_at)
                 .push_bind(photo.file_size)
-                .push_bind(&photo.folder);
+                .push_bind(&photo.folder)
+                .push_bind(photo.trashed_on);
         })
         .push(" returning *")
         .build()
@@ -165,13 +173,14 @@ impl PhotosRepository {
         let mut tx = self.pool.begin().await?;
 
         query!(
-            "update photos set user_id = $2, name = $3, created_at = $4, file_size = $5, folder = $6 where id = $1",
+            "update photos set user_id = $2, name = $3, created_at = $4, file_size = $5, folder = $6, trashed_on = $7 where id = $1",
             photo.id,
             photo.user_id,
             photo.name,
             photo.created_at,
             photo.file_size,
-            photo.folder
+            photo.folder,
+            photo.trashed_on
         )
             .execute(tx.as_mut())
             .await?;
