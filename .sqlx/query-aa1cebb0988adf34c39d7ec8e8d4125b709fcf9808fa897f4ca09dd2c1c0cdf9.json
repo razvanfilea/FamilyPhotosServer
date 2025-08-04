@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "select * from photos where photos.user_id = $1 order by photos.created_at desc",
+  "query": "select p.* from photos p left join photos_hash e on p.id = e.photo_id\n             where e.hash = $1 and (user_id = $2 or ($2 is null and user_id is null))",
   "describe": {
     "columns": [
       {
@@ -35,7 +35,7 @@
       }
     ],
     "parameters": {
-      "Right": 1
+      "Right": 2
     },
     "nullable": [
       false,
@@ -46,5 +46,5 @@
       true
     ]
   },
-  "hash": "5c4a66baae121865ef985a43f3e4bcdca2896e8bec9daa21a41247d11f029217"
+  "hash": "aa1cebb0988adf34c39d7ec8e8d4125b709fcf9808fa897f4ca09dd2c1c0cdf9"
 }
