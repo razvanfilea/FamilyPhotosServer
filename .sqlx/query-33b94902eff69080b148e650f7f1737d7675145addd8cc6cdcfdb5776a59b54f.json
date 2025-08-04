@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "select * from photos where (user_id = $1 or ($1 is null and user_id is null)) order by created_at desc",
+  "query": "select * from photos where trashed_on is not null and trashed_on <= datetime('now', '-30 days')",
   "describe": {
     "columns": [
       {
@@ -40,7 +40,7 @@
       }
     ],
     "parameters": {
-      "Right": 1
+      "Right": 0
     },
     "nullable": [
       false,
@@ -52,5 +52,5 @@
       true
     ]
   },
-  "hash": "27da61a6415febd370428df19c7dd9ba9659d279c13c4107e4087b8b41957bbc"
+  "hash": "33b94902eff69080b148e650f7f1737d7675145addd8cc6cdcfdb5776a59b54f"
 }
