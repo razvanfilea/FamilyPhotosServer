@@ -2,13 +2,15 @@ use axum::body::Body;
 use axum::extract::multipart;
 use axum::http::{StatusCode, header};
 use axum::response::IntoResponse;
+use sha2::Digest;
+use std::io::{BufWriter, Write};
+use tempfile::NamedTempFile;
 use tokio::fs;
-use tokio::io::{AsyncWriteExt, BufWriter};
 use tokio_util::io::ReaderStream;
 use tracing::error;
 
 use crate::repo::users_repo::UsersRepository;
-use crate::utils::internal_error;
+use crate::utils::{crop_sha_256, internal_error};
 
 pub type AxumResult<T> = axum::response::Result<T>;
 
@@ -48,14 +50,38 @@ pub async fn file_to_response(
     Ok((headers, body))
 }
 
+pub struct WrittenFile {
+    temp_file: NamedTempFile,
+    pub size: usize,
+    pub hash: Vec<u8>,
+}
+
+impl WrittenFile {
+    /// Moves the temporary file to the target path, handling cross-device scenarios
+    pub async fn persist_to(self, target_path: &std::path::Path) -> std::io::Result<()> {
+        // First, try the fast path (rename)
+        match self.temp_file.persist(target_path) {
+            Ok(_) => Ok(()),
+            Err(tempfile::PersistError { error, file }) => {
+                // If persist failed due to a cross-device link, fall back to copy and delete
+                if error.raw_os_error() == Some(18) {
+                    // EXDEV: Cross-device link
+                    fs::copy(file.path(), target_path).await?;
+                    // The temporary file will be automatically cleaned up when dropped
+                    Ok(())
+                } else {
+                    Err(error)
+                }
+            }
+        }
+    }
+}
+
 ///
 /// Returns the number of bytes written to disk
 ///
-pub async fn write_field_to_file<'a, 'b>(
-    mut field: multipart::Field<'a>,
-    file_path: &'b std::path::Path,
-) -> AxumResult<usize> {
-    let file = fs::File::create(file_path).await.map_err(|e| {
+pub async fn write_field_to_file(mut field: multipart::Field<'_>) -> AxumResult<WrittenFile> {
+    let mut temp_file = NamedTempFile::new().map_err(|e| {
         error!("Failed creating photo file: {e}");
         (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -63,13 +89,26 @@ pub async fn write_field_to_file<'a, 'b>(
         )
     })?;
 
-    let mut writer = BufWriter::new(file);
+    let mut digest = sha2::Sha256::new();
+
+    let mut writer = BufWriter::new(temp_file.as_file_mut());
     let mut written_bytes = 0;
 
     while let Some(chunk) = field.chunk().await? {
+        // TODO Figure out how to make this function async free or async friendly
         written_bytes += chunk.len();
-        writer.write_all(&chunk).await.map_err(internal_error)?;
+        writer.write_all(&chunk).map_err(internal_error)?;
+        digest.update(&chunk);
     }
 
-    Ok(written_bytes)
+    writer.flush().map_err(internal_error)?;
+    drop(writer);
+
+    let hash = digest.finalize();
+
+    Ok(WrittenFile {
+        temp_file,
+        size: written_bytes,
+        hash: crop_sha_256(&hash.0),
+    })
 }
