@@ -141,6 +141,7 @@ pub fn parse_image(user_id: Option<&str>, entry: DirEntry) -> Option<Photo> {
             created_at: timestamp,
             file_size,
             folder,
+            trashed_on: None,
         })
     } else {
         warn!("No timestamp: {}", path.display());

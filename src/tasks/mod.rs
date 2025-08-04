@@ -1,6 +1,7 @@
 mod file_scan;
 mod hash;
 mod timestamp_parsing;
+mod trash;
 
 pub use file_scan::scan_new_files;
 use std::collections::HashSet;
@@ -10,6 +11,7 @@ use tracing::{debug, error, info};
 
 use crate::http::AppStateRef;
 pub use crate::tasks::hash::compute_photos_hash;
+use crate::tasks::trash::cleanup_trash;
 
 pub fn start_period_tasks(app_state: AppStateRef, scan_new_files: bool) {
     const MINUTE: u64 = 60;
@@ -39,6 +41,10 @@ pub fn start_period_tasks(app_state: AppStateRef, scan_new_files: bool) {
 
             if let Err(e) = delete_old_event_logs(app_state).await {
                 error!("Failed to delete old events: {e}");
+            }
+
+            if let Err(e) = cleanup_trash(app_state).await {
+                error!("Failed to cleanup trash: {e}");
             }
         }
     });

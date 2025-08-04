@@ -14,6 +14,7 @@ pub fn router() -> Router<AppStateRef> {
         .route("/{photo_id}", post(add_favorite))
         .route("/{photo_id}", delete(delete_favorite))
 }
+
 async fn get_favorites(
     State(state): State<AppStateRef>,
     auth_session: AuthSession,
@@ -38,7 +39,8 @@ async fn add_favorite(
         .photos_repo
         .get_photo(photo_id)
         .await
-        .map_err(internal_error)?;
+        .map_err(internal_error)?
+        .ok_or(StatusCode::NOT_FOUND)?;
     let user = check_has_access(auth_session.user, &photo)?;
 
     state
@@ -57,7 +59,8 @@ async fn delete_favorite(
         .photos_repo
         .get_photo(photo_id)
         .await
-        .map_err(internal_error)?;
+        .map_err(internal_error)?
+        .ok_or(StatusCode::NOT_FOUND)?;
     let user = check_has_access(auth_session.user, &photo)?;
 
     state

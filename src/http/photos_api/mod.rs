@@ -1,6 +1,7 @@
 mod favorite;
 mod move_photos;
 mod sync;
+mod trash;
 
 use axum::{
     Json, Router,
@@ -27,6 +28,7 @@ pub fn router(app_state: AppStateRef) -> Router {
     Router::new()
         .nest("/sync", sync::router())
         .nest("/move", move_photos::router())
+        .nest("/trash", trash::router())
         .route("/duplicates", get(get_duplicates))
         .route("/download/{photo_id}", get(download_photo))
         .route("/preview/{photo_id}", get(preview_photo))
@@ -73,7 +75,8 @@ async fn preview_photo(
     let photo = photos_repo
         .get_photo(photo_id)
         .await
-        .map_err(internal_error)?;
+        .map_err(internal_error)?
+        .ok_or(StatusCode::NOT_FOUND)?;
     check_has_access(auth.user, &photo)?;
 
     let photo_path = storage.resolve_photo(photo.partial_path());
@@ -115,7 +118,8 @@ async fn download_photo(
         .photos_repo
         .get_photo(photo_id)
         .await
-        .map_err(internal_error)?;
+        .map_err(internal_error)?
+        .ok_or(StatusCode::NOT_FOUND)?;
     check_has_access(auth.user, &photo)?;
 
     let photo_path = state.storage.resolve_photo(photo.partial_path());
@@ -132,7 +136,8 @@ async fn get_photo_exif(
         .photos_repo
         .get_photo(photo_id)
         .await
-        .map_err(internal_error)?;
+        .map_err(internal_error)?
+        .ok_or(StatusCode::NOT_FOUND)?;
     check_has_access(auth.user, &photo)?;
 
     let path = state.storage.resolve_photo(photo.partial_path());
@@ -198,6 +203,7 @@ async fn upload_photo(
         created_at: query.time_created,
         file_size: written_file.size as i64,
         folder: query.folder_name,
+        trashed_on: None,
     };
 
     let mut photo_path = state.storage.resolve_photo(new_photo.partial_path());
@@ -246,7 +252,8 @@ async fn delete_photo(
         .photos_repo
         .get_photo(photo_id)
         .await
-        .map_err(internal_error)?;
+        .map_err(internal_error)?
+        .ok_or(StatusCode::NOT_FOUND)?;
     check_has_access(auth.user, &photo)?;
 
     let _ = fs::remove_file(state.storage.resolve_preview(photo.partial_preview_path())).await;

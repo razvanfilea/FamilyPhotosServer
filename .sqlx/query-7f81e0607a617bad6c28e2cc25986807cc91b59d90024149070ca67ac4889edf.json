@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "insert into photos (user_id, name, created_at, file_size, folder) values ($1, $2, $3, $4, $5) returning *",
+  "query": "insert into photos (user_id, name, created_at, file_size, folder, trashed_on) values ($1, $2, $3, $4, $5, $6) returning *",
   "describe": {
     "columns": [
       {
@@ -32,10 +32,15 @@
         "name": "folder",
         "ordinal": 5,
         "type_info": "Text"
+      },
+      {
+        "name": "trashed_on",
+        "ordinal": 6,
+        "type_info": "Datetime"
       }
     ],
     "parameters": {
-      "Right": 5
+      "Right": 6
     },
     "nullable": [
       false,
@@ -43,8 +48,9 @@
       false,
       false,
       false,
+      true,
       true
     ]
   },
-  "hash": "4dc1e7b608cd056bd0d838b21653f251a57ef2e53aa1d77bf096970f2a0383cc"
+  "hash": "7f81e0607a617bad6c28e2cc25986807cc91b59d90024149070ca67ac4889edf"
 }

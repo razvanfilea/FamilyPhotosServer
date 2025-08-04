@@ -13,6 +13,8 @@ pub struct Photo {
     pub created_at: OffsetDateTime,
     pub file_size: i64,
     pub folder: Option<String>,
+    #[serde(with = "timestamp::option")]
+    pub trashed_on: Option<OffsetDateTime>,
 }
 
 impl Photo {

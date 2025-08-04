@@ -96,7 +96,8 @@ async fn move_photo(
         .photos_repo
         .get_photo(photo_id)
         .await
-        .map_err(internal_error)?;
+        .map_err(internal_error)?
+        .ok_or(StatusCode::NOT_FOUND)?;
     let user = check_has_access(auth.user, &photo)?;
 
     let target_user_name = (!query.make_public).then_some(user.id);
@@ -109,6 +110,7 @@ async fn move_photo(
         created_at: photo.created_at,
         file_size: photo.file_size,
         folder: query.target_folder_name,
+        trashed_on: None,
     };
     let destination_path = changed_photo.partial_path();
 
