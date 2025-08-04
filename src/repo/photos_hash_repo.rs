@@ -21,6 +21,22 @@ impl PhotosHashRepository {
         .await
     }
 
+    pub async fn get_photo_with_hash(
+        &self,
+        hash: &[u8],
+        user_id: Option<&str>,
+    ) -> Result<Option<Photo>, sqlx::Error> {
+        query_as!(
+            Photo,
+            "select p.* from photos p left join photos_hash e on p.id = e.photo_id
+             where e.hash = $1 and (user_id = $2 or ($2 is null and user_id is null))",
+            hash,
+            user_id
+        )
+        .fetch_optional(&self.pool)
+        .await
+    }
+
     pub async fn get_duplicates_for_user(
         &self,
         user_id: &str,

@@ -166,43 +166,66 @@ async fn upload_photo(
     let field = payload
         .next_field()
         .await?
-        .ok_or((StatusCode::UNPROCESSABLE_ENTITY, "Multipart is empty"))?;
+        .ok_or((StatusCode::BAD_REQUEST, "Multipart is empty"))?;
 
     let file_name = field
         .file_name()
         .or(field.name())
-        .ok_or((StatusCode::BAD_REQUEST, "Multipart has no name"))?;
+        .ok_or((StatusCode::BAD_REQUEST, "Multipart has no name"))?
+        .to_owned();
+    let photo_user_id = (!query.make_public).then_some(user.id);
+
+    let written_file = write_field_to_file(field).await?;
+
+    let photo = state
+        .photo_hash_repo
+        .get_photo_with_hash(&written_file.hash, photo_user_id.as_deref())
+        .await
+        .map_err(internal_error)?;
+
+    if let Some(photo) = photo {
+        info!(
+            "Photo with same hash already exists with path: {}",
+            photo.partial_path()
+        );
+        return Ok(Json(photo));
+    }
 
     let mut new_photo = Photo {
         id: 0,
-        user_id: if query.make_public {
-            None
-        } else {
-            Some(user.id)
-        },
-        name: String::from(file_name),
+        user_id: photo_user_id,
+        name: file_name,
         created_at: query.time_created,
-        file_size: 0, // To be set after it is written to disk
+        file_size: written_file.size as i64,
         folder: query.folder_name,
     };
 
-    let photo_path = state.storage.resolve_photo(new_photo.partial_path());
+    let mut photo_path = state.storage.resolve_photo(new_photo.partial_path());
     if let Some(parent) = photo_path.parent() {
         if !parent.exists() {
             fs::create_dir_all(parent).await.map_err(internal_error)?;
         }
     }
 
+    // If the file exists, generate a random name
+    if photo_path.exists() {
+        new_photo.name = format!(
+            "{}.{}",
+            uuid::Uuid::new_v4(),
+            photo_path
+                .extension()
+                .map(|str| str.to_string_lossy().to_string())
+                .unwrap_or_default()
+        );
+        photo_path = state.storage.resolve_photo(new_photo.partial_path());
+    }
+
     info!("Uploading file to {}", photo_path.display());
 
-    match write_field_to_file(field, &photo_path).await {
-        Ok(file_size) => new_photo.file_size = file_size as i64,
-        Err(e) => {
-            // Upload failed, delete the file
-            let _ = fs::remove_file(photo_path).await;
-            return Err(e);
-        }
-    }
+    written_file.persist_to(&photo_path).await.map_err(|e| {
+        error!("Failed to move temporary file to final location: {e}");
+        (StatusCode::INTERNAL_SERVER_ERROR, "Failed to save file")
+    })?;
 
     match state.photos_repo.insert_photo(&new_photo).await {
         Ok(photo) => Ok(Json(photo)),

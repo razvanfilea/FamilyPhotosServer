@@ -1,5 +1,6 @@
 use crate::http::AppStateRef;
 use crate::model::photo_hash::PhotoHash;
+use crate::utils::crop_sha_256;
 use rayon::prelude::*;
 use sha2::Digest;
 use std::fs::File;
@@ -40,8 +41,7 @@ fn compute_hash(path: &Path) -> std::io::Result<Vec<u8>> {
     let mapped_file = unsafe { memmap2::Mmap::map(&file)? };
 
     let hash = sha2::Sha256::digest(&mapped_file);
-    let slice = hash.as_slice();
-    let hash = slice[..slice.len() / 2].to_vec();
+    let hash = crop_sha_256(&hash.0);
 
     Ok(hash)
 }

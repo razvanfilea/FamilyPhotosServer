@@ -14,3 +14,7 @@ where
 {
     ErrorResponse::from((StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response())
 }
+
+pub fn crop_sha_256(hash: &[u8; 32]) -> Vec<u8> {
+    hash[..16].to_vec()
+}

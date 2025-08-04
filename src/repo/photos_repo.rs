@@ -26,23 +26,13 @@ impl PhotosRepository {
         &self,
         user_id: Option<&str>,
     ) -> Result<Vec<Photo>, sqlx::Error> {
-        match user_id {
-            Some(id) => query_as!(
-                Photo,
-                "select * from photos where photos.user_id = $1 order by photos.created_at desc",
-                id
-            )
-            .fetch_all(&self.pool)
-            .await,
-            None => {
-                query_as!(
-                    Photo,
-                    "select * from photos where user_id is null order by created_at desc"
-                )
-                .fetch_all(&self.pool)
-                .await
-            }
-        }
+        query_as!(
+            Photo,
+            "select * from photos where (user_id = $1 or ($1 is null and user_id is null)) order by created_at desc",
+            user_id
+        )
+        .fetch_all(&self.pool)
+        .await
     }
 
     pub async fn get_photos_by_user_and_public(
@@ -76,20 +66,12 @@ impl PhotosRepository {
         user_id: Option<&str>,
         folder_name: &str,
     ) -> Result<Vec<Photo>, sqlx::Error> {
-        match user_id {
-            Some(id) => query_as!(
-                Photo,
-                "select * from photos where user_id = $1 and folder = $2 order by created_at desc",
-                id,
-                folder_name,
-            ).fetch_all(&self.pool).await,
-            None =>
-                query_as!(
-                Photo,
-                "select * from photos where user_id IS NULL and folder = $1 order by created_at desc",
-                folder_name,
-            ).fetch_all(&self.pool).await,
-        }
+        query_as!(
+            Photo,
+            "select * from photos where (user_id = $1 or ($1 is null and user_id is null)) and folder = $2 order by created_at desc",
+            user_id,
+            folder_name,
+        ).fetch_all(&self.pool).await
     }
 
     pub async fn get_photos_with_same_location(&self) -> Result<Vec<Photo>, sqlx::Error> {
