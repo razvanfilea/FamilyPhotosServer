@@ -1,5 +1,5 @@
 use crate::http::AppState;
-use crate::tasks::start_period_tasks;
+use crate::tasks::start_periodic_tasks;
 use crate::utils::env_reader::EnvVariables;
 use crate::utils::storage_resolver::StorageResolver;
 use axum_login::tower_sessions::ExpiredDeletion;
@@ -80,15 +80,15 @@ async fn main() {
         return;
     }
 
-    start_period_tasks(app_state, vars.scan_new_files);
-
-    info!("Server listening on port {}", vars.server_port);
+    start_periodic_tasks(app_state, vars.scan_new_files);
 
     let http_service = http::router(app_state, session_store).into_make_service();
     let addr = SocketAddr::from(([0, 0, 0, 0], vars.server_port));
     let listener = TcpListener::bind(addr)
         .await
         .expect("Failed to bind to port");
+
+    info!("Server listening on port {}", vars.server_port);
 
     axum::serve(listener, http_service)
         .with_graceful_shutdown(http::shutdown_signal())

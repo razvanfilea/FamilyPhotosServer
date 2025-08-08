@@ -2,7 +2,6 @@ use axum::body::Body;
 use axum::extract::multipart;
 use axum::http::{StatusCode, header};
 use axum::response::IntoResponse;
-use sha2::Digest;
 use std::io::{BufWriter, Write};
 use tempfile::NamedTempFile;
 use tokio::fs;
@@ -89,7 +88,7 @@ pub async fn write_field_to_file(mut field: multipart::Field<'_>) -> AxumResult<
         )
     })?;
 
-    let mut digest = sha2::Sha256::new();
+    let mut digest = blake3::Hasher::new();
 
     let mut writer = BufWriter::new(temp_file.as_file_mut());
     let mut written_bytes = 0;
@@ -109,6 +108,6 @@ pub async fn write_field_to_file(mut field: multipart::Field<'_>) -> AxumResult<
     Ok(WrittenFile {
         temp_file,
         size: written_bytes,
-        hash: crop_sha_256(&hash.0),
+        hash: crop_sha_256(hash.as_bytes()),
     })
 }
