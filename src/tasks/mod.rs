@@ -13,7 +13,7 @@ use crate::http::AppStateRef;
 pub use crate::tasks::hash::compute_photos_hash;
 use crate::tasks::trash::cleanup_trash;
 
-pub fn start_period_tasks(app_state: AppStateRef, scan_new_files: bool) {
+pub fn start_periodic_tasks(app_state: AppStateRef, scan_new_files: bool) {
     const MINUTE: u64 = 60;
     const HOUR: u64 = 60;
 

@@ -99,7 +99,7 @@ async fn preview_photo(
         Ok(_) => preview_path,
         Err(e) => {
             error!(
-                "Preview generation failed for video: {}\nCause: {e}",
+                "Preview generation failed for: {}\nCause: {e}",
                 photo_path.display()
             );
             photo_path
@@ -207,10 +207,10 @@ async fn upload_photo(
     };
 
     let mut photo_path = state.storage.resolve_photo(new_photo.partial_path());
-    if let Some(parent) = photo_path.parent() {
-        if !parent.exists() {
-            fs::create_dir_all(parent).await.map_err(internal_error)?;
-        }
+    if let Some(parent) = photo_path.parent()
+        && !parent.exists()
+    {
+        fs::create_dir_all(parent).await.map_err(internal_error)?;
     }
 
     // If the file exists, generate a random name
