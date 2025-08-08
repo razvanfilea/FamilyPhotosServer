@@ -55,10 +55,10 @@ impl StorageResolver {
         }
 
         // Create a parent directory if it doesn't exist
-        if let Some(parent) = destination_path.parent() {
-            if !parent.exists() {
-                fs::create_dir_all(parent)?;
-            }
+        if let Some(parent) = destination_path.parent()
+            && !parent.exists()
+        {
+            fs::create_dir_all(parent)?;
         }
 
         fs::rename(self.resolve_photo(src_relative), destination_path)
