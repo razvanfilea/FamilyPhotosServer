@@ -15,7 +15,8 @@ impl PhotosHashRepository {
     pub async fn get_photos_without_hash(&self) -> Result<Vec<Photo>, sqlx::Error> {
         query_as!(
             Photo,
-            "select p.* from photos p left join photos_hash e on p.id = e.photo_id where e.hash is null"
+            "select p.* from photos p left join photos_hash e on p.id = e.photo_id
+             where e.hash is null and p.trashed_on is null"
         )
         .fetch_all(&self.pool)
         .await
@@ -44,7 +45,7 @@ impl PhotosHashRepository {
         query!(
             "select group_concat(h.photo_id) as 'ids!: String' from photos_hash h
             join photos p on p.id = h.photo_id
-            where p.user_id = $1 or p.user_id is null
+            where p.user_id = $1 or p.user_id is null and p.trashed_on is null
             group by h.hash having count(*) > 1",
             user_id,
         )

@@ -5,7 +5,7 @@ use std::time::Duration;
 use mime_guess::MimeGuess;
 use wait_timeout::ChildExt;
 
-const PREVIEW_TARGET_SIZE: u32 = 300;
+const PREVIEW_TARGET_SIZE: u32 = 250;
 const VIDEO_PREVIEW_TARGET_SIZE: &str = "500";
 
 fn generate_video_frame<P: AsRef<Path>, R: AsRef<Path>>(

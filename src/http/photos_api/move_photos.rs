@@ -35,7 +35,7 @@ async fn move_folder(
     let source_user_name = (!query.source_is_public).then_some(user.id.as_str());
     let target_user_name = (!query.target_make_public).then_some(user.id.as_str());
 
-    let target_folder_name = query.target_folder_name.filter(String::is_empty);
+    let target_folder_name = query.target_folder_name.filter(|s| !s.is_empty());
 
     let photos_to_move = state
         .photos_repo
