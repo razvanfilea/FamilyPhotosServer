@@ -1,5 +1,6 @@
 mod file_scan;
 mod hash;
+mod thumb_hash;
 mod timestamp_parsing;
 mod trash;
 
@@ -11,6 +12,7 @@ use tracing::{debug, error, info};
 
 use crate::http::AppStateRef;
 pub use crate::tasks::hash::compute_photos_hash;
+use crate::tasks::thumb_hash::generate_thumb_hashes;
 use crate::tasks::trash::cleanup_trash;
 
 pub fn start_periodic_tasks(app_state: AppStateRef, scan_new_files: bool) {
@@ -39,12 +41,18 @@ pub fn start_periodic_tasks(app_state: AppStateRef, scan_new_files: bool) {
                 error!("Failed to compute hashes: {e}");
             }
 
-            if let Err(e) = delete_old_event_logs(app_state).await {
-                error!("Failed to delete old events: {e}");
-            }
-
             if let Err(e) = cleanup_trash(app_state).await {
                 error!("Failed to cleanup trash: {e}");
+            }
+
+            // Thumb hash generation is based upon preview generation
+            if let Err(e) = generate_thumb_hashes(app_state).await {
+                error!("Failed to generate thumb hashes: {e}");
+            }
+
+            // This should ideally always remain the last
+            if let Err(e) = delete_old_event_logs(app_state).await {
+                error!("Failed to delete old events: {e}");
             }
         }
     });

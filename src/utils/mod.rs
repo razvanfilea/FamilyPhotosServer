@@ -15,6 +15,9 @@ where
     ErrorResponse::from((StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response())
 }
 
-pub fn crop_sha_256(hash: &[u8; 32]) -> Vec<u8> {
-    hash[..16].to_vec()
+const BLAKE_3_LEN: usize = 32;
+const HALF_BLAKE_3_LEN: usize = BLAKE_3_LEN / 2;
+
+pub fn crop_blake_3_hash(hash: &[u8; BLAKE_3_LEN]) -> Vec<u8> {
+    hash[..HALF_BLAKE_3_LEN].to_vec()
 }

@@ -141,6 +141,7 @@ pub fn parse_image(user_id: Option<&str>, entry: DirEntry) -> Option<Photo> {
             created_at: timestamp,
             file_size,
             folder,
+            thumb_hash: None,
             trashed_on: None,
         })
     } else {

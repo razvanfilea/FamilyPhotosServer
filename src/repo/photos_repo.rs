@@ -1,5 +1,5 @@
 use crate::model::photo::{FullPhotosList, Photo};
-use sqlx::{FromRow, QueryBuilder, Sqlite, SqlitePool, query, query_as};
+use sqlx::{FromRow, QueryBuilder, Sqlite, SqlitePool, Transaction, query, query_as};
 
 pub struct PhotosRepository {
     pool: SqlitePool,
@@ -31,8 +31,8 @@ impl PhotosRepository {
             "select * from photos where (user_id = $1 or ($1 is null and user_id is null)) order by created_at desc",
             user_id
         )
-        .fetch_all(&self.pool)
-        .await
+            .fetch_all(&self.pool)
+            .await
     }
 
     pub async fn get_photos_by_user_and_public(
@@ -93,6 +93,12 @@ impl PhotosRepository {
             .await
     }
 
+    pub async fn get_photos_without_thumb_hash(&self) -> Result<Vec<Photo>, sqlx::Error> {
+        query_as!(Photo, "select * from photos where thumb_hash is null")
+            .fetch_all(&self.pool)
+            .await
+    }
+
     /// photo.id is ignored
     pub async fn insert_photo(&self, photo: &Photo) -> Result<Photo, sqlx::Error> {
         let mut tx = self.pool.begin().await?;
@@ -137,34 +143,24 @@ impl PhotosRepository {
         let mut tx = self.pool.begin().await?;
 
         let photos = QueryBuilder::<Sqlite>::new(
-            "insert into photos (user_id, name, created_at, file_size, folder, trashed_on) ",
+            "insert into photos (user_id, name, created_at, file_size, folder, trashed_on, thumb_hash) ",
         )
-        .push_values(photos, |mut b, photo| {
-            b.push_bind(&photo.user_id)
-                .push_bind(&photo.name)
-                .push_bind(photo.created_at)
-                .push_bind(photo.file_size)
-                .push_bind(&photo.folder)
-                .push_bind(photo.trashed_on);
-        })
-        .push(" returning *")
-        .build()
-        .try_map(|row| Photo::from_row(&row))
-        .fetch_all(tx.as_mut())
-        .await?;
-
-        QueryBuilder::<Sqlite>::new("insert into photos_event_log (photo_id, user_id, data) ")
             .push_values(photos, |mut b, photo| {
-                let serialized_data =
-                    serde_json::to_vec(&photo).expect("Failed to serialize photo");
-
-                b.push_bind(photo.id)
-                    .push_bind(photo.user_id)
-                    .push_bind(serialized_data);
+                b.push_bind(&photo.user_id)
+                    .push_bind(&photo.name)
+                    .push_bind(photo.created_at)
+                    .push_bind(photo.file_size)
+                    .push_bind(&photo.folder)
+                    .push_bind(photo.trashed_on)
+                    .push_bind(&photo.thumb_hash);
             })
+            .push(" returning *")
             .build()
-            .execute(tx.as_mut())
+            .try_map(|row| Photo::from_row(&row))
+            .fetch_all(tx.as_mut())
             .await?;
+
+        Self::batch_insert_event_log(&mut tx, &photos).await?;
 
         tx.commit().await
     }
@@ -196,6 +192,53 @@ impl PhotosRepository {
         .await?;
 
         tx.commit().await
+    }
+
+    pub async fn update_thumb_hashes(&self, photos: &[(i64, Vec<u8>)]) -> Result<(), sqlx::Error> {
+        if photos.is_empty() {
+            // One element vector is handled correctly, but an empty vector
+            // would cause a SQL syntax error
+            return Ok(());
+        }
+
+        let mut tx = self.pool.begin().await?;
+
+        let mut all_photos = Vec::with_capacity(photos.len());
+        for (id, thumb_hash) in photos.iter() {
+            let photo = query_as!(
+                Photo,
+                "update photos set thumb_hash = $2 where id = $1 returning *",
+                id,
+                thumb_hash
+            )
+            .fetch_one(tx.as_mut())
+            .await?;
+
+            all_photos.push(photo);
+        }
+
+        Self::batch_insert_event_log(&mut tx, &all_photos).await?;
+
+        tx.commit().await
+    }
+
+    async fn batch_insert_event_log(
+        tx: &mut Transaction<'_, Sqlite>,
+        all_photos: &[Photo],
+    ) -> Result<(), sqlx::Error> {
+        QueryBuilder::<Sqlite>::new("insert into photos_event_log (photo_id, user_id, data) ")
+            .push_values(all_photos, |mut b, photo| {
+                let serialized_data =
+                    serde_json::to_vec(&photo).expect("Failed to serialize photo");
+
+                b.push_bind(photo.id)
+                    .push_bind(&photo.user_id)
+                    .push_bind(serialized_data);
+            })
+            .build()
+            .execute(tx.as_mut())
+            .await
+            .map(|_| ())
     }
 
     pub async fn delete_photo(&self, photo: &Photo) -> Result<u64, sqlx::Error> {

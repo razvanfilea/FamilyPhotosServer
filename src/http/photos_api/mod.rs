@@ -203,6 +203,7 @@ async fn upload_photo(
         created_at: query.time_created,
         file_size: written_file.size as i64,
         folder: query.folder_name,
+        thumb_hash: None,
         trashed_on: None,
     };
 
