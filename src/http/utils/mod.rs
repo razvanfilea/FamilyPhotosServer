@@ -9,7 +9,7 @@ use tokio_util::io::ReaderStream;
 use tracing::error;
 
 use crate::repo::users_repo::UsersRepository;
-use crate::utils::{crop_sha_256, internal_error};
+use crate::utils::{crop_blake_3_hash, internal_error};
 
 pub type AxumResult<T> = axum::response::Result<T>;
 
@@ -108,6 +108,6 @@ pub async fn write_field_to_file(mut field: multipart::Field<'_>) -> AxumResult<
     Ok(WrittenFile {
         temp_file,
         size: written_bytes,
-        hash: crop_sha_256(hash.as_bytes()),
+        hash: crop_blake_3_hash(hash.as_bytes()),
     })
 }

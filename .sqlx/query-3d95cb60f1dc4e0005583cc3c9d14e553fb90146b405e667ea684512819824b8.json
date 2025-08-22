@@ -37,6 +37,11 @@
         "name": "trashed_on",
         "ordinal": 6,
         "type_info": "Datetime"
+      },
+      {
+        "name": "thumb_hash",
+        "ordinal": 7,
+        "type_info": "Blob"
       }
     ],
     "parameters": {
@@ -48,6 +53,7 @@
       false,
       false,
       false,
+      true,
       true,
       true
     ]

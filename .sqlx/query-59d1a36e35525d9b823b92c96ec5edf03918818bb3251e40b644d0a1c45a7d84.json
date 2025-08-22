@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "select p.* from photos p left join photos_hash e on p.id = e.photo_id\n             where e.hash is null and p.trashed_on is null",
+  "query": "update photos set thumb_hash = $2 where id = $1 returning *",
   "describe": {
     "columns": [
       {
@@ -45,7 +45,7 @@
       }
     ],
     "parameters": {
-      "Right": 0
+      "Right": 2
     },
     "nullable": [
       false,
@@ -58,5 +58,5 @@
       true
     ]
   },
-  "hash": "412c0db7abc22b28086a336fb791b5d25ff9d90f91ad54fcba95793d01b4be62"
+  "hash": "59d1a36e35525d9b823b92c96ec5edf03918818bb3251e40b644d0a1c45a7d84"
 }

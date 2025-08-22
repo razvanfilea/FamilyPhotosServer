@@ -110,6 +110,7 @@ async fn move_photo(
         created_at: photo.created_at,
         file_size: photo.file_size,
         folder: query.target_folder_name,
+        thumb_hash: photo.thumb_hash,
         trashed_on: None,
     };
     let destination_path = changed_photo.partial_path();
