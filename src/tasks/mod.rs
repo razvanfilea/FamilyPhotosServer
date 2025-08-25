@@ -7,6 +7,7 @@ mod trash;
 pub use file_scan::scan_new_files;
 use std::collections::HashSet;
 use std::fs;
+use std::num::NonZero;
 use std::time::Duration;
 use tracing::{debug, error, info};
 
@@ -15,7 +16,23 @@ pub use crate::tasks::hash::compute_photos_hash;
 use crate::tasks::thumb_hash::generate_thumb_hashes;
 use crate::tasks::trash::cleanup_trash;
 
-pub fn start_periodic_tasks(app_state: AppStateRef, scan_new_files: bool) {
+pub fn start_periodic_tasks(
+    app_state: AppStateRef,
+    scan_new_files: bool,
+    background_threads_count: usize,
+) {
+    rayon::ThreadPoolBuilder::new()
+        .num_threads(if background_threads_count == 0 {
+            std::thread::available_parallelism()
+                .map(NonZero::get)
+                .unwrap_or(0)
+        } else {
+            background_threads_count
+        })
+        .thread_name(|thread| format!("Rayon {thread}"))
+        .build_global()
+        .expect("Failed to build global thread pool");
+
     const MINUTE: u64 = 60;
     const HOUR: u64 = 60;
 

@@ -9,7 +9,7 @@ use std::net::SocketAddr;
 use std::str::FromStr;
 use tokio::net::TcpListener;
 use tower_sessions_sqlx_store::SqliteStore;
-use tracing::info;
+use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -27,7 +27,13 @@ mod utils;
 
 #[tokio::main]
 async fn main() {
-    let vars = EnvVariables::get_all();
+    let vars = match EnvVariables::get_all() {
+        Ok(vars) => vars,
+        Err(e) => {
+            error!("Failed to parse environment variables: {e}");
+            return;
+        }
+    };
     // Creates the necessary folders
     let storage_resolver = StorageResolver::new(vars.storage_path, vars.previews_path);
 
@@ -80,7 +86,11 @@ async fn main() {
         return;
     }
 
-    start_periodic_tasks(app_state, vars.scan_new_files);
+    start_periodic_tasks(
+        app_state,
+        vars.scan_new_files,
+        vars.background_threads_count,
+    );
 
     let http_service = http::router(app_state, session_store).into_make_service();
     let addr = SocketAddr::from(([0, 0, 0, 0], vars.server_port));
