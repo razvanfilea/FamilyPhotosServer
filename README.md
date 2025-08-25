@@ -48,6 +48,7 @@ Variables in bold **must** be specified.
 - PREVIEWS_PATH: Alternative storage path for photo previews (this, for example is useful when you want to store the
   photos on an HDD but the previews on an SSD) [default: in ${STORAGE_PATH}/.preview]
 - SCAN_NEW_FILES: Scan the storage for external changes at startup and periodically [default: true]
+- BACKGROUND_THREADS_COUNT: Number of threads to use for background tasks [default: number of logical CPUs]
 
 ### Creating user accounts
 
@@ -118,23 +119,4 @@ The server will generate the following folder structure in the STORAGE_PATH fold
     ├───<album_name>/ # Folder for albums aka "folders"
     │   └───<photo_name> # Photo files
     └───<photo_name> # Photo files
-```
-
-## HTTP API
-
-```
-/ : Ping api to check if the server is online
-/login : User login
-/logout : Logout current user
-
-GET    /photos : return a json list of all the photos the user has access to, public or not
-GET    /photos/download/{photo_id} : returns an image if the user has access to it
-GET    /photos/preview/{photo_id} : returns a scaled down image if the user has access to it
-GET    /photos/exif/{photo_id} : returns a scaled down image if the user has access to it
-POST   /photos/upload : Upload an image or a video as a multipart to the user's directory
-DELETE /photos/delete/{photo_id} : delete's a photo if the user has access to it (any user can delete a public photo)
-POST   /photos/change_location/{photo_id} : returns a scaled down image if the user has access to it
-GET    /favorite : get the ids of all the photos the user has marked as favorite
-POST   /favorite/{photo_id} : mark a photo as favorite
-DELETE /favorite/{photo_id} : mark a photo as not favorite
 ```
