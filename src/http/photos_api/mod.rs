@@ -18,7 +18,6 @@ use tracing::{error, info, warn};
 use crate::http::AppStateRef;
 use crate::http::utils::{AuthSession, AxumResult, file_to_response, write_field_to_file};
 use crate::model::photo::Photo;
-use crate::model::user::User;
 use crate::previews;
 use crate::utils::exif::read_exif;
 use crate::utils::internal_error;
@@ -37,16 +36,6 @@ pub fn router(app_state: AppStateRef) -> Router {
         .route("/delete/{photo_id}", delete(delete_photo))
         .nest("/favorite", favorite::router())
         .with_state(app_state)
-}
-
-fn check_has_access(user: Option<User>, photo: &Photo) -> Result<User, StatusCode> {
-    let user = user.ok_or(StatusCode::UNAUTHORIZED)?;
-
-    if photo.user_id.is_none() || photo.user_id.as_ref() == Some(&user.id) {
-        Ok(user)
-    } else {
-        Err(StatusCode::FORBIDDEN)
-    }
 }
 
 async fn get_duplicates(
@@ -69,15 +58,15 @@ async fn preview_photo(
     Path(photo_id): Path<i64>,
     auth: AuthSession,
 ) -> impl IntoResponse {
+    let user = auth.user.ok_or(StatusCode::UNAUTHORIZED)?;
     let storage = &state.storage;
     let photos_repo = &state.photos_repo;
 
     let photo = photos_repo
-        .get_photo(photo_id)
+        .get_photo(photo_id, &user.id)
         .await
         .map_err(internal_error)?
         .ok_or(StatusCode::NOT_FOUND)?;
-    check_has_access(auth.user, &photo)?;
 
     let photo_path = storage.resolve_photo(photo.partial_path());
     let preview_path = storage.resolve_preview(photo.partial_preview_path());
@@ -114,13 +103,13 @@ async fn download_photo(
     Path(photo_id): Path<i64>,
     auth: AuthSession,
 ) -> impl IntoResponse {
+    let user = auth.user.ok_or(StatusCode::UNAUTHORIZED)?;
     let photo = state
         .photos_repo
-        .get_photo(photo_id)
+        .get_photo(photo_id, &user.id)
         .await
         .map_err(internal_error)?
         .ok_or(StatusCode::NOT_FOUND)?;
-    check_has_access(auth.user, &photo)?;
 
     let photo_path = state.storage.resolve_photo(photo.partial_path());
 
@@ -132,13 +121,13 @@ async fn get_photo_exif(
     Path(photo_id): Path<i64>,
     auth: AuthSession,
 ) -> AxumResult<impl IntoResponse> {
+    let user = auth.user.ok_or(StatusCode::UNAUTHORIZED)?;
     let photo = state
         .photos_repo
-        .get_photo(photo_id)
+        .get_photo(photo_id, &user.id)
         .await
         .map_err(internal_error)?
         .ok_or(StatusCode::NOT_FOUND)?;
-    check_has_access(auth.user, &photo)?;
 
     let path = state.storage.resolve_photo(photo.partial_path());
     let exif = task::spawn_blocking(move || read_exif(path))
@@ -249,13 +238,13 @@ async fn delete_photo(
     Path(photo_id): Path<i64>,
     auth: AuthSession,
 ) -> AxumResult<impl IntoResponse> {
+    let user = auth.user.ok_or(StatusCode::UNAUTHORIZED)?;
     let photo = state
         .photos_repo
-        .get_photo(photo_id)
+        .get_photo(photo_id, &user.id)
         .await
         .map_err(internal_error)?
         .ok_or(StatusCode::NOT_FOUND)?;
-    check_has_access(auth.user, &photo)?;
 
     let _ = fs::remove_file(state.storage.resolve_preview(photo.partial_preview_path())).await;
 

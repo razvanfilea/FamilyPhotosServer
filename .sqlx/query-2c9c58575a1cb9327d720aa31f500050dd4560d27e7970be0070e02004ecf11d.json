@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "select * from photos where id = $1",
+  "query": "select * from photos where id = $1 and user_id is null or user_id = $2",
   "describe": {
     "columns": [
       {
@@ -45,7 +45,7 @@
       }
     ],
     "parameters": {
-      "Right": 1
+      "Right": 2
     },
     "nullable": [
       false,
@@ -58,5 +58,5 @@
       true
     ]
   },
-  "hash": "dce290d77a56c4a75d26465e7e588853af229f63527222c8e3236422c27c9665"
+  "hash": "2c9c58575a1cb9327d720aa31f500050dd4560d27e7970be0070e02004ecf11d"
 }

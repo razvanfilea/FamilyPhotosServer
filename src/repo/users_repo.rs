@@ -15,9 +15,8 @@ impl UsersRepository {
         Self { pool }
     }
 
-    pub async fn get_user<T: AsRef<str>>(&self, user_name: T) -> Option<User> {
-        let user_name = user_name.as_ref();
-        query_as!(User, "select * from users where id = $1", user_name)
+    pub async fn get_user(&self, user_id: &str) -> Option<User> {
+        query_as!(User, "select * from users where id = $1", user_id)
             .fetch_optional(&self.pool)
             .await
             .ok()?
@@ -41,9 +40,8 @@ impl UsersRepository {
         .map(|_| ())
     }
 
-    pub async fn delete_user<T: AsRef<str>>(&self, user_name: T) -> Result<(), Error> {
-        let user_name = user_name.as_ref();
-        query!("delete from users where id = $1", user_name)
+    pub async fn delete_user(&self, user_id: &str) -> Result<(), Error> {
+        query!("delete from users where id = $1", user_id)
             .execute(&self.pool)
             .await
             .map(|_| ())
@@ -59,7 +57,7 @@ impl AuthnBackend for UsersRepository {
         &self,
         creds: Self::Credentials,
     ) -> Result<Option<Self::User>, Self::Error> {
-        if let Some(user) = self.get_user(creds.user_id).await {
+        if let Some(user) = self.get_user(&creds.user_id).await {
             return task::spawn_blocking(|| {
                 Ok(
                     if validate_credentials(creds.password, &user.password_hash)? {
