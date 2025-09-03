@@ -14,7 +14,7 @@ async-trait = "0.1"
 # Axum
 axum = { version = "0.8.1", features = ["multipart"] }
 tower-http = { version = "0.6", features = ["trace", "cors"] }
-axum-login = "0.17.0"
+axum-login = "0.18.0"
 tower-sessions-sqlx-store = { version = "0.15.0", features = ["sqlite"] }
 
 # Logging
@@ -39,7 +39,7 @@ mime_guess = "2"
 anyhow = "1"
 kamadak-exif = "0.6"
 rand = "0.9.1"
-argon2 = { version = "=0.6.0-rc.0" }
+argon2 = { version = "=0.6.0-rc.1" }
 sha2 = "0.11.0-rc.0"
 mimalloc = "0.1"
 memmap2 = "0.9"
