@@ -10,10 +10,15 @@ impl PhotosRepository {
         Self { pool }
     }
 
-    pub async fn get_photo(&self, id: i64) -> Result<Option<Photo>, sqlx::Error> {
-        query_as!(Photo, "select * from photos where id = $1", id)
-            .fetch_optional(&self.pool)
-            .await
+    pub async fn get_photo(&self, id: i64, user_id: &str) -> Result<Option<Photo>, sqlx::Error> {
+        query_as!(
+            Photo,
+            "select * from photos where id = $1 and user_id is null or user_id = $2",
+            id,
+            user_id
+        )
+        .fetch_optional(&self.pool)
+        .await
     }
 
     pub async fn get_all_photos(&self) -> Result<Vec<Photo>, sqlx::Error> {

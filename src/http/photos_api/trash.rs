@@ -1,5 +1,4 @@
 use crate::http::AppStateRef;
-use crate::http::photos_api::check_has_access;
 use crate::http::utils::{AuthSession, AxumResult};
 use crate::utils::internal_error;
 use axum::extract::{Path, State};
@@ -20,13 +19,13 @@ async fn trash_photo(
     Path(photo_id): Path<i64>,
     auth_session: AuthSession,
 ) -> AxumResult<impl IntoResponse> {
+    let user = auth_session.user.ok_or(StatusCode::UNAUTHORIZED)?;
     let mut photo = state
         .photos_repo
-        .get_photo(photo_id)
+        .get_photo(photo_id, &user.id)
         .await
         .map_err(internal_error)?
         .ok_or(StatusCode::NOT_FOUND)?;
-    check_has_access(auth_session.user, &photo)?;
 
     photo.trashed_on = Some(OffsetDateTime::now_utc());
 
@@ -44,13 +43,13 @@ async fn restore_photo(
     Path(photo_id): Path<i64>,
     auth_session: AuthSession,
 ) -> AxumResult<impl IntoResponse> {
+    let user = auth_session.user.ok_or(StatusCode::UNAUTHORIZED)?;
     let mut photo = state
         .photos_repo
-        .get_photo(photo_id)
+        .get_photo(photo_id, &user.id)
         .await
         .map_err(internal_error)?
         .ok_or(StatusCode::NOT_FOUND)?;
-    check_has_access(auth_session.user, &photo)?;
 
     photo.trashed_on = None;
 

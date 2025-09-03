@@ -1,5 +1,4 @@
 use crate::http::AppStateRef;
-use crate::http::photos_api::check_has_access;
 use crate::http::utils::{AuthSession, AxumResult};
 use crate::model::photo::Photo;
 use crate::model::user::PUBLIC_USER_FOLDER;
@@ -92,13 +91,13 @@ async fn move_photo(
     auth: AuthSession,
 ) -> AxumResult<impl IntoResponse> {
     let storage = &state.storage;
+    let user = auth.user.ok_or(StatusCode::UNAUTHORIZED)?;
     let photo = state
         .photos_repo
-        .get_photo(photo_id)
+        .get_photo(photo_id, &user.id)
         .await
         .map_err(internal_error)?
         .ok_or(StatusCode::NOT_FOUND)?;
-    let user = check_has_access(auth.user, &photo)?;
 
     let target_user_name = (!query.make_public).then_some(user.id);
 

@@ -17,13 +17,15 @@ pub async fn cleanup_trash(app_state: AppStateRef) -> Result<(), sqlx::Error> {
         .await;
 
         let photo_path = app_state.storage.resolve_photo(photo.partial_path());
+        let display_path = photo_path.display();
         if photo_path.exists() {
+            info!("Removing trashed file at {}", display_path);
             fs::remove_file(&photo_path).await.inspect_err(|e| {
-                error!("Failed to remove file at {}: {e}", photo_path.display());
+                error!("Failed to remove file at {}: {e}", display_path);
             })?;
-            info!("Removed trashed file at {}", photo_path.display());
+            info!("Removed trashed file at {}", display_path);
         } else {
-            warn!("No such file exists at {}", photo_path.display());
+            warn!("No such file exists at {}", display_path);
         }
 
         app_state.photos_repo.delete_photo(photo).await?;

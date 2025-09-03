@@ -41,7 +41,7 @@ wait-timeout = "0.2"
 time = { version = "0.3", features = ["macros", "parsing", "serde"] }
 dotenvy = "0.15"
 rand = "0.9.2"
-argon2 = { version = "=0.6.0-rc.0" }
+argon2 = { version = "=0.6.0-rc.1" }
 blake3 = { version = "1.8.2", features = ["mmap"] }
 uuid = { version = "1.18", features = ["v4"] }
 fast-thumbhash = { git = "https://github.com/razvanfilea/fast-thumbhash" }
