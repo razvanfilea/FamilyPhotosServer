@@ -13,7 +13,7 @@ impl PhotosRepository {
     pub async fn get_photo(&self, id: i64, user_id: &str) -> Result<Option<Photo>, sqlx::Error> {
         query_as!(
             Photo,
-            "select * from photos where id = $1 and user_id is null or user_id = $2",
+            "select * from photos where id = $1 and (user_id is null or user_id = $2)",
             id,
             user_id
         )
