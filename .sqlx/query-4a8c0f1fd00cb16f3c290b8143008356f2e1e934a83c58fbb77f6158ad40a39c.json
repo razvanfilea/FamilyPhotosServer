@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "select * from photos where (user_id = $1 or ($1 is null and user_id is null)) and folder = $2 order by created_at desc",
+  "query": "select * from photos where (($1 is null and user_id is null) or user_id = $1) order by created_at desc",
   "describe": {
     "columns": [
       {
@@ -45,7 +45,7 @@
       }
     ],
     "parameters": {
-      "Right": 2
+      "Right": 1
     },
     "nullable": [
       false,
@@ -58,5 +58,5 @@
       true
     ]
   },
-  "hash": "636069a82712c50d952bd37be9ada2d252d8d7ea6f811191e65fbbcb151074d6"
+  "hash": "4a8c0f1fd00cb16f3c290b8143008356f2e1e934a83c58fbb77f6158ad40a39c"
 }

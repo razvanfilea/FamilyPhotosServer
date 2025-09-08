@@ -1,5 +1,7 @@
 use crate::model::photo::{FullPhotosList, Photo};
-use sqlx::{FromRow, QueryBuilder, Sqlite, SqlitePool, Transaction, query, query_as};
+use sqlx::{
+    FromRow, QueryBuilder, Sqlite, SqlitePool, SqliteTransaction, Transaction, query, query_as,
+};
 
 pub struct PhotosRepository {
     pool: SqlitePool,
@@ -11,13 +13,24 @@ impl PhotosRepository {
     }
 
     pub async fn get_photo(&self, id: i64, user_id: &str) -> Result<Option<Photo>, sqlx::Error> {
+        let mut tx = self.pool.begin().await?;
+        let result = Self::get_photo_tx(id, user_id, &mut tx).await?;
+        tx.commit().await?;
+        Ok(result)
+    }
+
+    pub async fn get_photo_tx(
+        id: i64,
+        user_id: &str,
+        tx: &mut SqliteTransaction<'_>,
+    ) -> Result<Option<Photo>, sqlx::Error> {
         query_as!(
             Photo,
             "select * from photos where id = $1 and (user_id is null or user_id = $2)",
             id,
             user_id
         )
-        .fetch_optional(&self.pool)
+        .fetch_optional(tx.as_mut())
         .await
     }
 
@@ -33,7 +46,7 @@ impl PhotosRepository {
     ) -> Result<Vec<Photo>, sqlx::Error> {
         query_as!(
             Photo,
-            "select * from photos where (user_id = $1 or ($1 is null and user_id is null)) order by created_at desc",
+            "select * from photos where (($1 is null and user_id is null) or user_id = $1) order by created_at desc",
             user_id
         )
             .fetch_all(&self.pool)
@@ -66,17 +79,16 @@ impl PhotosRepository {
         })
     }
 
-    pub async fn get_photos_in_folder(
+    pub async fn get_photo_ids_in_folder(
         &self,
         user_id: Option<&str>,
         folder_name: &str,
-    ) -> Result<Vec<Photo>, sqlx::Error> {
-        query_as!(
-            Photo,
-            "select * from photos where (user_id = $1 or ($1 is null and user_id is null)) and folder = $2 order by created_at desc",
+    ) -> Result<Vec<i64>, sqlx::Error> {
+        query!(
+            "select id from photos where (($1 is null and user_id is null) or user_id = $1) and folder = $2 order by created_at desc",
             user_id,
             folder_name,
-        ).fetch_all(&self.pool).await
+        ).map(|r| r.id).fetch_all(&self.pool).await
     }
 
     pub async fn get_photos_with_same_location(&self) -> Result<Vec<Photo>, sqlx::Error> {
@@ -172,7 +184,14 @@ impl PhotosRepository {
 
     pub async fn update_photo(&self, photo: &Photo) -> Result<(), sqlx::Error> {
         let mut tx = self.pool.begin().await?;
+        Self::update_photo_tx(photo, &mut tx).await?;
+        tx.commit().await
+    }
 
+    pub async fn update_photo_tx(
+        photo: &Photo,
+        tx: &mut SqliteTransaction<'_>,
+    ) -> Result<(), sqlx::Error> {
         query!(
             "update photos set user_id = $2, name = $3, created_at = $4, file_size = $5, folder = $6, trashed_on = $7 where id = $1",
             photo.id,
@@ -196,7 +215,7 @@ impl PhotosRepository {
         .execute(tx.as_mut())
         .await?;
 
-        tx.commit().await
+        Ok(())
     }
 
     pub async fn update_thumb_hashes(&self, photos: &[(i64, Vec<u8>)]) -> Result<(), sqlx::Error> {

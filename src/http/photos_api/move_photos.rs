@@ -2,17 +2,20 @@ use crate::http::AppStateRef;
 use crate::http::utils::{AuthSession, AxumResult};
 use crate::model::photo::Photo;
 use crate::model::user::PUBLIC_USER_FOLDER;
+use crate::repo::photos_repo::PhotosRepository;
 use crate::utils::internal_error;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::routing::post;
 use axum::{Json, Router};
+use sqlx::Acquire;
 use tracing::{error, info, warn};
 
 pub fn router() -> Router<AppStateRef> {
     Router::new()
         .route("/folder", post(move_folder))
+        .route("/photos", post(move_photos))
         .route("/{photo_id}", post(move_photo))
 }
 #[derive(serde::Deserialize)]
@@ -29,7 +32,6 @@ async fn move_folder(
     auth: AuthSession,
 ) -> AxumResult<impl IntoResponse> {
     let user = auth.user.ok_or(StatusCode::UNAUTHORIZED)?;
-    let storage = &state.storage;
 
     let source_user_name = (!query.source_is_public).then_some(user.id.as_str());
     let target_user_name = (!query.target_make_public).then_some(user.id.as_str());
@@ -38,7 +40,7 @@ async fn move_folder(
 
     let photos_to_move = state
         .photos_repo
-        .get_photos_in_folder(source_user_name, &query.source_folder_name)
+        .get_photo_ids_in_folder(source_user_name, &query.source_folder_name)
         .await
         .map_err(internal_error)?;
 
@@ -51,33 +53,19 @@ async fn move_folder(
         photos_to_move.len(),
     );
 
-    let mut moved_photos = Vec::with_capacity(photos_to_move.len());
-
-    for mut photo in photos_to_move {
-        let source_path = photo.partial_path();
-
-        photo.user_id = target_user_name.map(ToOwned::to_owned);
-        photo.folder = target_folder_name.clone();
-        let destination_path = photo.partial_path();
-
-        if let Err(e) = storage.move_photo(&source_path, &destination_path) {
-            warn!("Failed to move the photo: {e}");
-            continue;
-        }
-
-        if let Err(e) = state.photos_repo.update_photo(&photo).await {
-            // If the database operation failed for some reason, try to move the image back
-            error!("Failed to update the photo: {e}");
-            let _ = storage.move_photo(&destination_path, &source_path);
-            continue;
-        }
-
-        info!("Moved photo from {source_path} to {destination_path}");
-        moved_photos.push(photo);
-    }
+    let moved_photos = move_photos_service(
+        &photos_to_move,
+        &user.id,
+        target_user_name.map(ToOwned::to_owned),
+        target_folder_name,
+        state,
+    )
+    .await
+    .map_err(internal_error)?;
 
     Ok(Json(moved_photos))
 }
+
 #[derive(serde::Deserialize)]
 struct MovePhotoQuery {
     make_public: bool,
@@ -90,60 +78,111 @@ async fn move_photo(
     Query(query): Query<MovePhotoQuery>,
     auth: AuthSession,
 ) -> AxumResult<impl IntoResponse> {
-    let storage = &state.storage;
     let user = auth.user.ok_or(StatusCode::UNAUTHORIZED)?;
-    let photo = state
-        .photos_repo
-        .get_photo(photo_id, &user.id)
-        .await
-        .map_err(internal_error)?
-        .ok_or(StatusCode::NOT_FOUND)?;
 
-    let target_user_name = (!query.make_public).then_some(user.id);
+    let target_user_name = (!query.make_public).then_some(user.id.clone());
+    let target_folder_name = query.target_folder_name.filter(|s| !s.is_empty());
 
-    let source_path = photo.partial_path();
-    let changed_photo = Photo {
-        id: photo.id(),
-        user_id: target_user_name,
-        name: photo.name,
-        created_at: photo.created_at,
-        file_size: photo.file_size,
-        folder: query.target_folder_name,
-        thumb_hash: photo.thumb_hash,
-        trashed_on: None,
+    let mut changed_photos = move_photos_service(
+        &[photo_id],
+        &user.id,
+        target_user_name,
+        target_folder_name,
+        state,
+    )
+    .await
+    .map_err(internal_error)?;
+
+    let Some(changed_photo) = changed_photos.pop() else {
+        warn!("Failed to move photo");
+        return Ok(StatusCode::INTERNAL_SERVER_ERROR.into_response());
     };
-    let destination_path = changed_photo.partial_path();
 
-    if source_path == destination_path {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            "Source and destination are the same",
-        )
-            .into_response()
-            .into());
+    Ok(Json(changed_photo).into_response())
+}
+
+#[derive(serde::Deserialize)]
+struct MovePhotosQuery {
+    make_public: bool,
+    target_folder_name: Option<String>,
+}
+
+async fn move_photos(
+    State(state): State<AppStateRef>,
+    Query(query): Query<MovePhotosQuery>,
+    auth: AuthSession,
+    Json(photos): Json<Vec<i64>>,
+) -> AxumResult<impl IntoResponse> {
+    let user = auth.user.ok_or(StatusCode::UNAUTHORIZED)?;
+
+    let target_user_name = (!query.make_public).then_some(user.id.clone());
+    let target_folder_name = query.target_folder_name.filter(|s| !s.is_empty());
+
+    let changed_photos = move_photos_service(
+        &photos,
+        &user.id,
+        target_user_name,
+        target_folder_name,
+        state,
+    )
+    .await
+    .map_err(internal_error)?;
+
+    Ok(Json(changed_photos))
+}
+
+async fn move_photos_service(
+    photo_ids: &[i64],
+    user_id: &str,
+    target_user_name: Option<String>,
+    target_folder_name: Option<String>,
+    state: AppStateRef,
+) -> Result<Vec<Photo>, sqlx::Error> {
+    let mut moved_photos = Vec::with_capacity(photo_ids.len());
+
+    // Acquire a connection from the pool
+    let mut conn = state.pool.acquire().await?;
+
+    for photo_id in photo_ids {
+        // Create a separate transaction for each photo
+        let mut tx = conn.begin().await?;
+
+        let Some(mut photo) = PhotosRepository::get_photo_tx(*photo_id, user_id, &mut tx).await?
+        else {
+            continue;
+        };
+        let source_path = photo.partial_path();
+
+        photo.user_id = target_user_name.clone();
+        photo.folder = target_folder_name.clone();
+        let destination_path = photo.partial_path();
+
+        if source_path == destination_path {
+            warn!(
+                "Source and destination are the same: {destination_path}. Photo cannot be moved."
+            );
+            continue;
+        }
+
+        PhotosRepository::update_photo_tx(&photo, &mut tx).await?;
+
+        if let Err(e) = state.storage.move_photo(&source_path, &destination_path) {
+            error!("Failed to move the photo: {e}");
+            continue;
+        }
+
+        if let Err(e) = tx.commit().await {
+            // If the database operation failed for some reason, try to move the image back
+            error!("Failed to commit transaction: {e}");
+            if let Err(e) = state.storage.move_photo(&destination_path, &source_path) {
+                error!("Failed to move the photo back: {e}");
+            }
+            continue;
+        }
+
+        info!("Moved photo from {source_path} to {destination_path}");
+        moved_photos.push(photo);
     }
 
-    info!("Moving photo from {source_path} to {destination_path}");
-
-    storage
-        .move_photo(&source_path, &destination_path)
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed moving the photo: {e}"),
-            )
-        })?;
-
-    state
-        .photos_repo
-        .update_photo(&changed_photo)
-        .await
-        .inspect_err(|e| {
-            error!("Failed to update photo: {e}");
-            // Try to undo the move
-            let _ = storage.move_photo(&destination_path, &source_path);
-        })
-        .map_err(internal_error)?;
-
-    Ok(Json(changed_photo))
+    Ok(moved_photos)
 }
