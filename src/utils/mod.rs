@@ -1,5 +1,6 @@
 use axum::http::StatusCode;
 use axum::response::{ErrorResponse, IntoResponse};
+use tracing::error;
 
 pub mod env_reader;
 pub mod exif;
@@ -12,6 +13,7 @@ pub fn internal_error<E>(err: E) -> ErrorResponse
 where
     E: std::error::Error,
 {
+    error!("Internal error occurred: {err:?}");
     ErrorResponse::from((StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response())
 }
 

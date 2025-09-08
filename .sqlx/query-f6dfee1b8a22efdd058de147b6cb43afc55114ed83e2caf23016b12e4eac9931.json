@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "select id from photos where (($1 is null and user_id is null) or user_id = $1) and folder = $2 order by created_at desc",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "f6dfee1b8a22efdd058de147b6cb43afc55114ed83e2caf23016b12e4eac9931"
+}
