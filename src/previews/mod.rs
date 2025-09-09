@@ -4,12 +4,13 @@ use tracing::error;
 pub use generate::*;
 
 use crate::http::AppState;
+use crate::repo::PhotosRepo;
 
 mod generate;
 
 pub async fn generate_all_previews(app_state: &AppState) -> Result<(), String> {
     app_state
-        .photos_repo
+        .pool
         .get_all_photos()
         .await
         .map_err(|_| "Could not load photos".to_string())?

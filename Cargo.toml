@@ -32,10 +32,11 @@ serde_with = { version = "3.14", features = ["base64"] }
 walkdir = "2.5"
 mime_guess = "2"
 kamadak-exif = "0.6"
-tempfile = "3.21"
+tempfile = "3.22"
 
 # Utils
 clap = { version = "4.5", features = ["derive", "cargo"] }
+thiserror = "2"
 regex = "1"
 wait-timeout = "0.2"
 time = { version = "0.3", features = ["macros", "parsing", "serde"] }

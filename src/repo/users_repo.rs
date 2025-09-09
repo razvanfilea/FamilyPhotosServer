@@ -2,7 +2,7 @@ use crate::model::user::{User, UserCredentials};
 use crate::utils::password_hash::validate_credentials;
 use argon2::password_hash;
 use axum_login::{AuthnBackend, UserId};
-use sqlx::{Error, SqlitePool, query, query_as};
+use sqlx::{SqlitePool, query, query_as};
 use tokio::task;
 
 #[derive(Clone)]
@@ -22,13 +22,13 @@ impl UsersRepository {
             .ok()?
     }
 
-    pub async fn get_users(&self) -> Result<Vec<User>, Error> {
+    pub async fn get_users(&self) -> sqlx::Result<Vec<User>> {
         query_as!(User, "select * from users")
             .fetch_all(&self.pool)
             .await
     }
 
-    pub async fn insert_user(&self, user: &User) -> Result<(), Error> {
+    pub async fn insert_user(&self, user: &User) -> sqlx::Result<()> {
         query!(
             "insert into users (id, name, password_hash) values ($1, $2, $3)",
             user.id,
@@ -40,7 +40,7 @@ impl UsersRepository {
         .map(|_| ())
     }
 
-    pub async fn delete_user(&self, user_id: &str) -> Result<(), Error> {
+    pub async fn delete_user(&self, user_id: &str) -> sqlx::Result<()> {
         query!("delete from users where id = $1", user_id)
             .execute(&self.pool)
             .await

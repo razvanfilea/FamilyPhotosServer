@@ -1,5 +1,6 @@
 use crate::http::AppStateRef;
 use crate::model::user::User;
+use crate::repo::PhotosRepo;
 use crate::utils::password_hash::{generate_hash_from_password, generate_random_password};
 use crate::{previews, tasks};
 use clap::{Parser, Subcommand};
@@ -116,7 +117,7 @@ async fn user_commands(state: AppStateRef, command: UsersCommand) {
 
             for user in users {
                 let count = state
-                    .photos_repo
+                    .pool
                     .get_photos_by_user(Some(user.id.as_str()))
                     .await
                     .expect("Failed to get photos count")
@@ -148,7 +149,11 @@ async fn user_commands(state: AppStateRef, command: UsersCommand) {
 
 async fn photos_commands(state: AppStateRef, command: PhotosCommand) {
     match command {
-        PhotosCommand::ScanPhotos => tasks::scan_new_files(state).await,
+        PhotosCommand::ScanPhotos => {
+            if let Err(e) = tasks::scan_new_files(state).await {
+                eprintln!("Failed to scan new photos: {}", e);
+            }
+        }
         PhotosCommand::GeneratePreviews => match previews::generate_all_previews(state).await {
             Ok(_) => println!("Preview generation finished"),
             Err(e) => eprintln!("Preview generation failed: {e}"),

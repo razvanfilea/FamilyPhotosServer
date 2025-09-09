@@ -10,24 +10,25 @@ use walkdir::{DirEntry, WalkDir};
 use crate::http::AppStateRef;
 use crate::model::photo::Photo;
 use crate::model::user::PUBLIC_USER_FOLDER;
+use crate::repo::{PhotosRepo, PhotosTransactionRepo};
 use crate::tasks::timestamp_parsing;
 
-pub async fn scan_new_files(app_state: AppStateRef) {
+pub async fn scan_new_files(app_state: AppStateRef) -> sqlx::Result<()> {
     let instant = Instant::now();
     let mut users: Vec<_> = app_state
         .users_repo
         .get_users()
-        .await
-        .expect("Could not load users")
+        .await?
         .into_iter()
         .map(|user| Some(user.id))
         .collect();
 
-    users.push(None);
+    users.push(None); // Scan the public folder
 
     for user_id in users {
-        let existing_photos: Vec<Photo> = app_state
-            .photos_repo
+        let mut tx = app_state.pool.begin().await?;
+
+        let existing_photos: Vec<Photo> = tx
             .get_photos_by_user(user_id.as_deref())
             .await
             .expect("Failed to get user photos");
@@ -40,25 +41,29 @@ pub async fn scan_new_files(app_state: AppStateRef) {
 
         if !removed_photo_ids.is_empty() {
             for chunk in removed_photo_ids.chunks(1024) {
-                if let Err(e) = app_state.photos_repo.delete_photos(chunk).await {
-                    error!("Failed deleting photos: {}", e.to_string())
+                if let Err(e) = tx.delete_photos(chunk).await {
+                    error!("Failed deleting photos: {e}")
                 }
             }
         }
 
         if !new_photos.is_empty() {
             for chunk in new_photos.chunks(1024) {
-                if let Err(e) = app_state.photos_repo.insert_photos(chunk).await {
+                if let Err(e) = tx.insert_photos(chunk).await {
                     error!("Failed inserting photos: {e}")
                 }
             }
         }
+
+        tx.commit().await?;
     }
 
     info!(
         "Photos scanning completed in {} seconds",
         instant.elapsed().as_secs()
     );
+
+    Ok(())
 }
 
 fn scan_user_photos(

@@ -1,7 +1,3 @@
-use crate::repo::event_log::EventLogRepository;
-use crate::repo::favorites_repo::FavoritesRepository;
-use crate::repo::photos_hash_repo::PhotosHashRepository;
-use crate::repo::photos_repo::PhotosRepository;
 use crate::repo::users_repo::UsersRepository;
 use crate::utils::storage_resolver::StorageResolver;
 use axum::Router;
@@ -51,10 +47,6 @@ pub struct AppState {
     pub storage: StorageResolver,
     pub pool: SqlitePool,
     pub users_repo: UsersRepository,
-    pub photos_repo: PhotosRepository,
-    pub favorites_repo: FavoritesRepository,
-    pub photo_hash_repo: PhotosHashRepository,
-    pub event_log_repo: EventLogRepository,
 }
 
 impl AppState {
@@ -62,10 +54,6 @@ impl AppState {
         Self {
             storage,
             users_repo: UsersRepository::new(pool.clone()),
-            photos_repo: PhotosRepository::new(pool.clone()),
-            favorites_repo: FavoritesRepository::new(pool.clone()),
-            photo_hash_repo: PhotosHashRepository::new(pool.clone()),
-            event_log_repo: EventLogRepository::new(pool.clone()),
             pool,
         }
     }
