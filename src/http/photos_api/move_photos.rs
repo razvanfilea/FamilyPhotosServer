@@ -2,7 +2,7 @@ use crate::http::AppStateRef;
 use crate::http::utils::{AuthSession, AxumResult};
 use crate::model::photo::Photo;
 use crate::model::user::PUBLIC_USER_FOLDER;
-use crate::repo::photos_repo::PhotosRepository;
+use crate::repo::{PhotosRepo, PhotosTransactionRepo};
 use crate::utils::internal_error;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
@@ -39,7 +39,7 @@ async fn move_folder(
     let target_folder_name = query.target_folder_name.filter(|s| !s.is_empty());
 
     let photos_to_move = state
-        .photos_repo
+        .pool
         .get_photo_ids_in_folder(source_user_name, &query.source_folder_name)
         .await
         .map_err(internal_error)?;
@@ -147,8 +147,7 @@ async fn move_photos_service(
         // Create a separate transaction for each photo
         let mut tx = conn.begin().await?;
 
-        let Some(mut photo) = PhotosRepository::get_photo_tx(*photo_id, user_id, &mut tx).await?
-        else {
+        let Some(mut photo) = tx.get_photo(*photo_id, user_id).await? else {
             continue;
         };
         let source_path = photo.partial_path();
@@ -164,7 +163,7 @@ async fn move_photos_service(
             continue;
         }
 
-        PhotosRepository::update_photo_tx(&photo, &mut tx).await?;
+        tx.update_photo(&photo).await?;
 
         if let Err(e) = state.storage.move_photo(&source_path, &destination_path) {
             error!("Failed to move the photo: {e}");

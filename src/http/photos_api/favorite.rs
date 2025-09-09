@@ -1,5 +1,6 @@
 use crate::http::AppStateRef;
 use crate::http::utils::{AuthSession, AxumResult};
+use crate::repo::{FavoritesRepo, PhotosRepo};
 use crate::utils::internal_error;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
@@ -22,7 +23,7 @@ async fn get_favorites(
 
     Ok(Json(
         state
-            .favorites_repo
+            .pool
             .get_favorite_photos(user.id.as_str())
             .await
             .map_err(internal_error)?,
@@ -35,18 +36,18 @@ async fn add_favorite(
     auth_session: AuthSession,
 ) -> AxumResult<impl IntoResponse> {
     let user = auth_session.user.ok_or(StatusCode::UNAUTHORIZED)?;
-    state
-        .photos_repo
-        .get_photo(photo_id, &user.id)
+    let mut tx = state.pool.begin().await.map_err(internal_error)?;
+
+    tx.get_photo(photo_id, &user.id)
         .await
         .map_err(internal_error)?
         .ok_or(StatusCode::NOT_FOUND)?;
 
-    state
-        .favorites_repo
-        .insert_favorite(photo_id, user.id)
+    tx.insert_favorite(photo_id, &user.id)
         .await
-        .map_err(internal_error)
+        .map_err(internal_error)?;
+
+    tx.commit().await.map_err(internal_error)
 }
 
 async fn delete_favorite(
@@ -55,16 +56,16 @@ async fn delete_favorite(
     auth_session: AuthSession,
 ) -> AxumResult<impl IntoResponse> {
     let user = auth_session.user.ok_or(StatusCode::UNAUTHORIZED)?;
-    state
-        .photos_repo
-        .get_photo(photo_id, &user.id)
+    let mut tx = state.pool.begin().await.map_err(internal_error)?;
+
+    tx.get_photo(photo_id, &user.id)
         .await
         .map_err(internal_error)?
         .ok_or(StatusCode::NOT_FOUND)?;
 
-    state
-        .favorites_repo
-        .delete_favorite(photo_id, user.id)
+    tx.delete_favorite(photo_id, &user.id)
         .await
-        .map_err(internal_error)
+        .map_err(internal_error)?;
+
+    tx.commit().await.map_err(internal_error)
 }

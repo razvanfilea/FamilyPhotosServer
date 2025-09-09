@@ -12,6 +12,8 @@ use std::time::Duration;
 use tracing::{debug, error, info};
 
 use crate::http::AppStateRef;
+use crate::repo::event_log::EventLogRepo;
+use crate::repo::{PhotosRepo, PhotosTransactionRepo};
 pub use crate::tasks::hash::compute_photos_hash;
 use crate::tasks::thumb_hash::generate_thumb_hashes;
 use crate::tasks::trash::cleanup_trash;
@@ -42,8 +44,8 @@ pub fn start_periodic_tasks(
         loop {
             interval.tick().await;
 
-            if scan_new_files {
-                file_scan::scan_new_files(app_state).await;
+            if scan_new_files && let Err(e) = file_scan::scan_new_files(app_state).await {
+                error!("Failed to scan new photos: {}", e);
             }
 
             if let Err(e) = resolve_duplicates_db_entry(app_state).await {
@@ -74,28 +76,29 @@ pub fn start_periodic_tasks(
         }
     });
 }
+
 async fn resolve_duplicates_db_entry(app_state: AppStateRef) -> Result<(), sqlx::Error> {
     debug!("Started resolving duplicates");
 
-    let photos = app_state
-        .photos_repo
-        .get_photos_with_same_location()
-        .await?;
+    let mut tx = app_state.pool.begin().await?;
+    let photos = tx.get_photos_with_same_location().await?;
 
     for photo in photos {
         info!(
             "Removing duplicate DB entry with path: {}",
             photo.partial_path()
         );
-        app_state.photos_repo.delete_photo(&photo).await?;
+        tx.delete_photo(&photo).await?;
     }
+
+    tx.commit().await?;
 
     Ok(())
 }
 
 async fn delete_invalid_photo_previews(app_state: AppStateRef) -> Result<(), sqlx::Error> {
     let photos: HashSet<i64> = app_state
-        .photos_repo
+        .pool
         .get_all_photos()
         .await?
         .into_iter()
@@ -126,7 +129,7 @@ async fn delete_old_event_logs(app_state: AppStateRef) -> Result<(), sqlx::Error
     const MAX_EVENT_LONG_ROWS_TO_KEEP: u32 = 512;
 
     app_state
-        .event_log_repo
+        .pool
         .delete_old_events(MAX_EVENT_LONG_ROWS_TO_KEEP)
         .await
 }

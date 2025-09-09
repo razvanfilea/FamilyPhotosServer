@@ -19,6 +19,7 @@ use crate::http::AppStateRef;
 use crate::http::utils::{AuthSession, AxumResult, file_to_response, write_field_to_file};
 use crate::model::photo::Photo;
 use crate::previews;
+use crate::repo::{PhotosHashRepo, PhotosRepo, PhotosTransactionRepo};
 use crate::utils::exif::read_exif;
 use crate::utils::internal_error;
 use time::serde::timestamp;
@@ -45,7 +46,7 @@ async fn get_duplicates(
     let user = auth.user.ok_or(StatusCode::UNAUTHORIZED)?;
 
     let photos = state
-        .photo_hash_repo
+        .pool
         .get_duplicates_for_user(user.id.as_str())
         .await
         .map_err(internal_error)?;
@@ -60,9 +61,9 @@ async fn preview_photo(
 ) -> impl IntoResponse {
     let user = auth.user.ok_or(StatusCode::UNAUTHORIZED)?;
     let storage = &state.storage;
-    let photos_repo = &state.photos_repo;
 
-    let photo = photos_repo
+    let photo = state
+        .pool
         .get_photo(photo_id, &user.id)
         .await
         .map_err(internal_error)?
@@ -105,7 +106,7 @@ async fn download_photo(
 ) -> impl IntoResponse {
     let user = auth.user.ok_or(StatusCode::UNAUTHORIZED)?;
     let photo = state
-        .photos_repo
+        .pool
         .get_photo(photo_id, &user.id)
         .await
         .map_err(internal_error)?
@@ -123,7 +124,7 @@ async fn get_photo_exif(
 ) -> AxumResult<impl IntoResponse> {
     let user = auth.user.ok_or(StatusCode::UNAUTHORIZED)?;
     let photo = state
-        .photos_repo
+        .pool
         .get_photo(photo_id, &user.id)
         .await
         .map_err(internal_error)?
@@ -171,8 +172,8 @@ async fn upload_photo(
 
     let written_file = write_field_to_file(field).await?;
 
-    let photo = state
-        .photo_hash_repo
+    let mut tx = state.pool.begin().await.map_err(internal_error)?;
+    let photo = tx
         .get_photo_with_hash(&written_file.hash, photo_user_id.as_deref())
         .await
         .map_err(internal_error)?;
@@ -185,7 +186,7 @@ async fn upload_photo(
         return Ok(Json(photo));
     }
 
-    let mut new_photo = Photo {
+    let mut photo = Photo {
         id: 0,
         user_id: photo_user_id,
         name: file_name,
@@ -196,7 +197,7 @@ async fn upload_photo(
         trashed_on: None,
     };
 
-    let mut photo_path = state.storage.resolve_photo(new_photo.partial_path());
+    let mut photo_path = state.storage.resolve_photo(photo.partial_path());
     if let Some(parent) = photo_path.parent()
         && !parent.exists()
     {
@@ -205,7 +206,7 @@ async fn upload_photo(
 
     // If the file exists, generate a random name
     if photo_path.exists() {
-        new_photo.name = format!(
+        photo.name = format!(
             "{}.{}",
             uuid::Uuid::new_v4(),
             photo_path
@@ -213,24 +214,27 @@ async fn upload_photo(
                 .map(|str| str.to_string_lossy().to_string())
                 .unwrap_or_default()
         );
-        photo_path = state.storage.resolve_photo(new_photo.partial_path());
+        photo_path = state.storage.resolve_photo(photo.partial_path());
     }
 
     info!("Uploading file to {}", photo_path.display());
+
+    let photo = tx.insert_photo(&photo).await.map_err(internal_error)?;
 
     written_file.persist_to(&photo_path).await.map_err(|e| {
         error!("Failed to move temporary file to final location: {e}");
         (StatusCode::INTERNAL_SERVER_ERROR, "Failed to save file")
     })?;
 
-    match state.photos_repo.insert_photo(&new_photo).await {
-        Ok(photo) => Ok(Json(photo)),
-        Err(e) => {
-            // Insertion failed, delete the file
-            let _ = fs::remove_file(photo_path).await;
-            Err(internal_error(e))
-        }
-    }
+    tx.commit()
+        .await
+        .inspect_err(|_| {
+            // Transaction failed, delete the file
+            let _ = std::fs::remove_file(photo_path);
+        })
+        .map_err(internal_error)?;
+
+    Ok(Json(photo))
 }
 
 async fn delete_photo(
@@ -239,8 +243,9 @@ async fn delete_photo(
     auth: AuthSession,
 ) -> AxumResult<impl IntoResponse> {
     let user = auth.user.ok_or(StatusCode::UNAUTHORIZED)?;
-    let photo = state
-        .photos_repo
+    let mut tx = state.pool.begin().await.map_err(internal_error)?;
+
+    let photo = tx
         .get_photo(photo_id, &user.id)
         .await
         .map_err(internal_error)?
@@ -262,11 +267,9 @@ async fn delete_photo(
         warn!("No such file exists at {}", photo_path.display());
     }
 
-    state
-        .photos_repo
-        .delete_photo(&photo)
-        .await
-        .map_err(internal_error)?;
+    tx.delete_photo(&photo).await.map_err(internal_error)?;
+
+    tx.commit().await.map_err(internal_error)?;
 
     Ok(())
 }

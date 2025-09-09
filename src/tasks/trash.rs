@@ -1,14 +1,12 @@
 use crate::http::AppStateRef;
+use crate::repo::{PhotosRepo, PhotosTransactionRepo};
 use tokio::fs;
 use tracing::{error, info, warn};
 
 pub async fn cleanup_trash(app_state: AppStateRef) -> Result<(), sqlx::Error> {
-    for photo in app_state
-        .photos_repo
-        .get_expired_trash_photos()
-        .await?
-        .iter()
-    {
+    let mut tx = app_state.pool.begin().await?;
+
+    for photo in tx.get_expired_trash_photos().await?.iter() {
         let _ = fs::remove_file(
             app_state
                 .storage
@@ -28,8 +26,8 @@ pub async fn cleanup_trash(app_state: AppStateRef) -> Result<(), sqlx::Error> {
             warn!("No such file exists at {}", display_path);
         }
 
-        app_state.photos_repo.delete_photo(photo).await?;
+        tx.delete_photo(photo).await?;
     }
 
-    Ok(())
+    tx.commit().await
 }

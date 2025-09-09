@@ -1,6 +1,6 @@
 use crate::http::AppStateRef;
 use crate::http::utils::{AuthSession, AxumResult};
-use crate::repo::event_log::UserEventLogError;
+use crate::repo::{PhotosTransactionRepo, UserEventLogError};
 use crate::utils::internal_error;
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
@@ -21,9 +21,9 @@ async fn full_photos_list(
     auth: AuthSession,
 ) -> AxumResult<impl IntoResponse> {
     let user = auth.user.ok_or(StatusCode::UNAUTHORIZED)?;
+    let mut tx = state.pool.begin().await.map_err(internal_error)?;
 
-    let photos = state
-        .photos_repo
+    let photos = tx
         .get_photos_by_user_and_public(user.id.as_str())
         .await
         .map_err(internal_error)?;
@@ -40,23 +40,24 @@ async fn partial_photos_list(
     State(state): State<AppStateRef>,
     auth: AuthSession,
     Query(query): Query<PartialPhotosListQuery>,
-) -> Result<impl IntoResponse, StatusCode> {
+) -> AxumResult<impl IntoResponse> {
     let user = auth.user.ok_or(StatusCode::UNAUTHORIZED)?;
     let last_synced_event_id = query.last_synced_event_id;
 
-    let events = state
-        .event_log_repo
+    let mut tx = state.pool.begin().await.map_err(internal_error)?;
+
+    let events = tx
         .get_events_for_user(last_synced_event_id, user.id.as_str())
         .await;
 
     match events {
-        Ok(events) => Ok(Json(events)),
+        Ok(events) => Ok(Json(events).into_response()),
         Err(UserEventLogError::NoEvents | UserEventLogError::InvalidEventId) => {
-            Err(StatusCode::CONFLICT)
+            Ok(StatusCode::CONFLICT.into_response())
         }
         Err(UserEventLogError::Database(err)) => {
             error!("Database error: {}", err);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
+            Ok(StatusCode::INTERNAL_SERVER_ERROR.into_response())
         }
     }
 }

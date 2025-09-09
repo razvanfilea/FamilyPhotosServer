@@ -1,32 +1,24 @@
 use crate::model::photo::Photo;
 use crate::model::photo_hash::PhotoHash;
-use sqlx::{QueryBuilder, Sqlite, SqlitePool, query, query_as};
+use sqlx::{QueryBuilder, Sqlite, SqliteExecutor, query, query_as};
 use std::num::ParseIntError;
 
-pub struct PhotosHashRepository {
-    pool: SqlitePool,
-}
-
-impl PhotosHashRepository {
-    pub fn new(pool: SqlitePool) -> Self {
-        Self { pool }
-    }
-
-    pub async fn get_photos_without_hash(&self) -> Result<Vec<Photo>, sqlx::Error> {
+pub trait PhotosHashRepo<'c>: SqliteExecutor<'c> {
+    async fn get_photos_without_hash(self) -> sqlx::Result<Vec<Photo>> {
         query_as!(
             Photo,
             "select p.* from photos p left join photos_hash e on p.id = e.photo_id
              where e.hash is null and p.trashed_on is null"
         )
-        .fetch_all(&self.pool)
+        .fetch_all(self)
         .await
     }
 
-    pub async fn get_photo_with_hash(
-        &self,
+    async fn get_photo_with_hash(
+        self,
         hash: &[u8],
         user_id: Option<&str>,
-    ) -> Result<Option<Photo>, sqlx::Error> {
+    ) -> sqlx::Result<Option<Photo>> {
         query_as!(
             Photo,
             "select p.* from photos p left join photos_hash e on p.id = e.photo_id
@@ -34,14 +26,11 @@ impl PhotosHashRepository {
             hash,
             user_id
         )
-        .fetch_optional(&self.pool)
+        .fetch_optional(self)
         .await
     }
 
-    pub async fn get_duplicates_for_user(
-        &self,
-        user_id: &str,
-    ) -> Result<Vec<Vec<i64>>, sqlx::Error> {
+    async fn get_duplicates_for_user(self, user_id: &str) -> sqlx::Result<Vec<Vec<i64>>> {
         query!(
             "select group_concat(h.photo_id) as 'ids!: String' from photos_hash h
             join photos p on p.id = h.photo_id
@@ -57,11 +46,11 @@ impl PhotosHashRepository {
                 .collect::<Result<Vec<_>, ParseIntError>>()
                 .expect("Photo id must be a valid i64")
         })
-        .fetch_all(&self.pool)
+        .fetch_all(self)
         .await
     }
 
-    pub async fn insert_hashes(&self, photos: &[PhotoHash]) -> Result<(), sqlx::Error> {
+    async fn insert_hashes(self, photos: &[PhotoHash]) -> sqlx::Result<()> {
         if photos.is_empty() {
             return Ok(());
         }
@@ -71,8 +60,10 @@ impl PhotosHashRepository {
                 b.push_bind(photo.id).push_bind(&photo.hash);
             })
             .build()
-            .execute(&self.pool)
+            .execute(self)
             .await
             .map(|_| {})
     }
 }
+
+impl<'c, E> PhotosHashRepo<'c> for E where E: SqliteExecutor<'c> {}
