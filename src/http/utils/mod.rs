@@ -1,34 +1,26 @@
+use crate::http::error::{HttpError, HttpResult};
+use crate::repo::users_repo::UsersRepository;
+use crate::utils::crop_blake_3_hash;
 use axum::body::Body;
 use axum::extract::multipart;
-use axum::http::{StatusCode, header};
+use axum::http::header;
 use axum::response::IntoResponse;
 use std::io::{BufWriter, Write};
 use tempfile::NamedTempFile;
 use tokio::fs;
 use tokio_util::io::ReaderStream;
-use tracing::error;
-
-use crate::repo::users_repo::UsersRepository;
-use crate::utils::{crop_blake_3_hash, internal_error};
-
-pub type AxumResult<T> = axum::response::Result<T>;
 
 pub type AuthSession = axum_login::AuthSession<UsersRepository>;
 
 pub async fn file_to_response(
     photo_path: &std::path::Path,
-) -> AxumResult<impl IntoResponse + use<>> {
+) -> HttpResult<impl IntoResponse + use<>> {
     let mime = mime_guess::from_path(photo_path)
         .first_or_octet_stream()
         .as_ref()
         .to_string();
 
-    let stream = ReaderStream::new(fs::File::open(&photo_path).await.map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Failed to open file: {e}"),
-        )
-    })?);
+    let stream = ReaderStream::new(fs::File::open(&photo_path).await?);
     // convert the `Stream` into an `axum::body::HttpBody`
     let body = Body::from_stream(stream);
 
@@ -79,28 +71,25 @@ impl WrittenFile {
 ///
 /// Returns the number of bytes written to disk
 ///
-pub async fn write_field_to_file(mut field: multipart::Field<'_>) -> AxumResult<WrittenFile> {
-    let mut temp_file = NamedTempFile::new().map_err(|e| {
-        error!("Failed creating photo file: {e}");
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Failed creating photo file",
-        )
-    })?;
-
+pub async fn write_field_to_file(mut field: multipart::Field<'_>) -> HttpResult<WrittenFile> {
+    let mut temp_file = NamedTempFile::new()?;
     let mut digest = blake3::Hasher::new();
 
     let mut writer = BufWriter::new(temp_file.as_file_mut());
     let mut written_bytes = 0;
 
-    while let Some(chunk) = field.chunk().await? {
+    while let Some(chunk) = field
+        .chunk()
+        .await
+        .map_err(|e| HttpError::AnyError(Box::new(e)))?
+    {
         // TODO Figure out how to make this function async free or async friendly
         written_bytes += chunk.len();
-        writer.write_all(&chunk).map_err(internal_error)?;
+        writer.write_all(&chunk)?;
         digest.update(&chunk);
     }
 
-    writer.flush().map_err(internal_error)?;
+    writer.flush()?;
     drop(writer);
 
     let hash = digest.finalize();

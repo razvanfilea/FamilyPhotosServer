@@ -1,9 +1,9 @@
 use crate::http::AppStateRef;
-use crate::http::utils::{AuthSession, AxumResult};
+use crate::http::error::{HttpError, HttpResult};
+use crate::http::utils::AuthSession;
 use crate::model::photo::Photo;
 use crate::model::user::PUBLIC_USER_FOLDER;
 use crate::repo::{PhotosRepo, PhotosTransactionRepo};
-use crate::utils::internal_error;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
@@ -30,8 +30,8 @@ async fn move_folder(
     State(state): State<AppStateRef>,
     Query(query): Query<RenameFolderQuery>,
     auth: AuthSession,
-) -> AxumResult<impl IntoResponse> {
-    let user = auth.user.ok_or(StatusCode::UNAUTHORIZED)?;
+) -> HttpResult<impl IntoResponse> {
+    let user = auth.user.ok_or(HttpError::Unauthorized)?;
 
     let source_user_name = (!query.source_is_public).then_some(user.id.as_str());
     let target_user_name = (!query.target_make_public).then_some(user.id.as_str());
@@ -41,8 +41,7 @@ async fn move_folder(
     let photos_to_move = state
         .pool
         .get_photo_ids_in_folder(source_user_name, &query.source_folder_name)
-        .await
-        .map_err(internal_error)?;
+        .await?;
 
     info!(
         "Moving folder \"{}/{}\" to \"{}/{}\" with {} items",
@@ -60,8 +59,7 @@ async fn move_folder(
         target_folder_name,
         state,
     )
-    .await
-    .map_err(internal_error)?;
+    .await?;
 
     Ok(Json(moved_photos))
 }
@@ -77,8 +75,8 @@ async fn move_photo(
     Path(photo_id): Path<i64>,
     Query(query): Query<MovePhotoQuery>,
     auth: AuthSession,
-) -> AxumResult<impl IntoResponse> {
-    let user = auth.user.ok_or(StatusCode::UNAUTHORIZED)?;
+) -> HttpResult<impl IntoResponse> {
+    let user = auth.user.ok_or(HttpError::Unauthorized)?;
 
     let target_user_name = (!query.make_public).then_some(user.id.clone());
     let target_folder_name = query.target_folder_name.filter(|s| !s.is_empty());
@@ -90,8 +88,7 @@ async fn move_photo(
         target_folder_name,
         state,
     )
-    .await
-    .map_err(internal_error)?;
+    .await?;
 
     let Some(changed_photo) = changed_photos.pop() else {
         warn!("Failed to move photo");
@@ -112,8 +109,8 @@ async fn move_photos(
     Query(query): Query<MovePhotosQuery>,
     auth: AuthSession,
     Json(photos): Json<Vec<i64>>,
-) -> AxumResult<impl IntoResponse> {
-    let user = auth.user.ok_or(StatusCode::UNAUTHORIZED)?;
+) -> HttpResult<impl IntoResponse> {
+    let user = auth.user.ok_or(HttpError::Unauthorized)?;
 
     let target_user_name = (!query.make_public).then_some(user.id.clone());
     let target_folder_name = query.target_folder_name.filter(|s| !s.is_empty());
@@ -125,8 +122,7 @@ async fn move_photos(
         target_folder_name,
         state,
     )
-    .await
-    .map_err(internal_error)?;
+    .await?;
 
     Ok(Json(changed_photos))
 }

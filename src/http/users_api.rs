@@ -1,11 +1,11 @@
+use crate::http::error::{HttpError, HttpResult};
+use crate::http::utils::AuthSession;
+use crate::model::user::{SimpleUser, UserCredentials};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{Form, Json, Router};
-use tracing::{debug, error};
-
-use crate::http::utils::{AuthSession, AxumResult};
-use crate::model::user::{SimpleUser, UserCredentials};
+use tracing::{debug, error, warn};
 
 pub fn router() -> Router {
     Router::new()
@@ -25,26 +25,20 @@ async fn profile(auth_session: AuthSession) -> impl IntoResponse {
 async fn login(
     mut auth: AuthSession,
     Form(login_user): Form<UserCredentials>,
-) -> AxumResult<impl IntoResponse> {
+) -> HttpResult<impl IntoResponse> {
     let valid_user = auth.authenticate(login_user).await.map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Failed to validate credentials: {e}"),
-        )
+        error!("Failed to authenticate: {e:?}");
+        HttpError::Internal("Failed to validate credentials".to_string())
     })?;
 
-    let user = match valid_user {
-        None => {
-            return Err((StatusCode::UNAUTHORIZED, "Wrong user name or password")
-                .into_response()
-                .into());
-        }
-        Some(user) => user,
+    let Some(user) = valid_user else {
+        warn!("Wrong credentials");
+        return Err(HttpError::Unauthorized);
     };
 
     auth.login(&user).await.map_err(|e| {
-        error!("Failed to login user with {}: {}", user.id, e);
-        (StatusCode::INTERNAL_SERVER_ERROR, "Failed to login")
+        error!("Failed to login user `{}`: {}", user.id, e);
+        HttpError::Internal("Failed to login".to_string())
     })?;
 
     Ok(Json(SimpleUser::from(user)))
