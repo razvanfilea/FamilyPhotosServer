@@ -1,9 +1,8 @@
 use crate::http::AppStateRef;
-use crate::http::utils::{AuthSession, AxumResult};
+use crate::http::error::{HttpError, HttpResult};
+use crate::http::utils::AuthSession;
 use crate::repo::{FavoritesRepo, PhotosRepo};
-use crate::utils::internal_error;
 use axum::extract::{Path, State};
-use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::routing::{delete, get, post};
 use axum::{Json, Router};
@@ -18,15 +17,11 @@ pub fn router() -> Router<AppStateRef> {
 async fn get_favorites(
     State(state): State<AppStateRef>,
     auth_session: AuthSession,
-) -> AxumResult<impl IntoResponse> {
-    let user = auth_session.user.ok_or(StatusCode::UNAUTHORIZED)?;
+) -> HttpResult<impl IntoResponse> {
+    let user = auth_session.user.ok_or(HttpError::Unauthorized)?;
 
     Ok(Json(
-        state
-            .pool
-            .get_favorite_photos(user.id.as_str())
-            .await
-            .map_err(internal_error)?,
+        state.pool.get_favorite_photos(user.id.as_str()).await?,
     ))
 }
 
@@ -34,38 +29,36 @@ async fn add_favorite(
     State(state): State<AppStateRef>,
     Path(photo_id): Path<i64>,
     auth_session: AuthSession,
-) -> AxumResult<impl IntoResponse> {
-    let user = auth_session.user.ok_or(StatusCode::UNAUTHORIZED)?;
-    let mut tx = state.pool.begin().await.map_err(internal_error)?;
+) -> HttpResult<impl IntoResponse> {
+    let user = auth_session.user.ok_or(HttpError::Unauthorized)?;
+    let mut tx = state.pool.begin().await?;
 
     tx.get_photo(photo_id, &user.id)
-        .await
-        .map_err(internal_error)?
-        .ok_or(StatusCode::NOT_FOUND)?;
+        .await?
+        .ok_or(HttpError::NotFound)?;
 
-    tx.insert_favorite(photo_id, &user.id)
-        .await
-        .map_err(internal_error)?;
+    tx.insert_favorite(photo_id, &user.id).await?;
 
-    tx.commit().await.map_err(internal_error)
+    tx.commit().await?;
+
+    Ok(())
 }
 
 async fn delete_favorite(
     State(state): State<AppStateRef>,
     Path(photo_id): Path<i64>,
     auth_session: AuthSession,
-) -> AxumResult<impl IntoResponse> {
-    let user = auth_session.user.ok_or(StatusCode::UNAUTHORIZED)?;
-    let mut tx = state.pool.begin().await.map_err(internal_error)?;
+) -> HttpResult<impl IntoResponse> {
+    let user = auth_session.user.ok_or(HttpError::Unauthorized)?;
+    let mut tx = state.pool.begin().await?;
 
     tx.get_photo(photo_id, &user.id)
-        .await
-        .map_err(internal_error)?
-        .ok_or(StatusCode::NOT_FOUND)?;
+        .await?
+        .ok_or(HttpError::NotFound)?;
 
-    tx.delete_favorite(photo_id, &user.id)
-        .await
-        .map_err(internal_error)?;
+    tx.delete_favorite(photo_id, &user.id).await?;
 
-    tx.commit().await.map_err(internal_error)
+    tx.commit().await?;
+
+    Ok(())
 }
