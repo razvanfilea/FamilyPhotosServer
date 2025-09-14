@@ -29,6 +29,7 @@ pub fn router(app_state: AppStateRef) -> Router {
         .nest("/sync", sync::router())
         .nest("/move", move_photos::router())
         .nest("/trash", trash::router())
+        .route("/timestamp/{photo_id}", post(update_timestamp))
         .route("/duplicates", get(get_duplicates))
         .route("/download/{photo_id}", get(download_photo))
         .route("/preview/{photo_id}", get(preview_photo))
@@ -37,6 +38,35 @@ pub fn router(app_state: AppStateRef) -> Router {
         .route("/delete/{photo_id}", delete(delete_photo))
         .nest("/favorite", favorite::router())
         .with_state(app_state)
+}
+
+#[derive(serde::Deserialize)]
+struct UpdateTimeQuery {
+    #[serde(with = "timestamp")]
+    time_created: OffsetDateTime,
+}
+
+async fn update_timestamp(
+    State(state): State<AppStateRef>,
+    Path(photo_id): Path<i64>,
+    Query(query): Query<UpdateTimeQuery>,
+    auth: AuthSession,
+) -> HttpResult<impl IntoResponse> {
+    let user = auth.user.ok_or(HttpError::Unauthorized)?;
+    let mut tx = state.pool.begin().await?;
+
+    let mut photo = tx
+        .get_photo(photo_id, &user.id)
+        .await?
+        .ok_or(HttpError::NotFound)?;
+
+    photo.created_at = query.time_created;
+
+    tx.update_photo(&photo).await?;
+
+    tx.commit().await?;
+
+    Ok(Json(photo))
 }
 
 async fn get_duplicates(
