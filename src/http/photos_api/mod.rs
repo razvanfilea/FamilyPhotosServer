@@ -11,6 +11,8 @@ use axum::{
     response::IntoResponse,
     routing::{delete, get, post},
 };
+use sqlx::__rt::timeout;
+use std::time::Duration;
 use time::OffsetDateTime;
 use tokio::{fs, task};
 use tracing::{error, info, warn};
@@ -96,6 +98,12 @@ async fn preview_photo(
 
     let photo_path = storage.resolve_photo(photo.partial_path());
     let preview_path = storage.resolve_preview(photo.partial_preview_path());
+
+    let preview_generation_mutex =
+        timeout(Duration::from_secs(3), state.preview_generation.lock()).await;
+    if preview_generation_mutex.is_err() {
+        return file_to_response(&photo_path).await;
+    }
 
     let preview_generated = if !preview_path.exists() {
         let photo_path_clone = photo_path.clone();

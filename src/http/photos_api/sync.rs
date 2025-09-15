@@ -12,7 +12,8 @@ use serde::Deserialize;
 pub fn router() -> Router<AppStateRef> {
     Router::new()
         .route("/full", get(full_photos_list))
-        .route("/changes", get(partial_photos_list))
+        .route("/partial", get(partial_photos_list))
+        .route("/changes", get(partial_photos_list)) // TODO: Remove
 }
 
 async fn full_photos_list(

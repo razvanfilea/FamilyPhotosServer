@@ -16,8 +16,15 @@ pub trait PhotosRepo<'c>: SqliteExecutor<'c> {
         .await
     }
 
-    async fn get_all_photos(self) -> sqlx::Result<Vec<Photo>> {
-        query_as!(Photo, "select * from photos order by created_at desc")
+    async fn get_photo_without_check(self, id: i64) -> sqlx::Result<Option<Photo>> {
+        query_as!(Photo, "select * from photos where id = $1", id)
+            .fetch_optional(self)
+            .await
+    }
+
+    async fn get_all_photo_ids(self) -> sqlx::Result<Vec<i64>> {
+        query!("select id from photos")
+            .map(|record| record.id)
             .fetch_all(self)
             .await
     }

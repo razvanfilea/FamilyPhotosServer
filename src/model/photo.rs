@@ -39,7 +39,7 @@ impl Photo {
     }
 
     pub fn partial_preview_path(&self) -> String {
-        format!("{}.jpg", self.id)
+        Self::construct_partial_preview_path(self.id)
     }
 
     pub fn construct_full_name(name: &str, folder: Option<&str>) -> String {
@@ -50,6 +50,10 @@ impl Photo {
         }
 
         name.to_string()
+    }
+
+    pub fn construct_partial_preview_path(photo_id: i64) -> String {
+        format!("{}.jpg", photo_id)
     }
 }
 

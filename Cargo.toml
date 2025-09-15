@@ -6,7 +6,7 @@ edition = "2024"
 
 [dependencies]
 # Async/Multithreading
-tokio = { version = "1", features = ["rt-multi-thread", "fs", "io-std", "macros", "signal"] }
+tokio = { version = "1", features = ["rt-multi-thread", "time", "fs", "io-std", "macros", "signal"] }
 tokio-util = { version = "0.7", features = ["io"] }
 rayon = "1.11"
 

@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "select id from photos",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "9a6b85813d640c5043630c72264ff753c54d60698a5038982cbae6a2e5a30109"
+}
