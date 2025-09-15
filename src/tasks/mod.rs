@@ -12,6 +12,7 @@ use std::time::Duration;
 use tracing::{debug, error, info};
 
 use crate::http::AppStateRef;
+use crate::previews::generate_all_previews;
 use crate::repo::event_log::EventLogRepo;
 use crate::repo::{PhotosRepo, PhotosTransactionRepo};
 pub use crate::tasks::hash::compute_photos_hash;
@@ -52,16 +53,20 @@ pub fn start_periodic_tasks(
                 error!("Failed to resolve db duplicates: {e}");
             }
 
-            if let Err(e) = delete_invalid_photo_previews(app_state).await {
-                error!("Failed to delete invalid photo previews: {e}");
-            }
-
             if let Err(e) = compute_photos_hash(app_state).await {
                 error!("Failed to compute hashes: {e}");
             }
 
             if let Err(e) = cleanup_trash(app_state).await {
                 error!("Failed to cleanup trash: {e}");
+            }
+
+            if let Err(e) = delete_invalid_photo_previews(app_state).await {
+                error!("Failed to delete invalid photo previews: {e}");
+            }
+
+            if let Err(e) = generate_all_previews(app_state).await {
+                error!("Failed to generate all previews: {e}");
             }
 
             // Thumb hash generation is based upon preview generation
@@ -99,10 +104,9 @@ async fn resolve_duplicates_db_entry(app_state: AppStateRef) -> Result<(), sqlx:
 async fn delete_invalid_photo_previews(app_state: AppStateRef) -> Result<(), sqlx::Error> {
     let photos: HashSet<i64> = app_state
         .pool
-        .get_all_photos()
+        .get_all_photo_ids()
         .await?
         .into_iter()
-        .map(|p| p.id)
         .collect();
 
     let count = walkdir::WalkDir::new(&app_state.storage.preview_folder)

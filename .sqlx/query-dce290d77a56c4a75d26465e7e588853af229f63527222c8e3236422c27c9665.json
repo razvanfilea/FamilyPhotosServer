@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "select * from photos order by created_at desc",
+  "query": "select * from photos where id = $1",
   "describe": {
     "columns": [
       {
@@ -45,7 +45,7 @@
       }
     ],
     "parameters": {
-      "Right": 0
+      "Right": 1
     },
     "nullable": [
       false,
@@ -58,5 +58,5 @@
       true
     ]
   },
-  "hash": "3d95cb60f1dc4e0005583cc3c9d14e553fb90146b405e667ea684512819824b8"
+  "hash": "dce290d77a56c4a75d26465e7e588853af229f63527222c8e3236422c27c9665"
 }

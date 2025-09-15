@@ -8,6 +8,7 @@ use axum_login::{AuthManagerLayerBuilder, login_required};
 use sqlx::SqlitePool;
 use time::Duration;
 use tokio::signal;
+use tokio::sync::Mutex;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 use tower_http::{cors, trace};
@@ -48,6 +49,7 @@ pub struct AppState {
     pub storage: StorageResolver,
     pub pool: SqlitePool,
     pub users_repo: UsersRepository,
+    pub preview_generation: Mutex<()>,
 }
 
 impl AppState {
@@ -56,6 +58,7 @@ impl AppState {
             storage,
             users_repo: UsersRepository::new(pool.clone()),
             pool,
+            preview_generation: Mutex::new(()),
         }
     }
 }

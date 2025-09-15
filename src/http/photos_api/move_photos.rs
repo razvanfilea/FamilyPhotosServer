@@ -16,7 +16,7 @@ pub fn router() -> Router<AppStateRef> {
     Router::new()
         .route("/folder", post(move_folder))
         .route("/photos", post(move_photos))
-        .route("/{photo_id}", post(move_photo))
+        .route("/{photo_id}", post(move_photo)) // TODO: Remove
 }
 #[derive(serde::Deserialize)]
 struct RenameFolderQuery {
@@ -133,7 +133,7 @@ async fn move_photos_service(
     target_user_name: Option<String>,
     target_folder_name: Option<String>,
     state: AppStateRef,
-) -> Result<Vec<Photo>, sqlx::Error> {
+) -> sqlx::Result<Vec<Photo>> {
     let mut moved_photos = Vec::with_capacity(photo_ids.len());
 
     // Acquire a connection from the pool

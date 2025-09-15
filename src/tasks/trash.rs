@@ -7,12 +7,15 @@ pub async fn cleanup_trash(app_state: AppStateRef) -> Result<(), sqlx::Error> {
     let mut tx = app_state.pool.begin().await?;
 
     for photo in tx.get_expired_trash_photos().await?.iter() {
-        let _ = fs::remove_file(
+        if let Err(e) = fs::remove_file(
             app_state
                 .storage
                 .resolve_preview(photo.partial_preview_path()),
         )
-        .await;
+        .await
+        {
+            warn!("Failed to remove photo preview: {e}");
+        }
 
         let photo_path = app_state.storage.resolve_photo(photo.partial_path());
         let display_path = photo_path.display();
