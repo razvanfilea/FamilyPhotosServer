@@ -55,7 +55,7 @@ jobs:
     - name: Build Release
       run: cargo build --release --verbose --target $TARGET
     - name: Upload Build Artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: familyphotos-${{ matrix.TARGET }}
         path: target/${{ matrix.TARGET }}/release/familyphotos
