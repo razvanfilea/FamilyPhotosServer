@@ -1,7 +1,7 @@
 use crate::http::AppStateRef;
 use crate::model::user::User;
 use crate::repo::PhotosRepo;
-use crate::utils::password_hash::{generate_hash_from_password, generate_random_password};
+use crate::utils::password_hash::generate_hash_from_password;
 use crate::{previews, tasks};
 use clap::{Parser, Subcommand};
 
@@ -33,8 +33,8 @@ enum UsersCommand {
         /// The name visible to the user
         name: String,
         #[arg(short, long)]
-        /// Random password will be generated if not provided
-        password: Option<String>,
+        /// User's password
+        password: String,
     },
     /// List all users and their respective photo count
     List,
@@ -85,19 +85,18 @@ async fn user_commands(state: AppStateRef, command: UsersCommand) {
             name,
             password,
         } => {
-            let final_password = &password.unwrap_or_else(generate_random_password);
             let user = User {
                 id: user_id,
                 name,
-                password_hash: generate_hash_from_password(final_password),
+                password_hash: generate_hash_from_password(password),
             };
 
             let user_result = state.users_repo.insert_user(&user).await;
 
             match user_result {
                 Ok(_) => println!(
-                    "User created with user name=\"{}\", name=\"{}\", password=\"{}\"",
-                    user.id, user.name, final_password
+                    "User created with user name=\"{}\", name=\"{}\"",
+                    user.id, user.name
                 ),
                 _ => eprintln!("Error creating user"),
             }

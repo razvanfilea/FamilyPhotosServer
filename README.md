@@ -55,7 +55,7 @@ Variables in bold **must** be specified.
 To create new user accounts, run the following command using the CLI:<br>
 
 ```shell
-familyphotos user create -u <user_name> -d <display_name> [-p <password>]
+familyphotos user create -u <user_name> -d <display_name> -p <password>
 ```
 
 This will generate a new user with the given username, display name and password or a random one if not provided.<br>
