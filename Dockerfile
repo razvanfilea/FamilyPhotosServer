@@ -1,6 +1,6 @@
 ARG TARGET_ARCH=x86_64-unknown-linux-musl
 
-FROM rust:1.91-alpine AS base
+FROM rust:1.93-alpine AS base
 ARG TARGET_ARCH
 USER root
 
@@ -29,7 +29,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=$SCCACHE_DIR,sharing=locked \
     cargo build --release --target $TARGET_ARCH
 
-FROM alpine:3.22
+FROM alpine:3.23
 
 ARG TARGET_ARCH
 

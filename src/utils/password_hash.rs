@@ -1,27 +1,11 @@
-use argon2::password_hash::SaltString;
+use argon2::password_hash::phc::SaltString;
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier, password_hash};
-use rand::Rng;
-use rand::rngs::OsRng;
-
-pub fn generate_random_password() -> String {
-    let mut rng = rand::rng();
-    let mut password = String::new();
-    password.reserve(15);
-
-    for _ in 0..15 {
-        let random_char: u8 = rng.random_range(35..=122);
-        password.push(random_char as char);
-    }
-
-    password
-}
 
 pub fn generate_hash_from_password<T: AsRef<str>>(password: T) -> String {
-    let mut rng = OsRng;
-    let salt = SaltString::try_from_rng(&mut rng).expect("Failed to generate salt for password");
+    let salt = SaltString::generate();
 
     Argon2::default()
-        .hash_password(password.as_ref().as_bytes(), &salt)
+        .hash_password_with_salt(password.as_ref().as_bytes(), salt.as_bytes())
         .expect("Failed to hash password")
         .to_string()
 }
