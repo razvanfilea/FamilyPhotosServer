@@ -12,6 +12,7 @@ rayon = "1.11"
 
 # Axum
 axum = { version = "0.8.1", features = ["multipart"] }
+axum-extra = { version = "0.12", default-features = false, features = ["typed-header"] }
 tower-http = { version = "0.6", features = ["trace", "cors"] }
 axum-login = "0.18"
 tower-sessions-sqlx-store = { version = "0.15.0", features = ["sqlite"] }

@@ -24,6 +24,8 @@ use crate::model::photo::Photo;
 use crate::previews;
 use crate::repo::{PhotosHashRepo, PhotosRepo, PhotosTransactionRepo};
 use crate::utils::exif::read_exif;
+use axum_extra::TypedHeader;
+use axum_extra::headers::Range;
 use time::serde::timestamp;
 
 pub fn router(app_state: AppStateRef) -> Router {
@@ -85,6 +87,7 @@ async fn get_duplicates(
 async fn preview_photo(
     State(state): State<AppStateRef>,
     Path(photo_id): Path<i64>,
+    range: Option<TypedHeader<Range>>,
     auth: AuthSession,
 ) -> HttpResult<impl IntoResponse> {
     let user = auth.user.ok_or(HttpError::Unauthorized)?;
@@ -102,7 +105,7 @@ async fn preview_photo(
     let preview_generation_mutex =
         timeout(Duration::from_secs(3), state.preview_generation.lock()).await;
     if preview_generation_mutex.is_err() {
-        return file_to_response(&photo_path).await;
+        return file_to_response(&photo_path, range).await;
     }
 
     let preview_generated = if !preview_path.exists() {
@@ -129,12 +132,13 @@ async fn preview_photo(
         }
     };
 
-    file_to_response(&path).await
+    file_to_response(&path, range).await
 }
 
 async fn download_photo(
     State(state): State<AppStateRef>,
     Path(photo_id): Path<i64>,
+    range: Option<TypedHeader<Range>>,
     auth: AuthSession,
 ) -> HttpResult<impl IntoResponse> {
     let user = auth.user.ok_or(HttpError::Unauthorized)?;
@@ -146,7 +150,7 @@ async fn download_photo(
 
     let photo_path = state.storage.resolve_photo(photo.partial_path());
 
-    file_to_response(&photo_path).await
+    file_to_response(&photo_path, range).await
 }
 
 async fn get_photo_exif(
