@@ -30,6 +30,7 @@ pub struct EnvVariables {
     pub previews_path: PathBuf,
     pub scan_new_files: bool,
     pub background_threads_count: usize,
+    pub allowed_origins: Vec<String>,
 }
 
 impl EnvVariables {
@@ -54,8 +55,12 @@ impl EnvVariables {
             .unwrap_or_else(|_| storage_path.join(".familyphotos.db"));
 
         if database_url.exists() && !database_url.is_file() {
-            return Err("DATABASE_URL must be a directory!".to_string());
+            return Err("DATABASE_URL must be a file!".to_string());
         }
+
+        let allowed_origins = std::env::var("ALLOWED_ORIGINS")
+            .map(|s| s.split(',').map(|s| s.trim().to_string()).collect())
+            .unwrap_or_default();
 
         Ok(Self {
             server_port: required_env_var("SERVER_PORT")?
@@ -66,6 +71,7 @@ impl EnvVariables {
             previews_path,
             scan_new_files: optional_env_var("SCAN_NEW_FILES", true),
             background_threads_count: optional_env_var("BACKGROUND_THREADS_COUNT", 0),
+            allowed_origins,
         })
     }
 }

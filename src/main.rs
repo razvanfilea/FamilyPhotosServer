@@ -92,7 +92,8 @@ async fn main() {
         vars.background_threads_count,
     );
 
-    let http_service = http::router(app_state, session_store).into_make_service();
+    let http_service =
+        http::router(app_state, session_store, vars.allowed_origins).into_make_service();
     let addr = SocketAddr::from(([0, 0, 0, 0], vars.server_port));
     let listener = TcpListener::bind(addr)
         .await
