@@ -108,7 +108,12 @@ async fn preview_photo(
         return file_to_response(&photo_path, range).await;
     }
 
-    let preview_generated = if !preview_path.exists() {
+    let needs_generation = match tokio::fs::metadata(&preview_path).await {
+        Ok(m) => m.len() < previews::MIN_PREVIEW_SIZE,
+        Err(_) => true,
+    };
+
+    let preview_generated = if needs_generation {
         let photo_path_clone = photo_path.clone();
         let preview_path_clone = preview_path.clone();
 

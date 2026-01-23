@@ -1,4 +1,5 @@
 use rayon::prelude::*;
+use std::path::Path;
 use tracing::{error, info};
 
 pub use generate::*;
@@ -9,15 +10,22 @@ use crate::repo::PhotosRepo;
 
 mod generate;
 
+/// Returns true if preview exists and has valid size
+pub fn is_valid_preview(path: &Path) -> bool {
+    std::fs::metadata(path)
+        .map(|m| m.len() >= MIN_PREVIEW_SIZE)
+        .unwrap_or(false)
+}
+
 pub async fn generate_all_previews(app_state: &AppState) -> sqlx::Result<()> {
     let _ = app_state.preview_generation.lock().await;
     let mut tx = app_state.pool.begin().await?;
 
     let missing_previews_ids = tx.get_all_photo_ids().await?.into_iter().filter(|id| {
-        !app_state
+        let preview_path = app_state
             .storage
-            .resolve_preview(Photo::construct_partial_preview_path(*id))
-            .exists()
+            .resolve_preview(Photo::construct_partial_preview_path(*id));
+        !is_valid_preview(&preview_path)
     });
 
     let mut missing_previews = Vec::with_capacity(128);
@@ -39,8 +47,8 @@ pub async fn generate_all_previews(app_state: &AppState) -> sqlx::Result<()> {
                 .resolve_preview(photo.partial_preview_path());
 
             if photo_path.exists()
-                && !preview_path.exists()
-                && let Err(e) = generate_preview(&photo_path, preview_path)
+                && !is_valid_preview(&preview_path)
+                && let Err(e) = generate_preview(&photo_path, &preview_path)
             {
                 error!(
                     "Preview generation failed: {}\nCause: {e}",

@@ -1,5 +1,5 @@
 use crate::http::AppStateRef;
-use crate::previews::{THUMB_HASH_IMAGE_SIZE, generate_thumb_hash_raw_image};
+use crate::previews::{MIN_PREVIEW_SIZE, THUMB_HASH_IMAGE_SIZE, generate_thumb_hash_raw_image};
 use crate::repo::{PhotosRepo, PhotosTransactionRepo};
 use fast_thumbhash::ThumbHashEncoder;
 use rayon::prelude::*;
@@ -34,16 +34,19 @@ pub async fn generate_thumb_hashes(app_state: AppStateRef) -> Result<(), sqlx::E
                         .preview_folder
                         .join(photo.partial_preview_path());
 
-                    if !preview_path.exists() {
-                        return None;
+                    // Check preview exists and is valid
+                    match std::fs::metadata(&preview_path) {
+                        Ok(m) if m.len() >= MIN_PREVIEW_SIZE => {}
+                        _ => return None,
                     }
 
                     match generate_thumb_image_hash(&mut encoder, &preview_path) {
                         Ok(thumb_hash) => Some((photo.id, thumb_hash)),
                         Err(e) => {
                             error!(
-                                "Failed to generate thumb hash for photo {}: {}",
+                                "Failed to generate thumb hash for photo {} ({}): {}",
                                 photo.full_name(),
+                                photo.partial_preview_path(),
                                 e
                             );
                             None
