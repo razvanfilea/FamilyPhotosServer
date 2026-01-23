@@ -4,8 +4,7 @@ use crate::http::utils::AuthSession;
 use crate::model::photo::Photo;
 use crate::model::user::PUBLIC_USER_FOLDER;
 use crate::repo::{PhotosRepo, PhotosTransactionRepo};
-use axum::extract::{Path, Query, State};
-use axum::http::StatusCode;
+use axum::extract::{Query, State};
 use axum::response::IntoResponse;
 use axum::routing::post;
 use axum::{Json, Router};
@@ -16,7 +15,6 @@ pub fn router() -> Router<AppStateRef> {
     Router::new()
         .route("/folder", post(move_folder))
         .route("/photos", post(move_photos))
-        .route("/{photo_id}", post(move_photo)) // TODO: Remove
 }
 #[derive(serde::Deserialize)]
 struct RenameFolderQuery {
@@ -62,40 +60,6 @@ async fn move_folder(
     .await?;
 
     Ok(Json(moved_photos))
-}
-
-#[derive(serde::Deserialize)]
-struct MovePhotoQuery {
-    make_public: bool,
-    target_folder_name: Option<String>,
-}
-
-async fn move_photo(
-    State(state): State<AppStateRef>,
-    Path(photo_id): Path<i64>,
-    Query(query): Query<MovePhotoQuery>,
-    auth: AuthSession,
-) -> HttpResult<impl IntoResponse> {
-    let user = auth.user.ok_or(HttpError::Unauthorized)?;
-
-    let target_user_name = (!query.make_public).then_some(user.id.clone());
-    let target_folder_name = query.target_folder_name.filter(|s| !s.is_empty());
-
-    let mut changed_photos = move_photos_service(
-        &[photo_id],
-        &user.id,
-        target_user_name,
-        target_folder_name,
-        state,
-    )
-    .await?;
-
-    let Some(changed_photo) = changed_photos.pop() else {
-        warn!("Failed to move photo");
-        return Ok(StatusCode::INTERNAL_SERVER_ERROR.into_response());
-    };
-
-    Ok(Json(changed_photo).into_response())
 }
 
 #[derive(serde::Deserialize)]

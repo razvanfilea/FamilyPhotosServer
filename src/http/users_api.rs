@@ -53,5 +53,5 @@ async fn logout(mut auth: AuthSession) -> String {
         }
     }
 
-    "Failed to log out".to_string()
+    "Logged out".to_string()
 }
