@@ -102,6 +102,8 @@ async fn resolve_duplicates_db_entry(app_state: AppStateRef) -> Result<(), sqlx:
 }
 
 async fn delete_invalid_photo_previews(app_state: AppStateRef) -> Result<(), sqlx::Error> {
+    use crate::previews::MIN_PREVIEW_SIZE;
+
     let photos: HashSet<i64> = app_state
         .pool
         .get_all_photo_ids()
@@ -109,21 +111,45 @@ async fn delete_invalid_photo_previews(app_state: AppStateRef) -> Result<(), sql
         .into_iter()
         .collect();
 
-    let count = walkdir::WalkDir::new(&app_state.storage.preview_folder)
+    let mut orphan_count = 0;
+    let mut invalid_count = 0;
+
+    for entry in walkdir::WalkDir::new(&app_state.storage.preview_folder)
         .into_iter()
         .filter_map(|e| e.ok())
-        .filter_map(|entry| {
-            let path = entry.into_path();
-            path.file_stem()
-                .and_then(|s| s.to_string_lossy().parse::<i64>().ok())
-                .map(|id| (path, id))
-        })
-        .filter(|(_, photo_id)| !photos.contains(photo_id))
-        .filter_map(|(path, _)| fs::remove_file(path).ok())
-        .count();
+    {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
 
-    if count != 0 {
-        info!("Deleted {count} invalid photo previews");
+        // Check for 0-byte/invalid files
+        if let Ok(metadata) = fs::metadata(path) {
+            if metadata.len() < MIN_PREVIEW_SIZE {
+                if fs::remove_file(path).is_ok() {
+                    invalid_count += 1;
+                }
+                continue;
+            }
+        }
+
+        // Check for orphaned previews
+        if let Some(stem) = path.file_stem() {
+            if let Ok(photo_id) = stem.to_string_lossy().parse::<i64>() {
+                if !photos.contains(&photo_id) {
+                    if fs::remove_file(path).is_ok() {
+                        orphan_count += 1;
+                    }
+                }
+            }
+        }
+    }
+
+    if orphan_count > 0 || invalid_count > 0 {
+        info!(
+            "Deleted {} orphan and {} invalid photo previews",
+            orphan_count, invalid_count
+        );
     }
 
     Ok(())

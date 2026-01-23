@@ -661,6 +661,7 @@ dependencies = [
  "axum-extra",
  "axum-login",
  "blake3",
+ "bytes",
  "clap",
  "dotenvy",
  "fast-thumbhash",

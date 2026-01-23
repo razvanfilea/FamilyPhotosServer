@@ -7,11 +7,13 @@ use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum_extra::TypedHeader;
 use axum_extra::headers::Range;
+use bytes::Bytes;
 use std::io::{BufWriter, SeekFrom, Write};
 use std::ops::Bound;
 use tempfile::NamedTempFile;
 use tokio::fs;
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
+use tokio::sync::mpsc;
 use tokio_util::io::ReaderStream;
 
 pub type AuthSession = axum_login::AuthSession<UsersRepository>;
@@ -139,18 +141,38 @@ impl WrittenFile {
 /// Returns the number of bytes written to disk
 ///
 pub async fn write_field_to_file(mut field: multipart::Field<'_>) -> HttpResult<WrittenFile> {
-    let mut temp_file = NamedTempFile::new()?;
-    let mut digest = blake3::Hasher::new();
+    let temp_file = NamedTempFile::new()?;
+    let (tx, rx) = mpsc::channel::<Bytes>(8);
 
-    let mut writer = BufWriter::new(temp_file.as_file_mut());
-    let mut written_bytes = 0;
+    let writer_handle = tokio::task::spawn_blocking(move || write_chunks_blocking(temp_file, rx));
 
     while let Some(chunk) = field
         .chunk()
         .await
         .map_err(|e| HttpError::AnyError(Box::new(e)))?
     {
-        // TODO Figure out how to make this function async free or async friendly
+        tx.send(chunk)
+            .await
+            .map_err(|e| HttpError::AnyError(Box::new(e)))?;
+    }
+
+    // Drop sender to signal completion
+    drop(tx);
+
+    writer_handle
+        .await
+        .map_err(|e| HttpError::AnyError(Box::new(e)))?
+}
+
+fn write_chunks_blocking(
+    mut temp_file: NamedTempFile,
+    mut rx: mpsc::Receiver<Bytes>,
+) -> HttpResult<WrittenFile> {
+    let mut writer = BufWriter::new(temp_file.as_file_mut());
+    let mut digest = blake3::Hasher::new();
+    let mut written_bytes = 0;
+
+    while let Some(chunk) = rx.blocking_recv() {
         written_bytes += chunk.len();
         writer.write_all(&chunk)?;
         digest.update(&chunk);

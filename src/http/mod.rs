@@ -2,6 +2,7 @@ use crate::repo::users_repo::UsersRepository;
 use crate::utils::storage_resolver::StorageResolver;
 use axum::Router;
 use axum::extract::DefaultBodyLimit;
+use axum::http::HeaderValue;
 use axum::routing::get;
 use axum_login::tower_sessions::{Expiry, SessionManagerLayer};
 use axum_login::{AuthManagerLayerBuilder, login_required};
@@ -10,6 +11,7 @@ use time::Duration;
 use tokio::signal;
 use tokio::sync::Mutex;
 use tower_http::cors::{AllowOrigin, CorsLayer};
+use tower_http::set_header::SetResponseHeaderLayer;
 use tower_http::trace::TraceLayer;
 use tower_http::{cors, trace};
 use tower_sessions_sqlx_store::SqliteStore;
@@ -51,6 +53,14 @@ pub fn router(
         .route("/", get(|| async { "Hello, World!" }))
         .merge(users_api::router())
         .merge(authenticated_router)
+        .layer(SetResponseHeaderLayer::overriding(
+            axum::http::header::X_FRAME_OPTIONS,
+            HeaderValue::from_static("DENY"),
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            axum::http::header::X_CONTENT_TYPE_OPTIONS,
+            HeaderValue::from_static("nosniff"),
+        ))
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(trace::DefaultMakeSpan::new().level(Level::INFO))
