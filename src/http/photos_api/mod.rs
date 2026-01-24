@@ -1,5 +1,6 @@
 mod favorite;
 mod move_photos;
+mod sharing;
 mod sync;
 mod trash;
 
@@ -22,7 +23,7 @@ use crate::http::error::{HttpError, HttpResult};
 use crate::http::utils::{AuthSession, file_to_response, write_field_to_file};
 use crate::model::photo::Photo;
 use crate::previews;
-use crate::repo::{PhotosHashRepo, PhotosRepo, PhotosTransactionRepo};
+use crate::repo::{FolderPermissionsRepo, PhotosHashRepo, PhotosRepo, PhotosTransactionRepo};
 use crate::utils::exif::read_exif;
 use axum_extra::TypedHeader;
 use axum_extra::headers::Range;
@@ -33,6 +34,7 @@ pub fn router(app_state: AppStateRef) -> Router {
         .nest("/sync", sync::router())
         .nest("/move", move_photos::router())
         .nest("/trash", trash::router())
+        .nest("/sharing", sharing::router())
         .route("/timestamp/{photo_id}", post(update_timestamp))
         .route("/duplicates", get(get_duplicates))
         .route("/download/{photo_id}", get(download_photo))
@@ -96,11 +98,10 @@ async fn preview_photo(
     let user = auth.user.ok_or(HttpError::Unauthorized)?;
     let storage = &state.storage;
 
-    let photo = state
-        .read_pool
-        .get_photo(photo_id, &user.id)
-        .await?
-        .ok_or(HttpError::NotFound)?;
+    let photo = match state.read_pool.get_photo(photo_id, &user.id).await? {
+        Some(photo) => photo,
+        None => get_photo_via_permission(state, photo_id, &user.id).await?,
+    };
 
     let photo_path = storage.resolve_photo(photo.partial_path());
     let preview_path = storage.resolve_preview(photo.partial_preview_path());
@@ -150,11 +151,10 @@ async fn download_photo(
     auth: AuthSession,
 ) -> HttpResult<impl IntoResponse> {
     let user = auth.user.ok_or(HttpError::Unauthorized)?;
-    let photo = state
-        .read_pool
-        .get_photo(photo_id, &user.id)
-        .await?
-        .ok_or(HttpError::NotFound)?;
+    let photo = match state.read_pool.get_photo(photo_id, &user.id).await? {
+        Some(photo) => photo,
+        None => get_photo_via_permission(state, photo_id, &user.id).await?,
+    };
 
     let photo_path = state.storage.resolve_photo(photo.partial_path());
 
@@ -289,6 +289,12 @@ async fn delete_photo(
         .await?
         .ok_or(HttpError::NotFound)?;
 
+    if photo.trashed_on.is_none() {
+        return Err(HttpError::BadRequest(
+            "Only a trashed photo can be permanently deleted".to_string(),
+        ));
+    }
+
     let _ = fs::remove_file(state.storage.resolve_preview(photo.partial_preview_path())).await;
 
     let photo_path = state.storage.resolve_photo(photo.partial_path());
@@ -304,4 +310,31 @@ async fn delete_photo(
     tx.commit().await?;
 
     Ok(())
+}
+
+async fn get_photo_via_permission(
+    state: AppStateRef,
+    photo_id: i64,
+    user_id: &str,
+) -> HttpResult<Photo> {
+    let photo = state
+        .read_pool
+        .get_photo_by_id(photo_id)
+        .await?
+        .ok_or(HttpError::NotFound)?;
+
+    let owner_id = photo.user_id.as_deref().ok_or(HttpError::NotFound)?;
+    let folder_name = photo.folder.as_deref().ok_or(HttpError::NotFound)?;
+
+    let permission = state
+        .read_pool
+        .get_grantee_permission(user_id, owner_id, folder_name)
+        .await?
+        .ok_or(HttpError::NotFound)?;
+
+    if permission.is_expired() {
+        return Err(HttpError::NotFound);
+    }
+
+    Ok(photo)
 }

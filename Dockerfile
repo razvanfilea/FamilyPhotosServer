@@ -30,7 +30,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=$SCCACHE_DIR,sharing=locked \
     cargo build --release --target $TARGET_ARCH
 
-FROM alpine:3.23
+FROM alpine:3.24
 
 ARG TARGET_ARCH
 

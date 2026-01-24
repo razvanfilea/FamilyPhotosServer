@@ -1,0 +1,68 @@
+{
+  "db_name": "SQLite",
+  "query": "select * from folder_permissions where grantee_id = $1 and owner_id = $2 and folder_name = $3",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "owner_id",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "folder_name",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "grantee_id",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "token",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "can_upload",
+        "ordinal": 5,
+        "type_info": "Bool"
+      },
+      {
+        "name": "can_delete",
+        "ordinal": 6,
+        "type_info": "Bool"
+      },
+      {
+        "name": "created_at",
+        "ordinal": 7,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "expires_at",
+        "ordinal": 8,
+        "type_info": "Datetime"
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "1ef521a14cecdd1d40b49ed8c0e6fdd84b887d05b243558759f7c38fda16d876"
+}

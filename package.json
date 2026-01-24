@@ -3,12 +3,13 @@
   "scripts": {
     "dev": "npx @tailwindcss/cli -i templates/input.css -o assets/css/main.css --watch",
     "prod": "npx @tailwindcss/cli -i templates/input.css -o assets/css/main.css --minify",
-    "test": "npx playwright test --config playwright/playwright.config.ts",
-    "test:ui": "npx playwright test --config playwright/playwright.config.ts --ui"
+    "postinstall": "PLAYWRIGHT_BROWSERS_PATH=0 npx playwright install chromium",
+    "test": "PLAYWRIGHT_BROWSERS_PATH=0 npx playwright test --config playwright/playwright.config.ts",
+    "test:ui": "PLAYWRIGHT_BROWSERS_PATH=0 npx playwright test --config playwright/playwright.config.ts --ui"
   },
   "devDependencies": {
-    "daisyui": "5.5.19",
-    "@tailwindcss/cli": "4.2.2",
-    "@playwright/test": "1.59.1"
+    "daisyui": "5.5.23",
+    "@tailwindcss/cli": "4.3.1",
+    "@playwright/test": "1.61.0"
   }
 }
