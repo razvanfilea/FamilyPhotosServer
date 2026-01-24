@@ -2,10 +2,10 @@ use crate::model::event_log::{EventLog, EventLogs};
 use crate::model::photo::{FullPhotosList, Photo};
 use crate::model::photo_category::PhotoCategory;
 use crate::repo::event_log::EventLogRepo;
+use base64::engine::general_purpose::STANDARD;
+use base64::Engine;
 use serde::{Deserialize, Serialize};
-use sqlx::{
-    FromRow, QueryBuilder, Sqlite, SqliteExecutor, SqliteTransaction, query, query_as, query_scalar,
-};
+use sqlx::{query, query_as, query_scalar, FromRow, QueryBuilder, Sqlite, SqliteExecutor, SqliteTransaction};
 use thiserror::Error;
 use time::OffsetDateTime;
 
@@ -117,6 +117,21 @@ pub trait PhotosRepo<'c>: SqliteExecutor<'c> {
                and trashed_on is not null
              order by trashed_on desc",
             user_id
+        )
+        .fetch_all(self)
+        .await
+    }
+
+    async fn get_photos_in_folder(
+        self,
+        user_id: Option<&str>,
+        folder_name: &str,
+    ) -> sqlx::Result<Vec<Photo>> {
+        query_as!(
+            Photo,
+            "SELECT * FROM photos WHERE (($1 IS NULL AND user_id IS NULL) OR user_id = $1) AND folder = $2 ORDER BY created_at DESC",
+            user_id,
+            folder_name
         )
         .fetch_all(self)
         .await
@@ -496,6 +511,30 @@ pub trait PhotosRepo<'c>: SqliteExecutor<'c> {
             .await
         }
     }
+
+    async fn get_photo_by_id(self, photo_id: i64) -> sqlx::Result<Option<Photo>> {
+        query_as!(Photo, "select * from photos where id = $1", photo_id)
+            .fetch_optional(self)
+            .await
+    }
+
+    #[allow(dead_code)] // TODO: used by future token-based public link access
+    async fn get_photo_in_shared_folder(
+        self,
+        photo_id: i64,
+        owner_id: &str,
+        folder_name: &str,
+    ) -> sqlx::Result<Option<Photo>> {
+        query_as!(
+            Photo,
+            "SELECT * FROM photos WHERE id = $1 AND user_id = $2 AND folder = $3",
+            photo_id,
+            owner_id,
+            folder_name
+        )
+        .fetch_optional(self)
+        .await
+    }
 }
 
 impl<'c, E> PhotosRepo<'c> for E where E: SqliteExecutor<'c> {}
@@ -521,7 +560,6 @@ pub trait PhotosTransactionRepo<'c> {
 }
 
 impl<'c> PhotosTransactionRepo<'c> for SqliteTransaction<'c> {
-    // TODO move to a service?
     async fn get_photos_by_user_and_public(
         &mut self,
         user_id: &str,
@@ -564,12 +602,15 @@ impl<'c> PhotosTransactionRepo<'c> for SqliteTransaction<'c> {
             return Err(UserEventLogError::InvalidEventId);
         }
 
-        let event_logs = query_as!(
-            EventLog,
+        let event_logs = query!(
             "select photo_id, data from photos_event_log where event_id > $1 and (user_id = $2 or user_id is null) order by event_id",
             last_event_id,
             user_id,
         )
+            .map(|record| EventLog {
+                photo_id: record.photo_id,
+                data: record.data.map(|bytes| STANDARD.encode(bytes))
+            })
             .fetch_all(self.as_mut())
             .await?;
 

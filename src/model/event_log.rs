@@ -3,7 +3,7 @@ use serde::Serialize;
 #[derive(Debug, Serialize)]
 pub struct EventLog {
     pub photo_id: i64,
-    pub data: Option<Vec<u8>>,
+    pub data: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

@@ -19,6 +19,7 @@ use tracing::{Level, info, warn};
 
 mod auth;
 mod error;
+mod extractors;
 mod pages;
 mod photos_api;
 mod template_into_response;
