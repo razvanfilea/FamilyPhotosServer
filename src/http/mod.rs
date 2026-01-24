@@ -18,7 +18,9 @@ use tower_sessions_sqlx_store::SqliteStore;
 use tracing::{Level, info, warn};
 
 mod error;
+mod extractors;
 mod photos_api;
+mod shared_api;
 mod users_api;
 mod utils;
 
@@ -53,6 +55,7 @@ pub fn router(
         .route("/", get(|| async { "Hello, World!" }))
         .merge(users_api::router())
         .merge(authenticated_router)
+        .nest("/shared", shared_api::router(app_state))
         .layer(SetResponseHeaderLayer::overriding(
             axum::http::header::X_FRAME_OPTIONS,
             HeaderValue::from_static("DENY"),

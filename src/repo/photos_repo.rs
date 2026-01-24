@@ -75,6 +75,38 @@ pub trait PhotosRepo<'c>: SqliteExecutor<'c> {
             .fetch_all(self)
             .await
     }
+
+    async fn get_photos_in_folder(
+        self,
+        user_id: Option<&str>,
+        folder_name: &str,
+    ) -> sqlx::Result<Vec<Photo>> {
+        query_as!(
+            Photo,
+            "SELECT * FROM photos WHERE (($1 IS NULL AND user_id IS NULL) OR user_id = $1) AND folder = $2 ORDER BY created_at DESC",
+            user_id,
+            folder_name
+        )
+        .fetch_all(self)
+        .await
+    }
+
+    async fn get_photo_in_shared_folder(
+        self,
+        photo_id: i64,
+        owner_id: &str,
+        folder_name: &str,
+    ) -> sqlx::Result<Option<Photo>> {
+        query_as!(
+            Photo,
+            "SELECT * FROM photos WHERE id = $1 AND user_id = $2 AND folder = $3",
+            photo_id,
+            owner_id,
+            folder_name
+        )
+        .fetch_optional(self)
+        .await
+    }
 }
 
 impl<'c, E> PhotosRepo<'c> for E where E: SqliteExecutor<'c> {}
@@ -100,7 +132,6 @@ pub trait PhotosTransactionRepo<'c> {
 }
 
 impl<'c> PhotosTransactionRepo<'c> for SqliteTransaction<'c> {
-    // TODO move to a service?
     async fn get_photos_by_user_and_public(
         &mut self,
         user_id: &str,
