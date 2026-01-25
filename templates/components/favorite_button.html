@@ -1,0 +1,20 @@
+<button id="favorite-btn-{{ photo_id }}" class="btn btn-ghost btn-circle"
+        {% if is_favorite %}
+        hx-delete="/photos/favorite/{{ photo_id }}"
+        {% else %}
+        hx-post="/photos/favorite/{{ photo_id }}"
+        {% endif %}
+        hx-target="#favorite-btn-{{ photo_id }}"
+        hx-swap="outerHTML"
+        title="{% if is_favorite %}Remove from favorites{% else %}Add to favorites{% endif %}">
+    <span class="material-symbols-outlined {% if is_favorite %}text-warning{% endif %}"
+          style="font-variation-settings: 'FILL' {% if is_favorite %}1{% else %}0{% endif %};">
+        favorite
+    </span>
+</button>
+
+<div id="photo-card-fav-{{ photo_id }}" class="absolute top-2 right-2" hx-swap-oob="true">
+    {% if is_favorite %}
+    <span class="material-symbols-outlined text-warning" style="font-variation-settings: 'FILL' 1;">favorite</span>
+    {% endif %}
+</div>

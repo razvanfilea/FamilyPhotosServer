@@ -1,0 +1,61 @@
+<div class="relative">
+    <img src="/photos/download/{{ photo.id }}"
+         alt="{{ photo.name }}"
+         class="w-full max-h-[80vh] object-contain bg-black"
+         style='background-image: url("/photos/preview/{{ photo.id }}"); background-size: cover'/>
+
+    <button class="btn btn-circle btn-ghost absolute top-2 right-2"
+            onclick="closePhotoModal()">
+        <span class="material-symbols-outlined">close</span>
+    </button>
+</div>
+
+<div class="p-4 bg-base-200">
+    <div class="flex items-center justify-between">
+        <div>
+            <h3 class="font-semibold text-lg">{{ photo.name }}</h3>
+            {% if let Some(folder) = photo.folder %}
+            <p class="text-sm text-base-content/70">
+                <span class="material-symbols-outlined text-sm align-middle">folder</span>
+                {{ folder }}
+            </p>
+            {% endif %}
+        </div>
+
+        <div class="flex gap-2">
+            <button id="favorite-btn-{{ photo.id }}" class="btn btn-ghost btn-circle"
+                    {% if is_favorite %}
+                    hx-delete="/photos/favorite/{{ photo.id }}"
+                    {% else %}
+                    hx-post="/photos/favorite/{{ photo.id }}"
+                    {% endif %}
+                    hx-target="#favorite-btn-{{ photo.id }}"
+                    hx-swap="outerHTML"
+                    title="{% if is_favorite %}Remove from favorites{% else %}Add to favorites{% endif %}">
+                <span class="material-symbols-outlined {% if is_favorite %}text-warning{% endif %}"
+                      style="font-variation-settings: 'FILL' {% if is_favorite %}1{% else %}0{% endif %};">
+                    favorite
+                </span>
+            </button>
+
+            <a href="/photos/download/{{ photo.id }}" download class="btn btn-ghost btn-circle" title="Download">
+                <span class="material-symbols-outlined">download</span>
+            </a>
+
+            <button class="btn btn-ghost btn-circle text-error"
+                    hx-post="/photos/trash/{{ photo.id }}"
+                    hx-target="#photo-card-{{ photo.id }}"
+                    hx-swap="outerHTML"
+                    hx-confirm="Are you sure you want to delete this photo?"
+                    hx-on::after-request="closePhotoModal();"
+                    title="Move to trash">
+                <span class="material-symbols-outlined">delete</span>
+            </button>
+        </div>
+    </div>
+
+    <div class="mt-4 text-sm text-base-content/70">
+        <p>Created: {{ photo.created_at }}</p>
+        <p>Size: {{ photo.file_size }} bytes</p>
+    </div>
+</div>

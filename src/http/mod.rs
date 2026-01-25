@@ -2,8 +2,7 @@ use crate::repo::users_repo::UsersRepository;
 use crate::utils::storage_resolver::StorageResolver;
 use axum::Router;
 use axum::extract::DefaultBodyLimit;
-use axum::http::HeaderValue;
-use axum::routing::get;
+use axum::http::{HeaderValue, header};
 use axum_login::tower_sessions::{Expiry, SessionManagerLayer};
 use axum_login::{AuthManagerLayerBuilder, login_required};
 use sqlx::SqlitePool;
@@ -11,6 +10,7 @@ use time::Duration;
 use tokio::signal;
 use tokio::sync::Mutex;
 use tower_http::cors::{AllowOrigin, CorsLayer};
+use tower_http::services::ServeDir;
 use tower_http::set_header::SetResponseHeaderLayer;
 use tower_http::trace::TraceLayer;
 use tower_http::{cors, trace};
@@ -18,7 +18,9 @@ use tower_sessions_sqlx_store::SqliteStore;
 use tracing::{Level, info, warn};
 
 mod error;
+mod pages;
 mod photos_api;
+mod template_into_response;
 mod users_api;
 mod utils;
 
@@ -50,15 +52,16 @@ pub fn router(
     };
 
     Router::new()
-        .route("/", get(|| async { "Hello, World!" }))
+        .merge(pages::router(app_state))
         .merge(users_api::router())
         .merge(authenticated_router)
+        .nest_service("/assets", ServeDir::new("assets"))
         .layer(SetResponseHeaderLayer::overriding(
-            axum::http::header::X_FRAME_OPTIONS,
+            header::X_FRAME_OPTIONS,
             HeaderValue::from_static("DENY"),
         ))
         .layer(SetResponseHeaderLayer::overriding(
-            axum::http::header::X_CONTENT_TYPE_OPTIONS,
+            header::X_CONTENT_TYPE_OPTIONS,
             HeaderValue::from_static("nosniff"),
         ))
         .layer(
@@ -79,6 +82,8 @@ pub struct AppState {
 }
 
 impl AppState {
+    pub const CSS_VERSION: &str = env!("CSS_VERSION");
+
     pub fn new(pool: SqlitePool, storage: StorageResolver) -> Self {
         Self {
             storage,
