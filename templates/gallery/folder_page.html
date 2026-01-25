@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block title %}{{ current_folder.as_deref().unwrap_or("Folder") }} - Family Photos{% endblock %}
+
+{% block page_title %}{{ current_folder.as_deref().unwrap_or("Folder") }}{% endblock %}
+
+{% block content %}
+{% if groups.is_empty() %}
+<div class="flex flex-col items-center justify-center min-h-[60vh] gap-6">
+    <span class="material-symbols-outlined text-8xl text-base-content/30">folder_open</span>
+    <p class="text-xl text-base-content/70">This folder is empty</p>
+    <a href="/" class="btn btn-primary">
+        <span class="material-symbols-outlined">arrow_back</span>
+        Back to All Photos
+    </a>
+</div>
+{% else %}
+<div class="photo-grid">
+    {% for group in groups %}
+    {% if group.show_header %}
+    {% include "components/month_header.html" %}
+    {% endif %}
+    {% for photo in group.photos %}
+    {% include "components/photo_card.html" %}
+    {% endfor %}
+    {% endfor %}
+    {% if has_more %}
+    {% if let Some(cursor) = next_cursor %}
+    <div id="load-more-sentinel"
+         class="col-span-full py-8 flex justify-center"
+         hx-get="/folder/{{ current_folder.as_deref().unwrap_or("") }}/more?cursor={{ cursor }}{% if let Some(month) = last_month %}&last_month={{ month }}{% endif %}"
+         hx-trigger="revealed"
+         hx-swap="outerHTML">
+        <span class="loading loading-spinner loading-lg text-primary"></span>
+    </div>
+    {% endif %}
+    {% endif %}
+</div>
+{% endif %}
+{% endblock %}

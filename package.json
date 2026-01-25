@@ -1,0 +1,11 @@
+{
+  "name": "familyphotos",
+  "scripts": {
+    "dev": "npx @tailwindcss/cli -i templates/input.css -o assets/css/main.css --watch",
+    "prod": "npx @tailwindcss/cli -i templates/input.css -o assets/css/main.css --minify"
+  },
+  "devDependencies": {
+    "daisyui": "5.5.14",
+    "@tailwindcss/cli": "4.1.18"
+  }
+}

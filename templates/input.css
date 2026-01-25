@@ -1,0 +1,44 @@
+@import 'tailwindcss';
+
+@plugin "daisyui" {
+    themes: dim --default, light;
+}
+
+/*
+  The default border color has changed to `currentColor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
+*/
+@layer base {
+    *,
+    ::after,
+    ::before,
+    ::backdrop,
+    ::file-selector-button {
+        border-color: var(--color-gray-200, currentColor);
+    }
+}
+
+@layer components {
+    .photo-card {
+        @apply aspect-square rounded-lg overflow-hidden cursor-pointer bg-base-300 relative;
+        @apply hover:ring-2 hover:ring-primary transition-all duration-200;
+    }
+
+    .photo-card img {
+        @apply w-full h-full object-cover;
+    }
+
+    .photo-grid {
+        @apply grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2;
+    }
+
+    .htmx-indicator {
+        display: none;
+    }
+
+    .htmx-request .htmx-indicator,
+    .htmx-request.htmx-indicator {
+        display: flex;
+    }
+}

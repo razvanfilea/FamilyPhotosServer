@@ -1,0 +1,77 @@
+<li>
+    <a href="/">
+        <span class="material-symbols-outlined">photo_library</span>
+        All Photos
+    </a>
+</li>
+
+<li>
+    <a href="/favorites">
+        <span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">favorite</span>
+        Favorites
+    </a>
+</li>
+
+<li>
+    <a href="/upload">
+        <span class="material-symbols-outlined">cloud_upload</span>
+        Upload
+    </a>
+</li>
+
+{% if !personal_folders.is_empty() %}
+<li class="menu-title mt-4">
+    <span>Personal Folders</span>
+</li>
+{% for folder in personal_folders %}
+<li>
+    <a href="/folder/{{ folder|urlencode }}">
+        <span class="material-symbols-outlined">folder</span>
+        {{ folder }}
+    </a>
+</li>
+{% endfor %}
+{% endif %}
+
+{% if !family_folders.is_empty() %}
+<li class="menu-title mt-4">
+    <span>Family Folders</span>
+</li>
+{% for folder in family_folders %}
+<li>
+    <a href="/folder/{{ folder|urlencode }}">
+        <span class="material-symbols-outlined">folder</span>
+        {{ folder }}
+    </a>
+</li>
+{% endfor %}
+{% endif %}
+
+<div class="flex-grow"></div>
+
+<li>
+    <a href="/trash">
+        <span class="material-symbols-outlined">delete</span>
+        Trash
+    </a>
+</li>
+
+<li>
+    <form action="/api/logout" method="post">
+        <button type="submit" class="w-full flex items-center gap-2">
+            <span class="material-symbols-outlined">logout</span>
+            Logout
+        </button>
+    </form>
+</li>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const path = decodeURIComponent(window.location.pathname);
+    document.querySelectorAll('.menu a[href]').forEach(link => {
+        if (decodeURIComponent(link.getAttribute('href')) === path) {
+            link.classList.add('active');
+        }
+    });
+});
+</script>

@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dim">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <meta name="description" content="Family Photos">
+
+    <script src="https://unpkg.com/htmx.org@2.0.7/dist/htmx.min.js"></script>
+    <script src="/assets/js/thumbhash.js"></script>
+
+    <link rel="apple-touch-icon" sizes="180x180" href="/assets/fav/apple-touch-icon.png"/>
+    <link rel="icon" type="image/png" sizes="32x32" href="/assets/fav/favicon-32x32.png"/>
+    <link rel="icon" type="image/ico" sizes="16x16" href="/assets/fav/favicon.ico"/>
+
+    <link rel="stylesheet" href="/assets/css/main.css?v={{ crate::http::AppState::CSS_VERSION }}">
+    <link rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0"/>
+
+    <title>{% block title %}Family Photos{% endblock %}</title>
+</head>
+<body>
+<div class="drawer lg:drawer-open">
+    <input id="drawer-sidebar" type="checkbox" class="drawer-toggle"/>
+    <div class="drawer-content flex flex-col min-h-screen">
+        <header class="w-full navbar bg-base-300">
+            <div class="flex-none">
+                <label for="drawer-sidebar" aria-label="open sidebar" class="btn btn-square btn-ghost lg:hidden">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                         class="inline-block size-6 stroke-current">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                              d="M4 6h16M4 12h16M4 18h16"></path>
+                    </svg>
+                </label>
+            </div>
+            <div class="flex-1 px-2 mx-2 text-xl font-semibold">{% block page_title %}Family Photos{% endblock %}</div>
+            <div class="flex-none">
+                {% block nav_menu %}{% endblock %}
+            </div>
+        </header>
+
+        <main id="content" class="flex-1 p-4">
+            {% block content %}<p>Placeholder content</p>{% endblock %}
+        </main>
+    </div>
+
+    <nav class="drawer-side lg:transition-none z-50">
+        <label for="drawer-sidebar" aria-label="close sidebar" class="drawer-overlay"></label>
+        <ul class="menu menu-lg py-4 w-72 min-h-full bg-base-200 text-base-content gap-1">
+            <li class="menu-title flex flex-row items-center gap-2 mb-4">
+                <span class="material-symbols-outlined text-primary">photo_library</span>
+                <span class="text-xl font-bold">Family Photos</span>
+            </li>
+
+            {% block sidebar_content %}
+            {% include "components/sidebar.html" %}
+            {% endblock %}
+        </ul>
+    </nav>
+
+    <div class="toast toast-bottom toast-end z-[9999]">
+        <div id="errors-list" class="flex flex-col gap-4">
+        </div>
+    </div>
+</div>
+
+<dialog id="photo_modal" class="modal">
+    <div id="photo_modal_content" class="modal-box w-11/12 max-w-5xl p-0 overflow-hidden">
+    </div>
+    <form method="dialog" class="modal-backdrop">
+        <button>close</button>
+    </form>
+</dialog>
+
+<script>
+    document.addEventListener("htmx:confirm", function (e) {
+        if (!e.detail.target.hasAttribute('hx-confirm') && !e.detail.elt.hasAttribute('hx-confirm')) return
+
+        e.preventDefault()
+
+        const dialog = document.getElementById('confirm_dialog');
+        const prompt = document.getElementById('confirm_dialog_prompt');
+        const accept_button = document.getElementById('confirm_dialog_accept');
+
+        prompt.textContent = e.detail.question;
+        accept_button.onclick = () => {
+            e.detail.issueRequest(true);
+            dialog.close();
+        };
+        dialog.showModal();
+    })
+
+    function openPhotoModal() {
+        document.getElementById('photo_modal').showModal();
+    }
+
+    function closePhotoModal() {
+        document.getElementById('photo_modal').close();
+    }
+</script>
+
+<dialog id="confirm_dialog" class="modal">
+    <div class="modal-box">
+        <h3 class="text-lg font-bold mb-4">Confirm Action</h3>
+
+        <p id="confirm_dialog_prompt"></p>
+
+        <div class="modal-action grid grid-cols-2">
+            <button class="btn" onclick="confirm_dialog.close()">
+                Cancel
+            </button>
+
+            <button id="confirm_dialog_accept" class="btn btn-primary">
+                OK
+            </button>
+        </div>
+    </div>
+    <form method="dialog" class="modal-backdrop">
+        <button>close</button>
+    </form>
+</dialog>
+</body>
+</html>

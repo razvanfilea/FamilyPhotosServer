@@ -1,0 +1,33 @@
+{% if groups.is_empty() %}
+<div class="flex flex-col items-center justify-center min-h-[60vh] gap-6">
+    <span class="material-symbols-outlined text-8xl text-base-content/30">photo_library</span>
+    <p class="text-xl text-base-content/70">No photos yet</p>
+    <p class="text-base-content/50">Upload some photos to get started</p>
+</div>
+{% else %}
+<div class="photo-grid">
+    {% for group in groups %}
+    {% if group.show_header %}
+    {% include "components/month_header.html" %}
+    {% endif %}
+    {% for photo in group.photos %}
+    {% include "components/photo_card.html" %}
+    {% endfor %}
+    {% endfor %}
+    {% let load_more_url = "/gallery/more" %}
+    {% let category = Some(current_category) %}
+    {% include "components/load_more_trigger.html" %}
+</div>
+{% endif %}
+
+<script>
+// Update active tabs after HTMX swap
+(function() {
+    const params = new URLSearchParams(window.location.search);
+    const category = params.get('category') || 'all';
+    document.querySelectorAll('.tabs .tab').forEach(tab => {
+        const tabCategory = new URL(tab.getAttribute('hx-get'), window.location.origin).searchParams.get('category');
+        tab.classList.toggle('tab-active', tabCategory === category);
+    });
+})();
+</script>

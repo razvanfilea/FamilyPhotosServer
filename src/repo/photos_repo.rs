@@ -1,8 +1,24 @@
 use crate::model::event_log::{EventLog, EventLogs};
 use crate::model::photo::{FullPhotosList, Photo};
 use crate::repo::event_log::EventLogRepo;
+use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, QueryBuilder, Sqlite, SqliteExecutor, SqliteTransaction, query, query_as};
 use thiserror::Error;
+use time::OffsetDateTime;
+
+/// Cursor for cursor-based pagination of photos
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PhotoCursor {
+    pub created_at: OffsetDateTime,
+    pub id: i64,
+}
+
+/// Result of a paginated photo query
+pub struct PaginatedPhotos {
+    pub photos: Vec<Photo>,
+    pub next_cursor: Option<PhotoCursor>,
+    pub has_more: bool,
+}
 
 pub trait PhotosRepo<'c>: SqliteExecutor<'c> {
     async fn get_photo(self, id: i64, user_id: &str) -> sqlx::Result<Option<Photo>> {
@@ -97,6 +113,31 @@ pub trait PhotosTransactionRepo<'c> {
     async fn update_thumb_hashes(&mut self, photos: &[(i64, Vec<u8>)]) -> sqlx::Result<()>;
     async fn delete_photo(&mut self, photo: &Photo) -> sqlx::Result<u64>;
     async fn delete_photos(&mut self, photo_ids: &[i64]) -> sqlx::Result<u64>;
+
+    // Paginated queries
+    async fn get_photos_paginated(
+        &mut self,
+        user_id: &str,
+        personal_only: bool,
+        family_only: bool,
+        cursor: Option<&PhotoCursor>,
+        limit: i64,
+    ) -> sqlx::Result<PaginatedPhotos>;
+
+    async fn get_folder_photos_paginated(
+        &mut self,
+        user_id: &str,
+        folder_name: &str,
+        cursor: Option<&PhotoCursor>,
+        limit: i64,
+    ) -> sqlx::Result<PaginatedPhotos>;
+
+    async fn get_favorite_photos_paginated(
+        &mut self,
+        user_id: &str,
+        cursor: Option<&PhotoCursor>,
+        limit: i64,
+    ) -> sqlx::Result<PaginatedPhotos>;
 }
 
 impl<'c> PhotosTransactionRepo<'c> for SqliteTransaction<'c> {
@@ -284,6 +325,170 @@ impl<'c> PhotosTransactionRepo<'c> for SqliteTransaction<'c> {
 
         Ok(rows_deleted)
     }
+
+    async fn get_photos_paginated(
+        &mut self,
+        user_id: &str,
+        personal_only: bool,
+        family_only: bool,
+        cursor: Option<&PhotoCursor>,
+        limit: i64,
+    ) -> sqlx::Result<PaginatedPhotos> {
+        // Fetch one extra to determine if there are more results
+        let fetch_limit = limit + 1;
+
+        let photos = if let Some(cursor) = cursor {
+            query_as!(
+                Photo,
+                r#"SELECT * FROM photos
+                WHERE (user_id IS NULL OR user_id = $1)
+                  AND trashed_on IS NULL
+                  AND (($5 = 0 AND $6 = 0) OR ($5 = 1 AND user_id = $1) OR ($6 = 1 AND user_id IS NULL))
+                  AND (created_at < $2 OR (created_at = $2 AND id < $3))
+                ORDER BY created_at DESC, id DESC
+                LIMIT $4"#,
+                user_id,
+                cursor.created_at,
+                cursor.id,
+                fetch_limit,
+                personal_only,
+                family_only
+            )
+            .fetch_all(self.as_mut())
+            .await?
+        } else {
+            query_as!(
+                Photo,
+                r#"SELECT * FROM photos
+                WHERE (user_id IS NULL OR user_id = $1)
+                  AND trashed_on IS NULL
+                  AND (($3 = 0 AND $4 = 0) OR ($3 = 1 AND user_id = $1) OR ($4 = 1 AND user_id IS NULL))
+                ORDER BY created_at DESC, id DESC
+                LIMIT $2"#,
+                user_id,
+                fetch_limit,
+                personal_only,
+                family_only
+            )
+            .fetch_all(self.as_mut())
+            .await?
+        };
+
+        build_paginated_result(photos, limit)
+    }
+
+    async fn get_folder_photos_paginated(
+        &mut self,
+        user_id: &str,
+        folder_name: &str,
+        cursor: Option<&PhotoCursor>,
+        limit: i64,
+    ) -> sqlx::Result<PaginatedPhotos> {
+        let fetch_limit = limit + 1;
+
+        let photos = if let Some(cursor) = cursor {
+            query_as!(
+                Photo,
+                r#"SELECT * FROM photos
+                WHERE (user_id IS NULL OR user_id = $1)
+                  AND trashed_on IS NULL
+                  AND folder = $2
+                  AND (created_at < $3 OR (created_at = $3 AND id < $4))
+                ORDER BY created_at DESC, id DESC
+                LIMIT $5"#,
+                user_id,
+                folder_name,
+                cursor.created_at,
+                cursor.id,
+                fetch_limit
+            )
+            .fetch_all(self.as_mut())
+            .await?
+        } else {
+            query_as!(
+                Photo,
+                r#"SELECT * FROM photos
+                WHERE (user_id IS NULL OR user_id = $1)
+                  AND trashed_on IS NULL
+                  AND folder = $2
+                ORDER BY created_at DESC, id DESC
+                LIMIT $3"#,
+                user_id,
+                folder_name,
+                fetch_limit
+            )
+            .fetch_all(self.as_mut())
+            .await?
+        };
+
+        build_paginated_result(photos, limit)
+    }
+
+    async fn get_favorite_photos_paginated(
+        &mut self,
+        user_id: &str,
+        cursor: Option<&PhotoCursor>,
+        limit: i64,
+    ) -> sqlx::Result<PaginatedPhotos> {
+        let fetch_limit = limit + 1;
+
+        let photos = if let Some(cursor) = cursor {
+            query_as!(
+                Photo,
+                r#"SELECT p.* FROM photos p
+                INNER JOIN favorite_photos f ON p.id = f.photo_id AND f.user_id = $1
+                WHERE (p.user_id IS NULL OR p.user_id = $1)
+                  AND p.trashed_on IS NULL
+                  AND (p.created_at < $2 OR (p.created_at = $2 AND p.id < $3))
+                ORDER BY p.created_at DESC, p.id DESC
+                LIMIT $4"#,
+                user_id,
+                cursor.created_at,
+                cursor.id,
+                fetch_limit
+            )
+            .fetch_all(self.as_mut())
+            .await?
+        } else {
+            query_as!(
+                Photo,
+                r#"SELECT p.* FROM photos p
+                INNER JOIN favorite_photos f ON p.id = f.photo_id AND f.user_id = $1
+                WHERE (p.user_id IS NULL OR p.user_id = $1)
+                  AND p.trashed_on IS NULL
+                ORDER BY p.created_at DESC, p.id DESC
+                LIMIT $2"#,
+                user_id,
+                fetch_limit
+            )
+            .fetch_all(self.as_mut())
+            .await?
+        };
+
+        build_paginated_result(photos, limit)
+    }
+}
+
+fn build_paginated_result(mut photos: Vec<Photo>, limit: i64) -> sqlx::Result<PaginatedPhotos> {
+    let has_more = photos.len() > limit as usize;
+    if has_more {
+        photos.pop(); // Remove the extra photo we fetched
+    }
+
+    let next_cursor = if has_more {
+        photos.last().map(|p| PhotoCursor {
+            created_at: p.created_at,
+            id: p.id,
+        })
+    } else {
+        None
+    };
+
+    Ok(PaginatedPhotos {
+        photos,
+        next_cursor,
+        has_more,
+    })
 }
 
 #[derive(Debug, Error)]

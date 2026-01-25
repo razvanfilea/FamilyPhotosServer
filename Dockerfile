@@ -24,6 +24,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=$SCCACHE_DIR,sharing=locked \
     cargo chef cook --release --target $TARGET_ARCH --recipe-path recipe.json
 COPY . .
+RUN npm install && npm run prod
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     --mount=type=cache,target=$SCCACHE_DIR,sharing=locked \
@@ -38,5 +39,6 @@ RUN apk add --no-cache \
     ffmpegthumbnailer
 
 COPY --from=builder /app/target/${TARGET_ARCH}/release/familyphotos ./
+COPY --from=builder /app/assets/css/main.css assets/css/main.css
 
 ENTRYPOINT ["./familyphotos"]

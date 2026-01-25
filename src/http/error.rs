@@ -18,6 +18,8 @@ pub enum HttpError {
     Database(#[from] sqlx::Error),
     #[error("IO error: `{0}`")]
     IO(#[from] std::io::Error),
+    #[error("Failed to generate HTML: `{0}`")]
+    Template(#[from] askama::Error),
     #[error(transparent)]
     AnyError(#[from] Box<dyn Error + Send + Sync>),
 }
@@ -46,6 +48,9 @@ impl IntoResponse for HttpError {
                 (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()).into_response()
             }
             HttpError::IO(error) => {
+                (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()).into_response()
+            }
+            HttpError::Template(error) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()).into_response()
             }
             HttpError::AnyError(error) => {

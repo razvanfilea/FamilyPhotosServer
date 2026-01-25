@@ -1,11 +1,20 @@
 use crate::http::AppStateRef;
 use crate::http::error::{HttpError, HttpResult};
+use crate::http::template_into_response::TemplateIntoResponse;
 use crate::http::utils::AuthSession;
 use crate::repo::{FavoritesRepo, PhotosRepo};
+use askama::Template;
 use axum::extract::{Path, State};
-use axum::response::IntoResponse;
+use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post};
 use axum::{Json, Router};
+
+#[derive(Template)]
+#[template(path = "components/favorite_button.html")]
+struct FavoriteButtonTemplate {
+    photo_id: i64,
+    is_favorite: bool,
+}
 
 pub fn router() -> Router<AppStateRef> {
     Router::new()
@@ -29,7 +38,7 @@ async fn add_favorite(
     State(state): State<AppStateRef>,
     Path(photo_id): Path<i64>,
     auth_session: AuthSession,
-) -> HttpResult<impl IntoResponse> {
+) -> HttpResult<Response> {
     let user = auth_session.user.ok_or(HttpError::Unauthorized)?;
     let mut tx = state.pool.begin().await?;
 
@@ -41,14 +50,18 @@ async fn add_favorite(
 
     tx.commit().await?;
 
-    Ok(())
+    FavoriteButtonTemplate {
+        photo_id,
+        is_favorite: true,
+    }
+    .try_into_response()
 }
 
 async fn delete_favorite(
     State(state): State<AppStateRef>,
     Path(photo_id): Path<i64>,
     auth_session: AuthSession,
-) -> HttpResult<impl IntoResponse> {
+) -> HttpResult<Response> {
     let user = auth_session.user.ok_or(HttpError::Unauthorized)?;
     let mut tx = state.pool.begin().await?;
 
@@ -60,5 +73,9 @@ async fn delete_favorite(
 
     tx.commit().await?;
 
-    Ok(())
+    FavoriteButtonTemplate {
+        photo_id,
+        is_favorite: false,
+    }
+    .try_into_response()
 }
