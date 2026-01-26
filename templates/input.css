@@ -1,7 +1,7 @@
 @import 'tailwindcss';
 
 @plugin "daisyui" {
-    themes: dim --default, light;
+    themes: forest --default;
 }
 
 /*
@@ -10,6 +10,10 @@
   looks the same as it did with Tailwind CSS v3.
 */
 @layer base {
+    body {
+        font-family: 'Inter', system-ui, sans-serif;
+    }
+
     *,
     ::after,
     ::before,
@@ -21,16 +25,33 @@
 
 @layer components {
     .photo-card {
-        @apply aspect-square rounded-lg overflow-hidden cursor-pointer bg-base-300 relative;
-        @apply hover:ring-2 hover:ring-primary transition-all duration-200;
+        @apply aspect-square overflow-hidden cursor-pointer bg-base-300 relative;
+        @apply hover:brightness-90 transition-all duration-150;
     }
 
     .photo-card img {
         @apply w-full h-full object-cover;
     }
 
+    .photo-card .favorite-indicator {
+        @apply absolute top-1 right-1 text-warning drop-shadow-md;
+        font-size: 16px;
+    }
+
     .photo-grid {
-        @apply grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2;
+        @apply grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-0.5;
+    }
+
+    .month-header {
+        @apply col-span-full flex items-center gap-4 py-4;
+    }
+
+    .month-header h2 {
+        @apply text-sm font-medium text-base-content/70 whitespace-nowrap;
+    }
+
+    .month-header .line {
+        @apply flex-1 h-px bg-base-content/10;
     }
 
     .htmx-indicator {
@@ -40,5 +61,129 @@
     .htmx-request .htmx-indicator,
     .htmx-request.htmx-indicator {
         display: flex;
+    }
+
+    .folder-card {
+        @apply flex flex-col cursor-pointer;
+        @apply hover:opacity-80 transition-all duration-200;
+    }
+
+    .folder-card-image {
+        @apply aspect-square rounded-lg overflow-hidden bg-base-300;
+        @apply hover:ring-2 hover:ring-primary transition-all duration-200;
+    }
+
+    .folder-card-image img {
+        @apply w-full h-full object-cover;
+    }
+
+    .folder-card-info {
+        @apply flex flex-col mt-2 px-1;
+    }
+
+    /* Timeline Scrollbar */
+    .timeline-scrollbar {
+        position: fixed;
+        right: 0;
+        top: 80px;
+        bottom: 16px;
+        width: 48px;
+        z-index: 100;
+        opacity: 0;
+        transition: opacity 0.2s ease;
+        pointer-events: none;
+    }
+
+    .timeline-scrollbar.visible {
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    .timeline-scrollbar.hidden {
+        display: none;
+    }
+
+    .timeline-scrollbar-track {
+        position: absolute;
+        right: 16px;
+        top: 0;
+        bottom: 0;
+        width: 4px;
+        background: oklch(var(--bc) / 0.1);
+        border-radius: 2px;
+        cursor: pointer;
+    }
+
+    .timeline-scrollbar-thumb {
+        position: absolute;
+        right: 12px;
+        width: 12px;
+        height: 48px;
+        background: oklch(var(--p));
+        border-radius: 6px;
+        cursor: grab;
+        transition: transform 0.1s ease;
+    }
+
+    .timeline-scrollbar-thumb:hover {
+        transform: scaleX(1.2);
+    }
+
+    .timeline-scrollbar-thumb:active {
+        cursor: grabbing;
+    }
+
+    .timeline-year-marker {
+        position: absolute;
+        right: 28px;
+        font-size: 11px;
+        font-weight: 600;
+        color: oklch(1 0 0 / 0.9);
+        background: oklch(0 0 0 / 0.5);
+        padding: 2px 6px;
+        border-radius: 4px;
+        transform: translateY(-50%);
+        pointer-events: none;
+        user-select: none;
+    }
+
+    .timeline-tooltip {
+        position: fixed;
+        right: 56px;
+        background: oklch(0 0 0 / 0.6);
+        color: oklch(1 0 0 / 0.95);
+        padding: 6px 12px;
+        border-radius: 6px;
+        font-size: 13px;
+        font-weight: 500;
+        white-space: nowrap;
+        transform: translateY(-50%);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.15s ease;
+        box-shadow: 0 2px 8px oklch(0 0 0 / 0.3);
+    }
+
+    .timeline-tooltip.visible {
+        opacity: 1;
+    }
+
+    .timeline-loading-indicator {
+        position: fixed;
+        right: 56px;
+        bottom: 80px;
+        background: oklch(var(--b3));
+        color: oklch(var(--bc));
+        padding: 8px 16px;
+        border-radius: 8px;
+        font-size: 13px;
+        box-shadow: 0 2px 8px oklch(0 0 0 / 0.2);
+    }
+}
+
+/* Hide timeline on mobile */
+@media (max-width: 768px) {
+    .timeline-scrollbar {
+        display: none !important;
     }
 }

@@ -39,6 +39,6 @@ RUN apk add --no-cache \
     ffmpegthumbnailer
 
 COPY --from=builder /app/target/${TARGET_ARCH}/release/familyphotos ./
-COPY --from=builder /app/assets/css/main.css assets/css/main.css
+COPY --from=builder /app/assets/ ./assets/
 
 ENTRYPOINT ["./familyphotos"]

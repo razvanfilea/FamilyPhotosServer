@@ -2,7 +2,9 @@ use crate::model::event_log::{EventLog, EventLogs};
 use crate::model::photo::{FullPhotosList, Photo};
 use crate::repo::event_log::EventLogRepo;
 use serde::{Deserialize, Serialize};
-use sqlx::{FromRow, QueryBuilder, Sqlite, SqliteExecutor, SqliteTransaction, query, query_as};
+use sqlx::{
+    FromRow, QueryBuilder, Sqlite, SqliteExecutor, SqliteTransaction, query, query_as, query_scalar,
+};
 use thiserror::Error;
 use time::OffsetDateTime;
 
@@ -13,11 +15,25 @@ pub struct PhotoCursor {
     pub id: i64,
 }
 
+/// Folder with photo count for display
+pub struct FolderInfo {
+    pub name: String,
+    pub photo_count: i64,
+    pub cover_photo_id: i64,
+}
+
 /// Result of a paginated photo query
 pub struct PaginatedPhotos {
     pub photos: Vec<Photo>,
     pub next_cursor: Option<PhotoCursor>,
     pub has_more: bool,
+}
+
+/// Summary of photos per month for timeline display
+pub struct MonthSummary {
+    pub year: i32,
+    pub month: u8,
+    pub count: i64,
 }
 
 pub trait PhotosRepo<'c>: SqliteExecutor<'c> {
@@ -39,10 +55,7 @@ pub trait PhotosRepo<'c>: SqliteExecutor<'c> {
     }
 
     async fn get_all_photo_ids(self) -> sqlx::Result<Vec<i64>> {
-        query!("select id from photos")
-            .map(|record| record.id)
-            .fetch_all(self)
-            .await
+        query_scalar!("select id from photos").fetch_all(self).await
     }
 
     async fn get_photos_by_user(self, user_id: Option<&str>) -> sqlx::Result<Vec<Photo>> {
@@ -60,11 +73,11 @@ pub trait PhotosRepo<'c>: SqliteExecutor<'c> {
         user_id: Option<&str>,
         folder_name: &str,
     ) -> sqlx::Result<Vec<i64>> {
-        query!(
+        query_scalar!(
             "select id from photos where (($1 is null and user_id is null) or user_id = $1) and folder = $2 order by created_at desc",
             user_id,
             folder_name,
-        ).map(|r| r.id).fetch_all(self).await
+        ).fetch_all(self).await
     }
 
     async fn get_photos_with_same_location(self) -> sqlx::Result<Vec<Photo>> {
@@ -138,6 +151,26 @@ pub trait PhotosTransactionRepo<'c> {
         cursor: Option<&PhotoCursor>,
         limit: i64,
     ) -> sqlx::Result<PaginatedPhotos>;
+
+    async fn get_folders_with_counts(
+        &mut self,
+        user_id: &str,
+        personal_only: bool,
+        family_only: bool,
+    ) -> sqlx::Result<Vec<FolderInfo>>;
+
+    async fn get_month_summaries(
+        &mut self,
+        user_id: &str,
+        personal_only: bool,
+        family_only: bool,
+    ) -> sqlx::Result<Vec<MonthSummary>>;
+
+    async fn get_folder_month_summaries(
+        &mut self,
+        user_id: &str,
+        folder_name: &str,
+    ) -> sqlx::Result<Vec<MonthSummary>>;
 }
 
 impl<'c> PhotosTransactionRepo<'c> for SqliteTransaction<'c> {
@@ -146,8 +179,7 @@ impl<'c> PhotosTransactionRepo<'c> for SqliteTransaction<'c> {
         &mut self,
         user_id: &str,
     ) -> sqlx::Result<FullPhotosList> {
-        let lastest_event_id = query!("select max(event_id) as 'event_id' from photos_event_log")
-            .map(|r| r.event_id)
+        let lastest_event_id = query_scalar!("select max(event_id) from photos_event_log")
             .fetch_one(self.as_mut())
             .await?
             .unwrap_or_default();
@@ -466,6 +498,112 @@ impl<'c> PhotosTransactionRepo<'c> for SqliteTransaction<'c> {
         };
 
         build_paginated_result(photos, limit)
+    }
+
+    async fn get_folders_with_counts(
+        &mut self,
+        user_id: &str,
+        personal_only: bool,
+        family_only: bool,
+    ) -> sqlx::Result<Vec<FolderInfo>> {
+        let rows = query!(
+            r#"SELECT
+                folder as "name!",
+                COUNT(*) as "photo_count!: i64",
+                (SELECT id FROM photos p2
+                 WHERE p2.folder = photos.folder
+                   AND p2.trashed_on IS NULL
+                   AND (p2.user_id IS NULL OR p2.user_id = $1)
+                   AND (($2 = 0 AND $3 = 0) OR ($2 = 1 AND p2.user_id = $1) OR ($3 = 1 AND p2.user_id IS NULL))
+                 ORDER BY p2.created_at DESC LIMIT 1) as "cover_photo_id!: i64"
+            FROM photos
+            WHERE (user_id IS NULL OR user_id = $1)
+              AND trashed_on IS NULL
+              AND folder IS NOT NULL AND folder != ''
+              AND (($2 = 0 AND $3 = 0) OR ($2 = 1 AND user_id = $1) OR ($3 = 1 AND user_id IS NULL))
+            GROUP BY folder
+            ORDER BY folder ASC"#,
+            user_id,
+            personal_only,
+            family_only
+        )
+        .fetch_all(self.as_mut())
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| FolderInfo {
+                name: r.name,
+                photo_count: r.photo_count,
+                cover_photo_id: r.cover_photo_id,
+            })
+            .collect())
+    }
+
+    async fn get_month_summaries(
+        &mut self,
+        user_id: &str,
+        personal_only: bool,
+        family_only: bool,
+    ) -> sqlx::Result<Vec<MonthSummary>> {
+        let rows = query!(
+            r#"SELECT
+                CAST(strftime('%Y', created_at) AS INTEGER) as "year!: i32",
+                CAST(strftime('%m', created_at) AS INTEGER) as "month!: i32",
+                COUNT(*) as "count!: i64"
+            FROM photos
+            WHERE (user_id IS NULL OR user_id = $1)
+              AND trashed_on IS NULL
+              AND (($2 = 0 AND $3 = 0) OR ($2 = 1 AND user_id = $1) OR ($3 = 1 AND user_id IS NULL))
+            GROUP BY 1, 2
+            ORDER BY 1 DESC, 2 DESC"#,
+            user_id,
+            personal_only,
+            family_only
+        )
+        .fetch_all(self.as_mut())
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| MonthSummary {
+                year: r.year,
+                month: r.month as u8,
+                count: r.count,
+            })
+            .collect())
+    }
+
+    async fn get_folder_month_summaries(
+        &mut self,
+        user_id: &str,
+        folder_name: &str,
+    ) -> sqlx::Result<Vec<MonthSummary>> {
+        let rows = query!(
+            r#"SELECT
+                CAST(strftime('%Y', created_at) AS INTEGER) as "year!: i32",
+                CAST(strftime('%m', created_at) AS INTEGER) as "month!: i32",
+                COUNT(*) as "count!: i64"
+            FROM photos
+            WHERE (user_id IS NULL OR user_id = $1)
+              AND trashed_on IS NULL
+              AND folder = $2
+            GROUP BY 1, 2
+            ORDER BY 1 DESC, 2 DESC"#,
+            user_id,
+            folder_name
+        )
+        .fetch_all(self.as_mut())
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| MonthSummary {
+                year: r.year,
+                month: r.month as u8,
+                count: r.count,
+            })
+            .collect())
     }
 }
 

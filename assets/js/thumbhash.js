@@ -159,7 +159,7 @@ function decodeThumbhashes(root = document) {
         for (let i = startIndex; i < endIndex; i++) {
             const img = images[i];
             // Skip if image already loaded - no need for placeholder
-            if (img.complete && img.naturalWidth > 0) {
+            if (img.src && img.complete && img.naturalWidth > 0) {
                 delete img.dataset.thumbhash;
                 continue;
             }
@@ -187,4 +187,4 @@ function decodeThumbhashes(root = document) {
 }
 
 document.addEventListener('DOMContentLoaded', () => decodeThumbhashes());
-document.addEventListener('htmx:afterSwap', (evt) => decodeThumbhashes(evt.detail.target));
+document.addEventListener('htmx:afterSwap', (evt) => decodeThumbhashes(evt.detail.elt));

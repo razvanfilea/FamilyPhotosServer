@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block title %}{% if category == PhotoCategory::Personal %}Personal{% else if category == PhotoCategory::Family %}Family{% else %}All{% endif %} Folders - Family Photos{% endblock %}
+
+{% block page_title %}{% if category == PhotoCategory::Personal %}Personal Folders{% else if category == PhotoCategory::Family %}Family Folders{% else %}All Folders{% endif %}{% endblock %}
+
+{% block content %}
+{% if folders.is_empty() %}
+<div class="flex flex-col items-center justify-center min-h-[60vh] gap-6">
+    <span class="material-symbols-outlined text-8xl text-base-content/30">folder_off</span>
+    <p class="text-xl text-base-content/70">No folders yet</p>
+    <p class="text-base-content/50">Upload some photos to folders to get started</p>
+    <a href="/upload" class="btn btn-primary">
+        <span class="material-symbols-outlined">cloud_upload</span>
+        Upload Photos
+    </a>
+</div>
+{% else %}
+<div class="photo-grid">
+    {% for folder in folders %}
+    <a href="/folder/{{ folder.name|urlencode }}" class="folder-card">
+        <div class="folder-card-image">
+            <img src="/photos/preview/{{ folder.cover_photo_id }}"
+                 alt="{{ folder.name }}"
+                 loading="lazy"/>
+        </div>
+        <div class="folder-card-info">
+            <span class="font-medium truncate">{{ folder.name }}</span>
+            <span class="text-sm text-base-content/60">{{ folder.photo_count }} item{% if folder.photo_count != 1 %}s{% endif %}</span>
+        </div>
+    </a>
+    {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

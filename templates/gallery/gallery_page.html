@@ -5,6 +5,10 @@
 {% block page_title %}All Photos{% endblock %}
 
 {% block content %}
+<script>
+window.TIMELINE_DATA = {{ timeline_json|safe }};
+window.TOTAL_PHOTOS = {{ total_photos }};
+</script>
 <div class="tabs tabs-boxed mb-6 bg-base-200">
     <button class="tab{% if current_category == PhotoCategory::All %} tab-active{% endif %}"
             hx-get="/gallery/grid?category=all"
