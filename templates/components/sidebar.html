@@ -19,33 +19,21 @@
     </a>
 </li>
 
-{% if !personal_folders.is_empty() %}
 <li class="menu-title mt-4">
-    <span>Personal Folders</span>
+    <span>Folders</span>
 </li>
-{% for folder in personal_folders %}
 <li>
-    <a href="/folder/{{ folder|urlencode }}">
+    <a href="/folders?category=personal">
         <span class="material-symbols-outlined">folder</span>
-        {{ folder }}
+        Personal Folders
     </a>
 </li>
-{% endfor %}
-{% endif %}
-
-{% if !family_folders.is_empty() %}
-<li class="menu-title mt-4">
-    <span>Family Folders</span>
-</li>
-{% for folder in family_folders %}
 <li>
-    <a href="/folder/{{ folder|urlencode }}">
-        <span class="material-symbols-outlined">folder</span>
-        {{ folder }}
+    <a href="/folders?category=family">
+        <span class="material-symbols-outlined">folder_shared</span>
+        Family Folders
     </a>
 </li>
-{% endfor %}
-{% endif %}
 
 <div class="flex-grow"></div>
 
@@ -57,7 +45,7 @@
 </li>
 
 <li>
-    <form action="/api/logout" method="post">
+    <form action="/logout" method="post">
         <button type="submit" class="w-full flex items-center gap-2">
             <span class="material-symbols-outlined">logout</span>
             Logout

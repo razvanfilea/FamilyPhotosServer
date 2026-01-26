@@ -1,9 +1,9 @@
 use crate::http::AppStateRef;
 use crate::http::error::{HttpError, HttpResult};
-use crate::http::pages::gallery::{PhotoView, extract_grouped_folders, fetch_photos_and_favorites};
+use crate::http::pages::gallery::PhotoView;
 use crate::http::template_into_response::TemplateIntoResponse;
 use crate::http::utils::AuthSession;
-use crate::repo::{PhotosRepo, PhotosTransactionRepo};
+use crate::repo::{FavoritesRepo, PhotosRepo, PhotosTransactionRepo};
 use askama::Template;
 use axum::extract::{Path, State};
 use axum::response::{IntoResponse, Response};
@@ -14,8 +14,6 @@ use tracing::{info, warn};
 #[template(path = "trash/trash_page.html")]
 struct TrashPageTemplate {
     photos: Vec<PhotoView>,
-    personal_folders: Vec<String>,
-    family_folders: Vec<String>,
 }
 
 pub async fn trash_page(
@@ -24,22 +22,22 @@ pub async fn trash_page(
 ) -> HttpResult<Response> {
     let user = auth_session.user.expect("User must be authenticated");
 
-    let data = fetch_photos_and_favorites(&state, &user.id).await?;
-    let grouped_folders = extract_grouped_folders(&data.photos, &user.id);
+    let mut tx = state.pool.begin().await?;
+    let all_photos = tx.get_photos_by_user_and_public(&user.id).await?.photos;
+    let favorite_ids: std::collections::HashSet<i64> = tx
+        .get_favorite_photos(&user.id)
+        .await?
+        .into_iter()
+        .collect();
+    tx.commit().await?;
 
-    let photos: Vec<PhotoView> = data
-        .photos
+    let photos: Vec<PhotoView> = all_photos
         .into_iter()
         .filter(|p| p.trashed_on.is_some())
-        .map(|p| PhotoView::from_photo(p, &data.favorite_ids))
+        .map(|p| PhotoView::from_photo(p, &favorite_ids))
         .collect();
 
-    TrashPageTemplate {
-        photos,
-        personal_folders: grouped_folders.personal,
-        family_folders: grouped_folders.family,
-    }
-    .try_into_response()
+    TrashPageTemplate { photos }.try_into_response()
 }
 
 pub async fn restore_photo(

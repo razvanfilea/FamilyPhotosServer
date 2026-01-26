@@ -5,6 +5,10 @@
 {% block page_title %}{{ current_folder.as_deref().unwrap_or("Folder") }}{% endblock %}
 
 {% block content %}
+<script>
+window.TIMELINE_DATA = {{ timeline_json|safe }};
+window.TOTAL_PHOTOS = {{ total_photos }};
+</script>
 {% if groups.is_empty() %}
 <div class="flex flex-col items-center justify-center min-h-[60vh] gap-6">
     <span class="material-symbols-outlined text-8xl text-base-content/30">folder_open</span>
@@ -24,17 +28,7 @@
     {% include "components/photo_card.html" %}
     {% endfor %}
     {% endfor %}
-    {% if has_more %}
-    {% if let Some(cursor) = next_cursor %}
-    <div id="load-more-sentinel"
-         class="col-span-full py-8 flex justify-center"
-         hx-get="/folder/{{ current_folder.as_deref().unwrap_or("") }}/more?cursor={{ cursor }}{% if let Some(month) = last_month %}&last_month={{ month }}{% endif %}"
-         hx-trigger="revealed"
-         hx-swap="outerHTML">
-        <span class="loading loading-spinner loading-lg text-primary"></span>
-    </div>
-    {% endif %}
-    {% endif %}
+    {% include "components/load_more_trigger.html" %}
 </div>
 {% endif %}
 {% endblock %}

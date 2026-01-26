@@ -2,7 +2,7 @@ use crate::http::AppStateRef;
 use crate::http::error::HttpResult;
 use crate::http::pages::gallery::{
     MonthGroup, PAGE_SIZE, PaginatedQuery, PhotoBatchTemplate, ProcessedPhotos, decode_cursor,
-    extract_grouped_folders, parse_month_key,
+    parse_month_key,
 };
 use crate::http::template_into_response::TemplateIntoResponse;
 use crate::http::utils::AuthSession;
@@ -16,8 +16,6 @@ use std::collections::HashSet;
 #[template(path = "favorites/favorites_page.html")]
 struct FavoritesPageTemplate {
     groups: Vec<MonthGroup>,
-    personal_folders: Vec<String>,
-    family_folders: Vec<String>,
     next_cursor: Option<String>,
     has_more: bool,
     last_month: Option<String>,
@@ -30,10 +28,6 @@ pub async fn favorites_page(
     let user = auth_session.user.expect("User must be authenticated");
 
     let mut tx = state.pool.begin().await?;
-
-    // Get all photos for folder listing
-    let all_photos = tx.get_photos_by_user_and_public(&user.id).await?.photos;
-    let grouped_folders = extract_grouped_folders(&all_photos, &user.id);
 
     // Get paginated favorite photos
     let paginated = tx
@@ -51,8 +45,6 @@ pub async fn favorites_page(
 
     FavoritesPageTemplate {
         groups: processed.groups,
-        personal_folders: grouped_folders.personal,
-        family_folders: grouped_folders.family,
         next_cursor: processed.next_cursor,
         has_more: processed.has_more,
         last_month: processed.last_month,

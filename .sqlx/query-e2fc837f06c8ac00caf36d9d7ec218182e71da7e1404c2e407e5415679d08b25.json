@@ -1,0 +1,62 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT p.* FROM photos p\n                INNER JOIN favorite_photos f ON p.id = f.photo_id AND f.user_id = $1\n                WHERE (p.user_id IS NULL OR p.user_id = $1)\n                  AND p.trashed_on IS NULL\n                  AND (p.created_at < $2 OR (p.created_at = $2 AND p.id < $3))\n                ORDER BY p.created_at DESC, p.id DESC\n                LIMIT $4",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "user_id",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "name",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at",
+        "ordinal": 3,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "file_size",
+        "ordinal": 4,
+        "type_info": "Integer"
+      },
+      {
+        "name": "folder",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "trashed_on",
+        "ordinal": 6,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "thumb_hash",
+        "ordinal": 7,
+        "type_info": "Blob"
+      }
+    ],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": [
+      false,
+      true,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "e2fc837f06c8ac00caf36d9d7ec218182e71da7e1404c2e407e5415679d08b25"
+}

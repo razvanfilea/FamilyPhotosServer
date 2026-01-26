@@ -3,14 +3,12 @@
      hx-target="#photo_modal_content"
      hx-swap="innerHTML"
      hx-on::after-request="openPhotoModal()">
-    <img src="/photos/preview/{{ photo.id }}"
+    <img data-src="/photos/preview/{{ photo.id }}"
          alt=""
-         loading="lazy"
          {% if let Some(thumb_hash) = photo.thumb_hash %}data-thumbhash="{{ thumb_hash }}"{% endif %}
          class="w-full h-full object-cover"/>
-    <div id="photo-card-fav-{{ photo.id }}" class="absolute top-2 right-2">
-        {% if photo.is_favorite %}
-        <span class="material-symbols-outlined text-warning" style="font-variation-settings: 'FILL' 1;">favorite</span>
-        {% endif %}
-    </div>
+    {% if photo.is_favorite %}
+    <span id="photo-card-fav-{{ photo.id }}" class="favorite-indicator material-symbols-outlined"
+          style="font-variation-settings: 'FILL' 1;">favorite</span>
+    {% endif %}
 </div>

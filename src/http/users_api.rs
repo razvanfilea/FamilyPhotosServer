@@ -4,7 +4,7 @@ use crate::http::utils::AuthSession;
 use crate::model::user::{SimpleUser, UserCredentials};
 use askama::Template;
 use axum::http::{HeaderMap, StatusCode, header};
-use axum::response::{IntoResponse, Response};
+use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use axum::{Form, Json, Router};
 use tracing::{debug, error, warn};
@@ -16,16 +16,20 @@ pub fn router() -> Router {
         .route("/profile", get(profile))
 }
 
+fn wants_json(headers: &HeaderMap) -> bool {
+    headers
+        .get(header::ACCEPT)
+        .and_then(|v| v.to_str().ok())
+        .map(|v| v.contains("application/json"))
+        .unwrap_or(false)
+}
+
 async fn login_handler(
     mut auth: AuthSession,
     headers: HeaderMap,
     Form(credentials): Form<UserCredentials>,
 ) -> Response {
-    let wants_json = headers
-        .get(header::ACCEPT)
-        .and_then(|v| v.to_str().ok())
-        .map(|v| v.contains("application/json"))
-        .unwrap_or(false);
+    let wants_json = wants_json(&headers);
 
     let error_response = |message: &str| -> Response {
         if wants_json {
@@ -105,14 +109,23 @@ async fn profile(auth_session: AuthSession) -> impl IntoResponse {
         })
 }
 
-pub async fn logout(mut auth: AuthSession) -> String {
+pub async fn logout(mut auth: AuthSession, headers: HeaderMap) -> Response {
+    let wants_json = wants_json(&headers);
+
     if let Some(user) = &auth.user {
         debug!("Logging out user: {}", user.id);
-
-        if let Err(e) = auth.logout().await {
-            return e.to_string();
-        }
     }
 
-    "Logged out".to_string()
+    if auth.user.is_some()
+        && let Err(e) = auth.logout().await
+    {
+        error!("Failed to logout: {}", e);
+        return HttpError::Internal("Failed to logout".to_string()).into_response();
+    }
+
+    if wants_json {
+        Json(serde_json::json!({"message": "Logged out"})).into_response()
+    } else {
+        Redirect::to("/").into_response()
+    }
 }

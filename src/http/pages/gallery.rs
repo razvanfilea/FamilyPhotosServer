@@ -1,10 +1,10 @@
 use crate::http::AppStateRef;
-use crate::http::error::HttpResult;
+use crate::http::error::{HttpError, HttpResult};
 use crate::http::template_into_response::TemplateIntoResponse;
 use crate::http::utils::AuthSession;
 use crate::model::photo::Photo;
 use crate::repo::PhotoCursor;
-use crate::repo::{FavoritesRepo, PaginatedPhotos, PhotosRepo, PhotosTransactionRepo};
+use crate::repo::{FavoritesRepo, FolderInfo, PaginatedPhotos, PhotosRepo, PhotosTransactionRepo};
 use askama::Template;
 use axum::extract::{Path, Query, State};
 use axum::response::Response;
@@ -56,16 +56,26 @@ pub struct GroupedFolders {
     pub family: Vec<String>,
 }
 
+/// Timeline entry for JSON serialization (used by timeline scrollbar)
+#[derive(Serialize)]
+struct TimelineEntry {
+    year: i32,
+    month: u8,
+    count: i64,
+    cumulative_before: i64,
+    label: String,
+}
+
 #[derive(Template)]
 #[template(path = "gallery/gallery_page.html")]
 struct GalleryPageTemplate {
     groups: Vec<MonthGroup>,
-    personal_folders: Vec<String>,
-    family_folders: Vec<String>,
     current_category: PhotoCategory,
     next_cursor: Option<String>,
     has_more: bool,
     last_month: Option<String>,
+    timeline_json: String,
+    total_photos: i64,
 }
 
 #[derive(Template)]
@@ -93,12 +103,14 @@ pub struct PhotoBatchTemplate {
 #[template(path = "gallery/folder_page.html")]
 struct FolderPageTemplate {
     groups: Vec<MonthGroup>,
-    personal_folders: Vec<String>,
-    family_folders: Vec<String>,
     current_folder: Option<String>,
     next_cursor: Option<String>,
     has_more: bool,
     last_month: Option<String>,
+    load_more_url: String,
+    category: Option<PhotoCategory>,
+    timeline_json: String,
+    total_photos: i64,
 }
 
 #[derive(Template)]
@@ -106,6 +118,13 @@ struct FolderPageTemplate {
 struct PhotoModalTemplate {
     photo: Photo,
     is_favorite: bool,
+}
+
+#[derive(Template)]
+#[template(path = "folders/folders_page.html")]
+struct FoldersPageTemplate {
+    folders: Vec<FolderInfo>,
+    category: PhotoCategory,
 }
 
 pub struct PhotoView {
@@ -130,11 +149,12 @@ impl PhotoView {
     }
 }
 
-pub const PAGE_SIZE: i64 = 100;
+pub const PAGE_SIZE: i64 = 500;
 
 /// A group of photos from the same month/year
 pub struct MonthGroup {
     pub label: String,
+    pub month_key: String,
     pub photos: Vec<PhotoView>,
     pub show_header: bool,
 }
@@ -208,6 +228,7 @@ pub fn group_photos_by_month(
                     let show_header = skip_first_month != Some(group_key) || !groups.is_empty();
                     groups.push(MonthGroup {
                         label: format_month_label(group_key.0, group_key.1),
+                        month_key: format_month_key(group_key.0, group_key.1),
                         photos: group_photos,
                         show_header,
                     });
@@ -223,6 +244,7 @@ pub fn group_photos_by_month(
         let show_header = skip_first_month != Some(group_key) || !groups.is_empty();
         groups.push(MonthGroup {
             label: format_month_label(group_key.0, group_key.1),
+            month_key: format_month_key(group_key.0, group_key.1),
             photos: group_photos,
             show_header,
         });
@@ -299,25 +321,6 @@ pub fn extract_grouped_folders(photos: &[Photo], user_id: &str) -> GroupedFolder
     GroupedFolders { personal, family }
 }
 
-pub struct PhotosData {
-    pub photos: Vec<Photo>,
-    pub favorite_ids: HashSet<i64>,
-}
-
-pub async fn fetch_photos_and_favorites(
-    state: &AppStateRef,
-    user_id: &str,
-) -> Result<PhotosData, sqlx::Error> {
-    let mut tx = state.pool.begin().await?;
-    let photos = tx.get_photos_by_user_and_public(user_id).await?.photos;
-    let favorite_ids = tx.get_favorite_photos(user_id).await?.into_iter().collect();
-    tx.commit().await?;
-    Ok(PhotosData {
-        photos,
-        favorite_ids,
-    })
-}
-
 pub async fn gallery_page(
     auth_session: AuthSession,
     State(state): State<AppStateRef>,
@@ -329,10 +332,6 @@ pub async fn gallery_page(
 
     let mut tx = state.pool.begin().await?;
 
-    // Get all photos for folder listing (we need full list for sidebar)
-    let all_photos = tx.get_photos_by_user_and_public(&user.id).await?.photos;
-    let grouped_folders = extract_grouped_folders(&all_photos, &user.id);
-
     // Get paginated photos
     let paginated = tx
         .get_photos_paginated(&user.id, personal_only, family_only, None, PAGE_SIZE)
@@ -343,18 +342,47 @@ pub async fn gallery_page(
         .await?
         .into_iter()
         .collect();
+
+    // Get month summaries for timeline
+    let month_summaries = tx
+        .get_month_summaries(&user.id, personal_only, family_only)
+        .await?;
     tx.commit().await?;
+
+    // Build timeline data with cumulative counts
+    let total_photos: i64 = month_summaries.iter().map(|s| s.count).sum();
+    let mut cumulative: i64 = 0;
+    let timeline_entries: Vec<TimelineEntry> = month_summaries
+        .into_iter()
+        .map(|s| {
+            let entry = TimelineEntry {
+                year: s.year,
+                month: s.month,
+                count: s.count,
+                cumulative_before: cumulative,
+                label: format!(
+                    "{} {}",
+                    Month::try_from(s.month).map_or_else(|_| "?".to_string(), |m| m.to_string()),
+                    s.year
+                ),
+            };
+            cumulative += s.count;
+            entry
+        })
+        .collect();
+    let timeline_json =
+        serde_json::to_string(&timeline_entries).unwrap_or_else(|_| "[]".to_string());
 
     let processed = ProcessedPhotos::from_paginated(paginated, &favorite_ids, None);
 
     GalleryPageTemplate {
         groups: processed.groups,
-        personal_folders: grouped_folders.personal,
-        family_folders: grouped_folders.family,
         current_category: category,
         next_cursor: processed.next_cursor,
         has_more: processed.has_more,
         last_month: processed.last_month,
+        timeline_json,
+        total_photos,
     }
     .try_into_response()
 }
@@ -400,10 +428,6 @@ pub async fn folder_page(
 
     let mut tx = state.pool.begin().await?;
 
-    // Get all photos for folder listing (we need full list for sidebar)
-    let all_photos = tx.get_photos_by_user_and_public(&user.id).await?.photos;
-    let grouped_folders = extract_grouped_folders(&all_photos, &user.id);
-
     // Get paginated photos for this folder
     let paginated = tx
         .get_folder_photos_paginated(&user.id, &folder_name, None, PAGE_SIZE)
@@ -414,18 +438,49 @@ pub async fn folder_page(
         .await?
         .into_iter()
         .collect();
+
+    // Get month summaries for timeline
+    let month_summaries = tx
+        .get_folder_month_summaries(&user.id, &folder_name)
+        .await?;
     tx.commit().await?;
+
+    // Build timeline data with cumulative counts
+    let total_photos: i64 = month_summaries.iter().map(|s| s.count).sum();
+    let mut cumulative: i64 = 0;
+    let timeline_entries: Vec<TimelineEntry> = month_summaries
+        .into_iter()
+        .map(|s| {
+            let entry = TimelineEntry {
+                year: s.year,
+                month: s.month,
+                count: s.count,
+                cumulative_before: cumulative,
+                label: format!(
+                    "{} {}",
+                    Month::try_from(s.month).map_or_else(|_| "?".to_string(), |m| m.to_string()),
+                    s.year
+                ),
+            };
+            cumulative += s.count;
+            entry
+        })
+        .collect();
+    let timeline_json =
+        serde_json::to_string(&timeline_entries).unwrap_or_else(|_| "[]".to_string());
 
     let processed = ProcessedPhotos::from_paginated(paginated, &favorite_ids, None);
 
     FolderPageTemplate {
         groups: processed.groups,
-        personal_folders: grouped_folders.personal,
-        family_folders: grouped_folders.family,
-        current_folder: Some(folder_name),
+        current_folder: Some(folder_name.clone()),
         next_cursor: processed.next_cursor,
         has_more: processed.has_more,
         last_month: processed.last_month,
+        load_more_url: format!("/folder/{}/more", folder_name),
+        category: None,
+        timeline_json,
+        total_photos,
     }
     .try_into_response()
 }
@@ -439,7 +494,10 @@ pub async fn load_more_gallery(
     let category = query.category;
     let (personal_only, family_only) = category.to_filters();
 
-    let cursor = query.cursor.as_ref().and_then(|c| decode_cursor(c));
+    let cursor = match &query.cursor {
+        Some(c) => Some(decode_cursor(c).ok_or(HttpError::BadRequest("Invalid cursor".into()))?),
+        None => None,
+    };
     let skip_month = query.last_month.as_ref().and_then(|m| parse_month_key(m));
 
     let mut tx = state.pool.begin().await?;
@@ -480,7 +538,10 @@ pub async fn load_more_folder(
 ) -> HttpResult<Response> {
     let user = auth_session.user.expect("User must be authenticated");
 
-    let cursor = query.cursor.as_ref().and_then(|c| decode_cursor(c));
+    let cursor = match &query.cursor {
+        Some(c) => Some(decode_cursor(c).ok_or(HttpError::BadRequest("Invalid cursor".into()))?),
+        None => None,
+    };
     let skip_month = query.last_month.as_ref().and_then(|m| parse_month_key(m));
 
     let mut tx = state.pool.begin().await?;
@@ -530,4 +591,25 @@ pub async fn photo_modal(
     let is_favorite = favorites.contains(&photo.id);
 
     PhotoModalTemplate { photo, is_favorite }.try_into_response()
+}
+
+pub async fn folders_page(
+    auth_session: AuthSession,
+    State(state): State<AppStateRef>,
+    Query(query): Query<GalleryQuery>,
+) -> HttpResult<Response> {
+    let user = auth_session.user.expect("User must be authenticated");
+    let category = query.category;
+    let (personal_only, family_only) = category.to_filters();
+
+    let mut tx = state.pool.begin().await?;
+
+    // Get folders with counts for the selected category
+    let folders = tx
+        .get_folders_with_counts(&user.id, personal_only, family_only)
+        .await?;
+
+    tx.commit().await?;
+
+    FoldersPageTemplate { folders, category }.try_into_response()
 }

@@ -1,9 +1,8 @@
 {% if has_more %}
 {% if let Some(cursor) = next_cursor %}
-<div id="load-more-sentinel"
-     class="col-span-full py-8 flex justify-center"
+<div class="load-more-sentinel col-span-full py-8 flex justify-center"
      hx-get="{{ load_more_url }}?cursor={{ cursor }}{% if let Some(month) = last_month %}&last_month={{ month }}{% endif %}{% if let Some(cat) = category %}&category={{ cat }}{% endif %}"
-     hx-trigger="revealed"
+     hx-trigger="prefetch"
      hx-swap="outerHTML">
     <span class="loading loading-spinner loading-lg text-primary"></span>
 </div>

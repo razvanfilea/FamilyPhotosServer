@@ -6,12 +6,12 @@
       {
         "name": "min_id!: i64",
         "ordinal": 0,
-        "type_info": "Null"
+        "type_info": "Integer"
       },
       {
         "name": "max_id!: i64",
         "ordinal": 1,
-        "type_info": "Null"
+        "type_info": "Integer"
       }
     ],
     "parameters": {

@@ -25,6 +25,9 @@
         border-color: oklch(var(--p));
         background-color: oklch(var(--b3));
     }
+
+    /* Folder search hidden state */
+    .folder-option.search-hidden { display: none !important; }
 </style>
 
 <div id="upload-container" class="max-w-3xl mx-auto space-y-6" data-visibility="" data-upload-state="idle">
@@ -66,6 +69,13 @@
                     <span class="material-symbols-outlined">folder</span>
                     Choose a folder
                 </h2>
+
+                <div class="form-control mb-4">
+                    <label class="input input-bordered flex items-center gap-2 w-full">
+                        <span class="material-symbols-outlined text-base-content/50">search</span>
+                        <input type="text" id="folder-search" placeholder="Search folders..." class="grow bg-transparent outline-none" />
+                    </label>
+                </div>
 
                 <div id="folder-grid" class="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
                     <button class="folder-option btn btn-outline h-auto py-4 flex flex-col items-center gap-2" data-folder="">
@@ -251,6 +261,10 @@
             });
             container.dataset.visibility = value;
 
+            // Reset folder search
+            $('#folder-search').value = '';
+            $('#folder-search').dispatchEvent(new Event('input'));
+
             show($('#section-folder'));
             selectFolder('');
             show($('#section-upload'));
@@ -281,6 +295,20 @@
 
     $$('.folder-option').forEach(btn => {
         btn.addEventListener('click', () => selectFolder(btn.dataset.folder));
+    });
+
+    // Folder search
+    const folderSearch = $('#folder-search');
+    folderSearch.addEventListener('input', () => {
+        const term = folderSearch.value.toLowerCase().trim();
+        $$('.folder-option').forEach(btn => {
+            const folder = btn.dataset.folder;
+            // Always show "No folder" and "New folder"
+            if (folder === '' || folder === '__new__') return;
+
+            const matches = folder.toLowerCase().includes(term);
+            btn.classList.toggle('search-hidden', !matches);
+        });
     });
 
     function getSelectedFolder() {

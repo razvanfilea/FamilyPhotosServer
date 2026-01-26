@@ -7,10 +7,15 @@
 
     <script src="https://unpkg.com/htmx.org@2.0.7/dist/htmx.min.js"></script>
     <script src="/assets/js/thumbhash.js"></script>
+    <script src="/assets/js/lazy-load.js"></script>
 
     <link rel="apple-touch-icon" sizes="180x180" href="/assets/fav/apple-touch-icon.png"/>
     <link rel="icon" type="image/png" sizes="32x32" href="/assets/fav/favicon-32x32.png"/>
     <link rel="icon" type="image/ico" sizes="16x16" href="/assets/fav/favicon.ico"/>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 
     <link rel="stylesheet" href="/assets/css/main.css?v={{ crate::http::AppState::CSS_VERSION }}">
     <link rel="stylesheet"
@@ -96,6 +101,44 @@
     function closePhotoModal() {
         document.getElementById('photo_modal').close();
     }
+
+    // Infinite scroll preloading - observe sentinels with rootMargin
+    (function() {
+        const ROOT_MARGIN_PX = 2000;
+
+        function observeSentinel(sentinel, immediate) {
+            if (sentinel.dataset.observed) return;
+            sentinel.dataset.observed = 'true';
+
+            // For initial page load, trigger immediately to preload next batch
+            if (immediate) {
+                htmx.trigger(sentinel, 'prefetch');
+                return;
+            }
+
+            const observer = new IntersectionObserver((entries) => {
+                if (entries[0].isIntersecting) {
+                    observer.disconnect();
+                    htmx.trigger(sentinel, 'prefetch');
+                }
+            }, { rootMargin: `0px 0px ${ROOT_MARGIN_PX}px 0px` });
+            observer.observe(sentinel);
+        }
+
+        function observeSentinels(immediate) {
+            document.querySelectorAll('.load-more-sentinel').forEach(s => observeSentinel(s, immediate));
+        }
+
+        // Observe on initial load - trigger immediately to preload
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => observeSentinels(true));
+        } else {
+            observeSentinels(true);
+        }
+
+        // Re-observe after HTMX loads new content
+        document.body.addEventListener('htmx:load', () => observeSentinels(false));
+    })();
 </script>
 
 <dialog id="confirm_dialog" class="modal">
@@ -118,5 +161,7 @@
         <button>close</button>
     </form>
 </dialog>
+
+<script src="/assets/js/timeline-scrollbar.js"></script>
 </body>
 </html>

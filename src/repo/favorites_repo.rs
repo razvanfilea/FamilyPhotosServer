@@ -1,14 +1,13 @@
-use sqlx::{SqliteExecutor, query};
+use sqlx::{SqliteExecutor, query, query_scalar};
 
 pub trait FavoritesRepo<'c>: SqliteExecutor<'c> {
     async fn get_favorite_photos(self, user_id: &str) -> sqlx::Result<Vec<i64>> {
-        query!(
+        query_scalar!(
             "select photo_id from favorite_photos where user_id = $1",
             user_id
         )
         .fetch_all(self)
         .await
-        .map(|list| list.into_iter().map(|record| record.photo_id).collect())
     }
 
     async fn insert_favorite(self, photo_id: i64, user_id: &str) -> sqlx::Result<()> {
