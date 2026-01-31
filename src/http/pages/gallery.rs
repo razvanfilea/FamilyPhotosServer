@@ -1,10 +1,11 @@
+use super::timeline::build_timeline_data;
 use crate::http::AppStateRef;
 use crate::http::error::{HttpError, HttpResult};
 use crate::http::template_into_response::TemplateIntoResponse;
 use crate::http::utils::AuthSession;
 use crate::model::photo::Photo;
 use crate::repo::PhotoCursor;
-use crate::repo::{FavoritesRepo, FolderInfo, PaginatedPhotos, PhotosRepo, PhotosTransactionRepo};
+use crate::repo::{FavoritesRepo, PaginatedPhotos, PhotosRepo, PhotosTransactionRepo};
 use askama::Template;
 use axum::extract::{Path, Query, State};
 use axum::response::Response;
@@ -54,16 +55,6 @@ pub struct GalleryQuery {
 pub struct GroupedFolders {
     pub personal: Vec<String>,
     pub family: Vec<String>,
-}
-
-/// Timeline entry for JSON serialization (used by timeline scrollbar)
-#[derive(Serialize)]
-struct TimelineEntry {
-    year: i32,
-    month: u8,
-    count: i64,
-    cumulative_before: i64,
-    label: String,
 }
 
 #[derive(Template)]
@@ -120,13 +111,6 @@ struct PhotoModalTemplate {
     is_favorite: bool,
 }
 
-#[derive(Template)]
-#[template(path = "folders/folders_page.html")]
-struct FoldersPageTemplate {
-    folders: Vec<FolderInfo>,
-    category: PhotoCategory,
-}
-
 pub struct PhotoView {
     pub id: i64,
     pub name: String,
@@ -179,6 +163,18 @@ pub fn decode_cursor(encoded: &str) -> Option<PhotoCursor> {
     let bytes = URL_SAFE_NO_PAD.decode(encoded).ok()?;
     let json = String::from_utf8(bytes).ok()?;
     serde_json::from_str(&json).ok()
+}
+
+/// Parse an optional cursor string, returning an error for invalid cursors
+pub fn parse_optional_cursor(cursor: Option<&str>) -> HttpResult<Option<PhotoCursor>> {
+    match cursor {
+        Some(c) => {
+            Ok(Some(decode_cursor(c).ok_or_else(|| {
+                HttpError::BadRequest("Invalid cursor".into())
+            })?))
+        }
+        None => Ok(None),
+    }
 }
 
 fn format_month_label(year: i32, month: Month) -> String {
@@ -349,30 +345,7 @@ pub async fn gallery_page(
         .await?;
     tx.commit().await?;
 
-    // Build timeline data with cumulative counts
-    let total_photos: i64 = month_summaries.iter().map(|s| s.count).sum();
-    let mut cumulative: i64 = 0;
-    let timeline_entries: Vec<TimelineEntry> = month_summaries
-        .into_iter()
-        .map(|s| {
-            let entry = TimelineEntry {
-                year: s.year,
-                month: s.month,
-                count: s.count,
-                cumulative_before: cumulative,
-                label: format!(
-                    "{} {}",
-                    Month::try_from(s.month).map_or_else(|_| "?".to_string(), |m| m.to_string()),
-                    s.year
-                ),
-            };
-            cumulative += s.count;
-            entry
-        })
-        .collect();
-    let timeline_json =
-        serde_json::to_string(&timeline_entries).unwrap_or_else(|_| "[]".to_string());
-
+    let timeline = build_timeline_data(month_summaries);
     let processed = ProcessedPhotos::from_paginated(paginated, &favorite_ids, None);
 
     GalleryPageTemplate {
@@ -381,8 +354,8 @@ pub async fn gallery_page(
         next_cursor: processed.next_cursor,
         has_more: processed.has_more,
         last_month: processed.last_month,
-        timeline_json,
-        total_photos,
+        timeline_json: timeline.data_json,
+        total_photos: timeline.total_photos,
     }
     .try_into_response()
 }
@@ -445,30 +418,7 @@ pub async fn folder_page(
         .await?;
     tx.commit().await?;
 
-    // Build timeline data with cumulative counts
-    let total_photos: i64 = month_summaries.iter().map(|s| s.count).sum();
-    let mut cumulative: i64 = 0;
-    let timeline_entries: Vec<TimelineEntry> = month_summaries
-        .into_iter()
-        .map(|s| {
-            let entry = TimelineEntry {
-                year: s.year,
-                month: s.month,
-                count: s.count,
-                cumulative_before: cumulative,
-                label: format!(
-                    "{} {}",
-                    Month::try_from(s.month).map_or_else(|_| "?".to_string(), |m| m.to_string()),
-                    s.year
-                ),
-            };
-            cumulative += s.count;
-            entry
-        })
-        .collect();
-    let timeline_json =
-        serde_json::to_string(&timeline_entries).unwrap_or_else(|_| "[]".to_string());
-
+    let timeline = build_timeline_data(month_summaries);
     let processed = ProcessedPhotos::from_paginated(paginated, &favorite_ids, None);
 
     FolderPageTemplate {
@@ -479,8 +429,8 @@ pub async fn folder_page(
         last_month: processed.last_month,
         load_more_url: format!("/folder/{}/more", folder_name),
         category: None,
-        timeline_json,
-        total_photos,
+        timeline_json: timeline.data_json,
+        total_photos: timeline.total_photos,
     }
     .try_into_response()
 }
@@ -494,10 +444,7 @@ pub async fn load_more_gallery(
     let category = query.category;
     let (personal_only, family_only) = category.to_filters();
 
-    let cursor = match &query.cursor {
-        Some(c) => Some(decode_cursor(c).ok_or(HttpError::BadRequest("Invalid cursor".into()))?),
-        None => None,
-    };
+    let cursor = parse_optional_cursor(query.cursor.as_deref())?;
     let skip_month = query.last_month.as_ref().and_then(|m| parse_month_key(m));
 
     let mut tx = state.pool.begin().await?;
@@ -538,10 +485,7 @@ pub async fn load_more_folder(
 ) -> HttpResult<Response> {
     let user = auth_session.user.expect("User must be authenticated");
 
-    let cursor = match &query.cursor {
-        Some(c) => Some(decode_cursor(c).ok_or(HttpError::BadRequest("Invalid cursor".into()))?),
-        None => None,
-    };
+    let cursor = parse_optional_cursor(query.cursor.as_deref())?;
     let skip_month = query.last_month.as_ref().and_then(|m| parse_month_key(m));
 
     let mut tx = state.pool.begin().await?;
@@ -593,23 +537,217 @@ pub async fn photo_modal(
     PhotoModalTemplate { photo, is_favorite }.try_into_response()
 }
 
-pub async fn folders_page(
-    auth_session: AuthSession,
-    State(state): State<AppStateRef>,
-    Query(query): Query<GalleryQuery>,
-) -> HttpResult<Response> {
-    let user = auth_session.user.expect("User must be authenticated");
-    let category = query.category;
-    let (personal_only, family_only) = category.to_filters();
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::repo::PhotoCursor;
+    use time::macros::datetime;
 
-    let mut tx = state.pool.begin().await?;
+    #[test]
+    fn test_encode_decode_cursor() {
+        let cursor = PhotoCursor {
+            created_at: datetime!(2024-06-15 10:30:00 UTC),
+            id: 123,
+        };
 
-    // Get folders with counts for the selected category
-    let folders = tx
-        .get_folders_with_counts(&user.id, personal_only, family_only)
-        .await?;
+        let encoded = encode_cursor(&cursor);
+        let decoded = decode_cursor(&encoded);
 
-    tx.commit().await?;
+        assert!(decoded.is_some());
+        let decoded = decoded.unwrap();
+        assert_eq!(decoded.id, cursor.id);
+        assert_eq!(decoded.created_at, cursor.created_at);
+    }
 
-    FoldersPageTemplate { folders, category }.try_into_response()
+    #[test]
+    fn test_decode_cursor_invalid() {
+        assert!(decode_cursor("not-valid-base64!@#").is_none());
+        assert!(decode_cursor("").is_none());
+        // Valid base64 but invalid JSON
+        assert!(decode_cursor("aGVsbG8").is_none());
+    }
+
+    #[test]
+    fn test_parse_month_key_valid() {
+        let result = parse_month_key("2024-06");
+        assert!(result.is_some());
+        let (year, month) = result.unwrap();
+        assert_eq!(year, 2024);
+        assert_eq!(month, Month::June);
+
+        let result = parse_month_key("2023-12");
+        assert!(result.is_some());
+        let (year, month) = result.unwrap();
+        assert_eq!(year, 2023);
+        assert_eq!(month, Month::December);
+
+        let result = parse_month_key("2025-01");
+        assert!(result.is_some());
+        let (year, month) = result.unwrap();
+        assert_eq!(year, 2025);
+        assert_eq!(month, Month::January);
+    }
+
+    #[test]
+    fn test_parse_month_key_invalid() {
+        // Wrong format
+        assert!(parse_month_key("2024/06").is_none());
+        assert!(parse_month_key("2024").is_none());
+        assert!(parse_month_key("06-2024").is_none());
+        assert!(parse_month_key("").is_none());
+        // Invalid month
+        assert!(parse_month_key("2024-13").is_none());
+        assert!(parse_month_key("2024-00").is_none());
+        // Non-numeric
+        assert!(parse_month_key("abcd-06").is_none());
+        assert!(parse_month_key("2024-ab").is_none());
+    }
+
+    #[test]
+    fn test_photo_category_to_filters() {
+        assert_eq!(PhotoCategory::All.to_filters(), (false, false));
+        assert_eq!(PhotoCategory::Personal.to_filters(), (true, false));
+        assert_eq!(PhotoCategory::Family.to_filters(), (false, true));
+    }
+
+    #[test]
+    fn test_photo_category_display() {
+        assert_eq!(format!("{}", PhotoCategory::All), "all");
+        assert_eq!(format!("{}", PhotoCategory::Personal), "personal");
+        assert_eq!(format!("{}", PhotoCategory::Family), "family");
+    }
+
+    #[test]
+    fn test_group_photos_by_month_empty() {
+        let photos: Vec<PhotoView> = Vec::new();
+        let groups = group_photos_by_month(photos, None);
+        assert!(groups.is_empty());
+    }
+
+    #[test]
+    fn test_group_photos_by_month_single_month() {
+        let photos = vec![
+            PhotoView {
+                id: 1,
+                name: "photo1.jpg".to_string(),
+                is_favorite: false,
+                thumb_hash: None,
+                created_at: datetime!(2024-06-15 10:00:00 UTC),
+            },
+            PhotoView {
+                id: 2,
+                name: "photo2.jpg".to_string(),
+                is_favorite: true,
+                thumb_hash: None,
+                created_at: datetime!(2024-06-20 15:00:00 UTC),
+            },
+        ];
+
+        let groups = group_photos_by_month(photos, None);
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].month_key, "2024-06");
+        assert_eq!(groups[0].label, "June 2024");
+        assert_eq!(groups[0].photos.len(), 2);
+        assert!(groups[0].show_header);
+    }
+
+    #[test]
+    fn test_group_photos_by_month_multiple_months() {
+        let photos = vec![
+            PhotoView {
+                id: 1,
+                name: "photo1.jpg".to_string(),
+                is_favorite: false,
+                thumb_hash: None,
+                created_at: datetime!(2024-06-15 10:00:00 UTC),
+            },
+            PhotoView {
+                id: 2,
+                name: "photo2.jpg".to_string(),
+                is_favorite: false,
+                thumb_hash: None,
+                created_at: datetime!(2024-05-10 10:00:00 UTC),
+            },
+            PhotoView {
+                id: 3,
+                name: "photo3.jpg".to_string(),
+                is_favorite: false,
+                thumb_hash: None,
+                created_at: datetime!(2024-05-20 10:00:00 UTC),
+            },
+        ];
+
+        let groups = group_photos_by_month(photos, None);
+        assert_eq!(groups.len(), 2);
+        assert_eq!(groups[0].month_key, "2024-06");
+        assert_eq!(groups[0].photos.len(), 1);
+        assert_eq!(groups[1].month_key, "2024-05");
+        assert_eq!(groups[1].photos.len(), 2);
+    }
+
+    #[test]
+    fn test_group_photos_by_month_skip_first() {
+        let photos = vec![
+            PhotoView {
+                id: 1,
+                name: "photo1.jpg".to_string(),
+                is_favorite: false,
+                thumb_hash: None,
+                created_at: datetime!(2024-06-15 10:00:00 UTC),
+            },
+            PhotoView {
+                id: 2,
+                name: "photo2.jpg".to_string(),
+                is_favorite: false,
+                thumb_hash: None,
+                created_at: datetime!(2024-05-10 10:00:00 UTC),
+            },
+        ];
+
+        let groups = group_photos_by_month(photos, Some((2024, Month::June)));
+        assert_eq!(groups.len(), 2);
+        assert!(!groups[0].show_header); // First group header should be skipped
+        assert!(groups[1].show_header); // Second group header should be shown
+    }
+
+    #[test]
+    fn test_format_month_key() {
+        assert_eq!(format_month_key(2024, Month::January), "2024-01");
+        assert_eq!(format_month_key(2024, Month::June), "2024-06");
+        assert_eq!(format_month_key(2024, Month::December), "2024-12");
+        assert_eq!(format_month_key(2023, Month::September), "2023-09");
+    }
+
+    #[test]
+    fn test_format_month_label() {
+        assert_eq!(format_month_label(2024, Month::January), "January 2024");
+        assert_eq!(format_month_label(2024, Month::June), "June 2024");
+        assert_eq!(format_month_label(2023, Month::December), "December 2023");
+    }
+
+    #[test]
+    fn test_get_last_month() {
+        let groups = vec![MonthGroup {
+            label: "June 2024".to_string(),
+            month_key: "2024-06".to_string(),
+            photos: vec![PhotoView {
+                id: 1,
+                name: "photo1.jpg".to_string(),
+                is_favorite: false,
+                thumb_hash: None,
+                created_at: datetime!(2024-06-15 10:00:00 UTC),
+            }],
+            show_header: true,
+        }];
+
+        let last_month = get_last_month(&groups);
+        assert_eq!(last_month, Some("2024-06".to_string()));
+    }
+
+    #[test]
+    fn test_get_last_month_empty() {
+        let groups: Vec<MonthGroup> = Vec::new();
+        let last_month = get_last_month(&groups);
+        assert!(last_month.is_none());
+    }
 }

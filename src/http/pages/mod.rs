@@ -5,7 +5,9 @@ use axum::routing::{delete, get, post};
 use axum_login::login_required;
 
 mod favorites;
+mod folders;
 mod gallery;
+mod timeline;
 mod trash;
 mod upload;
 mod user;
@@ -18,7 +20,7 @@ pub fn router(app_state: AppStateRef) -> Router {
         .route("/folder/{folder_name}", get(gallery::folder_page))
         .route("/folder/{folder_name}/more", get(gallery::load_more_folder))
         .route("/photo/{photo_id}", get(gallery::photo_modal))
-        .route("/folders", get(gallery::folders_page))
+        .route("/folders", get(folders::folders_page))
         .route("/favorites", get(favorites::favorites_page))
         .route("/favorites/more", get(favorites::load_more_favorites))
         .route("/trash", get(trash::trash_page))

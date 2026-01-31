@@ -19,15 +19,3 @@
     {% include "components/load_more_trigger.html" %}
 </div>
 {% endif %}
-
-<script>
-// Update active tabs after HTMX swap
-(function() {
-    const params = new URLSearchParams(window.location.search);
-    const category = params.get('category') || 'all';
-    document.querySelectorAll('.tabs .tab').forEach(tab => {
-        const tabCategory = new URL(tab.getAttribute('hx-get'), window.location.origin).searchParams.get('category');
-        tab.classList.toggle('tab-active', tabCategory === category);
-    });
-})();
-</script>

@@ -20,6 +20,29 @@ class TimelineScrollbar {
         this.topVisibleMonth = null;
         this.monthVisibility = new Map();
 
+        // Store bound event handlers for cleanup
+        this.scrollTicking = false;
+        this.boundOnScroll = () => {
+            if (!this.scrollTicking) {
+                requestAnimationFrame(() => {
+                    this.onScroll();
+                    this.scrollTicking = false;
+                });
+                this.scrollTicking = true;
+            }
+        };
+        this.boundOnWheel = () => {
+            if (this.scrollTarget) {
+                this.cancelAutoScroll();
+            }
+        };
+        this.boundHtmxAfterSwap = () => this.checkScrollTarget();
+        this.boundHtmxLoad = () => {
+            setTimeout(() => this.observeMonthHeaders(), 50);
+        };
+        this.boundOnDrag = (e) => this.onDrag(e);
+        this.boundEndDrag = () => this.endDrag();
+
         this.createElements();
         this.bindEvents();
         this.updateTimeline();
@@ -54,16 +77,7 @@ class TimelineScrollbar {
 
     bindEvents() {
         // Scroll sync
-        let scrollTicking = false;
-        window.addEventListener('scroll', () => {
-            if (!scrollTicking) {
-                requestAnimationFrame(() => {
-                    this.onScroll();
-                    scrollTicking = false;
-                });
-                scrollTicking = true;
-            }
-        }, { passive: true });
+        window.addEventListener('scroll', this.boundOnScroll, { passive: true });
 
         // Show on hover
         this.container.addEventListener('mouseenter', () => {
@@ -87,23 +101,53 @@ class TimelineScrollbar {
 
         // Thumb dragging
         this.thumb.addEventListener('mousedown', (e) => this.startDrag(e));
-        document.addEventListener('mousemove', (e) => this.onDrag(e));
-        document.addEventListener('mouseup', () => this.endDrag());
+        document.addEventListener('mousemove', this.boundOnDrag);
+        document.addEventListener('mouseup', this.boundEndDrag);
 
         // Cancel auto-scroll on manual scroll
-        window.addEventListener('wheel', () => {
-            if (this.scrollTarget) {
-                this.cancelAutoScroll();
-            }
-        }, { passive: true });
+        window.addEventListener('wheel', this.boundOnWheel, { passive: true });
 
         // HTMX integration for auto-scroll
-        document.body.addEventListener('htmx:afterSwap', () => this.checkScrollTarget());
+        document.body.addEventListener('htmx:afterSwap', this.boundHtmxAfterSwap);
 
         // Re-observe month headers when new content is loaded
-        document.body.addEventListener('htmx:load', () => {
-            setTimeout(() => this.observeMonthHeaders(), 50);
-        });
+        document.body.addEventListener('htmx:load', this.boundHtmxLoad);
+    }
+
+    destroy() {
+        // Disconnect intersection observer
+        if (this.visibleMonthObserver) {
+            this.visibleMonthObserver.disconnect();
+            this.visibleMonthObserver = null;
+        }
+
+        // Clear any pending timeouts
+        if (this.hideTimeout) {
+            clearTimeout(this.hideTimeout);
+            this.hideTimeout = null;
+        }
+
+        // Remove window event listeners
+        window.removeEventListener('scroll', this.boundOnScroll);
+        window.removeEventListener('wheel', this.boundOnWheel);
+
+        // Remove document event listeners
+        document.removeEventListener('mousemove', this.boundOnDrag);
+        document.removeEventListener('mouseup', this.boundEndDrag);
+
+        // Remove HTMX listeners
+        document.body.removeEventListener('htmx:afterSwap', this.boundHtmxAfterSwap);
+        document.body.removeEventListener('htmx:load', this.boundHtmxLoad);
+
+        // Remove container from DOM
+        if (this.container) {
+            this.container.remove();
+            this.container = null;
+        }
+
+        // Clear data references
+        this.timelineData = null;
+        this.monthVisibility.clear();
     }
 
     updateTimeline() {
@@ -543,7 +587,29 @@ class TimelineScrollbar {
     }
 }
 
-// Initialize on page load
+// Initialize on page load, destroying previous instance if it exists
 document.addEventListener('DOMContentLoaded', () => {
+    if (window.timelineScrollbar) {
+        window.timelineScrollbar.destroy();
+    }
     window.timelineScrollbar = new TimelineScrollbar();
+});
+
+// Cleanup before HTMX page swap (before new page loads)
+document.body.addEventListener('htmx:beforeSwap', (e) => {
+    // Only destroy on full page swaps (not partial swaps)
+    if (e.detail.target === document.body || e.detail.target.id === 'main-content') {
+        if (window.timelineScrollbar) {
+            window.timelineScrollbar.destroy();
+            window.timelineScrollbar = null;
+        }
+    }
+});
+
+// Cleanup on page unload
+window.addEventListener('beforeunload', () => {
+    if (window.timelineScrollbar) {
+        window.timelineScrollbar.destroy();
+        window.timelineScrollbar = null;
+    }
 });

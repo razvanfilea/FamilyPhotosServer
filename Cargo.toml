@@ -17,7 +17,7 @@ axum-extra = { version = "0.12", default-features = false, features = ["typed-he
 tower-http = { version = "0.6", features = ["trace", "cors", "set-header", "fs"] }
 axum-login = "0.18"
 tower-sessions-sqlx-store = { version = "0.15.0", features = ["sqlite"] }
-askama = "0.14"
+askama = "0.15"
 
 # Logging
 tracing = "0.1"
@@ -56,3 +56,6 @@ opt-level = 3
 
 [profile.dev.package.askama_derive]
 opt-level = 3
+
+[lints.rust]
+async_fn_in_trait = "allow"

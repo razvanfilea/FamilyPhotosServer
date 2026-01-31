@@ -2,10 +2,13 @@
   "name": "familyphotos",
   "scripts": {
     "dev": "npx @tailwindcss/cli -i templates/input.css -o assets/css/main.css --watch",
-    "prod": "npx @tailwindcss/cli -i templates/input.css -o assets/css/main.css --minify"
+    "prod": "npx @tailwindcss/cli -i templates/input.css -o assets/css/main.css --minify",
+    "test": "npx playwright test --config playwright/playwright.config.ts",
+    "test:ui": "npx playwright test --config playwright/playwright.config.ts --ui"
   },
   "devDependencies": {
     "daisyui": "5.5.14",
-    "@tailwindcss/cli": "4.1.18"
+    "@tailwindcss/cli": "4.1.18",
+    "@playwright/test": "1.58.1"
   }
 }

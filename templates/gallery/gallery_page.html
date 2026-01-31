@@ -48,22 +48,5 @@ window.TOTAL_PHOTOS = {{ total_photos }};
 {% endif %}
 </div>
 
-<script>
-// Update active tab based on URL when using browser back/forward
-document.addEventListener('htmx:pushedIntoHistory', function() {
-    updateActiveTabs();
-});
-window.addEventListener('popstate', function() {
-    updateActiveTabs();
-});
-
-function updateActiveTabs() {
-    const params = new URLSearchParams(window.location.search);
-    const category = params.get('category') || 'all';
-    document.querySelectorAll('.tabs .tab').forEach(tab => {
-        const tabCategory = new URL(tab.getAttribute('hx-get'), window.location.origin).searchParams.get('category');
-        tab.classList.toggle('tab-active', tabCategory === category);
-    });
-}
-</script>
+<script src="/assets/js/tab-updater.js"></script>
 {% endblock %}

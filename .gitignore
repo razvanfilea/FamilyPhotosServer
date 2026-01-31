@@ -3,6 +3,8 @@
 node_modules/
 storage/
 assets/css/main.css
+playwright-report/
+test-results/
 
 .env
 *.db*
