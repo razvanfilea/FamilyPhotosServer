@@ -73,37 +73,46 @@ export async function navigateToFirstFolder(page: Page): Promise<boolean> {
 
 /**
  * Open a photo modal by clicking the first photo card.
+ * @deprecated Use openFirstPhotoViewer instead
  * @returns true if modal opened, false if no photos found
  */
 export async function openFirstPhotoModal(page: Page): Promise<boolean> {
+  return openFirstPhotoViewer(page);
+}
+
+/**
+ * Close the photo modal using escape key or close button.
+ * @deprecated Use closePhotoViewer instead
+ */
+export async function closePhotoModal(page: Page): Promise<void> {
+  return closePhotoViewer(page);
+}
+
+/**
+ * Open the fullscreen photo viewer by clicking the first photo card.
+ * @returns true if viewer opened, false if no photos found
+ */
+export async function openFirstPhotoViewer(page: Page): Promise<boolean> {
   const photoCard = page.locator(selectors.PHOTO_CARD).first();
 
   if (await photoCard.isVisible({ timeout: 2000 }).catch(() => false)) {
     await photoCard.click();
-    const modal = page.locator(selectors.PHOTO_MODAL).first();
-    await expect(modal).toBeVisible();
+    const viewer = page.locator(selectors.PHOTO_VIEWER);
+    await expect(viewer).toBeVisible({ timeout: 2000 });
     return true;
   }
   return false;
 }
 
 /**
- * Close the photo modal using escape key or close button.
+ * Close the fullscreen photo viewer using escape key.
  */
-export async function closePhotoModal(page: Page): Promise<void> {
-  const modal = page.locator(selectors.PHOTO_MODAL).first();
+export async function closePhotoViewer(page: Page): Promise<void> {
+  const viewer = page.locator(selectors.PHOTO_VIEWER);
 
-  if (await modal.isVisible()) {
-    // Try escape key first
+  if (await viewer.isVisible().catch(() => false)) {
     await page.keyboard.press('Escape');
-
-    // If still visible, try close button
-    if (await modal.isVisible({ timeout: 500 }).catch(() => false)) {
-      const closeButton = page.locator(selectors.PHOTO_MODAL_CLOSE);
-      if (await closeButton.isVisible()) {
-        await closeButton.click();
-      }
-    }
+    await expect(viewer).not.toBeVisible({ timeout: 1000 });
   }
 }
 

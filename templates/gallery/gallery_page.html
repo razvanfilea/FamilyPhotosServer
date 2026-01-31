@@ -11,19 +11,31 @@
 window.TIMELINE_DATA = {{ timeline_json|safe }};
 window.TOTAL_PHOTOS = {{ total_photos }};
 </script>
-<div class="tabs tabs-boxed mb-6 bg-base-200">
-    <button class="tab{% if current_category == PhotoCategory::All %} tab-active{% endif %}"
+<div class="join mb-6" role="group" aria-label="Photo category filter">
+    <button class="join-item btn{% if current_category == PhotoCategory::All %} btn-active{% endif %} segment"
             hx-get="/gallery/grid?category=all"
             hx-target="#photo-grid-container"
-            hx-push-url="/?category=all">All</button>
-    <button class="tab{% if current_category == PhotoCategory::Personal %} tab-active{% endif %}"
+            hx-push-url="/?category=all"
+            aria-pressed="{% if current_category == PhotoCategory::All %}true{% else %}false{% endif %}">
+        <span class="segment-check material-symbols-outlined">check</span>
+        All
+    </button>
+    <button class="join-item btn{% if current_category == PhotoCategory::Personal %} btn-active{% endif %} segment"
             hx-get="/gallery/grid?category=personal"
             hx-target="#photo-grid-container"
-            hx-push-url="/?category=personal">Personal</button>
-    <button class="tab{% if current_category == PhotoCategory::Family %} tab-active{% endif %}"
+            hx-push-url="/?category=personal"
+            aria-pressed="{% if current_category == PhotoCategory::Personal %}true{% else %}false{% endif %}">
+        <span class="segment-check material-symbols-outlined">check</span>
+        Personal
+    </button>
+    <button class="join-item btn{% if current_category == PhotoCategory::Family %} btn-active{% endif %} segment"
             hx-get="/gallery/grid?category=family"
             hx-target="#photo-grid-container"
-            hx-push-url="/?category=family">Family</button>
+            hx-push-url="/?category=family"
+            aria-pressed="{% if current_category == PhotoCategory::Family %}true{% else %}false{% endif %}">
+        <span class="segment-check material-symbols-outlined">check</span>
+        Family
+    </button>
 </div>
 
 <div id="photo-grid-container">

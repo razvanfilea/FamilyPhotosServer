@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "select * from photos\n                where (user_id is null or user_id = $1)\n                  and trashed_on is null\n                  and folder = $2\n                  and (created_at < $3 or (created_at = $3 and id < $4))\n                order by created_at desc, id desc\n                limit $5",
+  "query": "select * from photos\n                    where user_id = $1\n                      and trashed_on is null\n                      and ($2 is null or created_at < $2 or (created_at = $2 and id < $3))\n                    order by created_at desc\n                    limit $4",
   "describe": {
     "columns": [
       {
@@ -45,7 +45,7 @@
       }
     ],
     "parameters": {
-      "Right": 5
+      "Right": 4
     },
     "nullable": [
       false,
@@ -58,5 +58,5 @@
       true
     ]
   },
-  "hash": "d0cee43e742c372478bc8a32f8ab5ae508ad79b91e95f2c9a942c5b226e2e35c"
+  "hash": "09c86c458a0a6996e3cf2f5affcb556c3a5ec1877b6f6db5fc416814b895f795"
 }

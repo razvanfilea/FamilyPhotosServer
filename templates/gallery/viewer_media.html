@@ -1,0 +1,15 @@
+{% if is_video %}
+<video controls autoplay playsinline class="photo-viewer-video">
+    <source src="/photos/download/{{ photo_id }}" type="{{ mime_type }}">
+    Your browser does not support video playback.
+</video>
+{% else %}
+<img src="/photos/download/{{ photo_id }}"
+     alt=""
+     class="photo-viewer-image"
+     style="background-image: url('/photos/preview/{{ photo_id }}'); background-size: cover;"/>
+{% endif %}
+
+<div id="viewer-actions-container" hx-swap-oob="innerHTML">
+    {% include "components/viewer_actions.html" %}
+</div>

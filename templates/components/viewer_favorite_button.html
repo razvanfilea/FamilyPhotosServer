@@ -1,10 +1,12 @@
-<button id="favorite-btn-{{ photo_id }}" class="btn btn-ghost btn-circle"
+<button id="viewer-fav-btn" class="photo-viewer-action btn btn-ghost btn-circle"
+        data-action="favorite"
+        data-favorite="{{ is_favorite }}"
         {% if is_favorite %}
-        hx-delete="/favorite/{{ photo_id }}"
+        hx-delete="/favorite/{{ photo_id }}?source=viewer"
         {% else %}
-        hx-post="/favorite/{{ photo_id }}"
+        hx-post="/favorite/{{ photo_id }}?source=viewer"
         {% endif %}
-        hx-target="#favorite-btn-{{ photo_id }}"
+        hx-target="#viewer-fav-btn"
         hx-swap="outerHTML"
         title="{% if is_favorite %}Remove from favorites{% else %}Add to favorites{% endif %}">
     <span class="material-symbols-outlined {% if is_favorite %}text-warning{% endif %}"

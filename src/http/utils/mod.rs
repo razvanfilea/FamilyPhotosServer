@@ -2,8 +2,10 @@ use crate::http::error::{HttpError, HttpResult};
 use crate::repo::users_repo::UsersRepository;
 use crate::utils::crop_blake_3_hash;
 use axum::body::Body;
+use axum::extract::FromRequestParts;
 use axum::extract::multipart;
-use axum::http::{StatusCode, header};
+use axum::http::request::Parts;
+use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum_extra::TypedHeader;
 use axum_extra::headers::Range;
@@ -17,6 +19,32 @@ use tokio_util::bytes::Bytes;
 use tokio_util::io::ReaderStream;
 
 pub type AuthSession = axum_login::AuthSession<UsersRepository>;
+
+/// Extractor that determines if the client wants an HTML response.
+/// Returns true for HTMX requests or requests with Accept: text/html.
+pub struct WantsHtml(pub bool);
+
+impl<S> FromRequestParts<S> for WantsHtml
+where
+    S: Send + Sync,
+{
+    type Rejection = std::convert::Infallible;
+
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        Ok(WantsHtml(wants_html(&parts.headers)))
+    }
+}
+
+fn wants_html(headers: &HeaderMap) -> bool {
+    if headers.contains_key("hx-request") {
+        return true;
+    }
+    headers
+        .get(header::ACCEPT)
+        .and_then(|v| v.to_str().ok())
+        .map(|v| v.contains("text/html"))
+        .unwrap_or(false)
+}
 
 pub async fn file_to_response(
     photo_path: &std::path::Path,

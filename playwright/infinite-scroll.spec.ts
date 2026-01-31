@@ -20,17 +20,6 @@ test.describe('Infinite Scroll', () => {
     }
   });
 
-  test('gallery more endpoint responds correctly', async ({ authenticatedPage: page }) => {
-    const response = await page.request.get('/gallery/more');
-    expect(response.status()).toBe(200);
-  });
-
-  test('favorites more endpoint responds correctly', async ({ authenticatedPage: page }) => {
-    await page.goto('/favorites');
-    const response = await page.request.get('/favorites/more');
-    expect(response.status()).toBe(200);
-  });
-
   test('HTMX swap appends content rather than replacing', async ({ authenticatedPage: page }) => {
     const photoCards = page.locator(selectors.PHOTO_CARD);
     const initialCount = await photoCards.count();

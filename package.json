@@ -7,8 +7,8 @@
     "test:ui": "npx playwright test --config playwright/playwright.config.ts --ui"
   },
   "devDependencies": {
-    "daisyui": "5.5.14",
-    "@tailwindcss/cli": "4.1.18",
-    "@playwright/test": "1.58.1"
+    "daisyui": "5.5.19",
+    "@tailwindcss/cli": "4.2.2",
+    "@playwright/test": "1.59.1"
   }
 }

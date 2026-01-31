@@ -33,8 +33,7 @@ async fn trash_photo(
 
     tx.commit().await?;
 
-    // Return empty HTML to remove the card via hx-swap="outerHTML"
-    Ok(axum::response::Html(""))
+    Ok(Json(photo))
 }
 
 async fn restore_photo(

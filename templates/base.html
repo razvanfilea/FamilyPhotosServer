@@ -68,77 +68,20 @@
     </div>
 </div>
 
-<dialog id="photo_modal" class="modal">
-    <div id="photo_modal_content" class="modal-box w-11/12 max-w-5xl p-0 overflow-hidden">
-    </div>
-    <form method="dialog" class="modal-backdrop">
-        <button>close</button>
-    </form>
-</dialog>
 
 <script>
     document.addEventListener("htmx:confirm", function (e) {
-        if (!e.detail.target.hasAttribute('hx-confirm') && !e.detail.elt.hasAttribute('hx-confirm')) return
-
-        e.preventDefault()
+        if (!e.detail.target.hasAttribute('hx-confirm') && !e.detail.elt.hasAttribute('hx-confirm')) return;
+        e.preventDefault();
 
         const dialog = document.getElementById('confirm_dialog');
-        const prompt = document.getElementById('confirm_dialog_prompt');
-        const accept_button = document.getElementById('confirm_dialog_accept');
-
-        prompt.textContent = e.detail.question;
-        accept_button.onclick = () => {
+        document.getElementById('confirm_dialog_prompt').textContent = e.detail.question;
+        document.getElementById('confirm_dialog_accept').onclick = () => {
             e.detail.issueRequest(true);
             dialog.close();
         };
         dialog.showModal();
-    })
-
-    function openPhotoModal() {
-        document.getElementById('photo_modal').showModal();
-    }
-
-    function closePhotoModal() {
-        document.getElementById('photo_modal').close();
-    }
-
-    // Infinite scroll preloading - observe sentinels with rootMargin
-    (function() {
-        const ROOT_MARGIN_PX = 2000;
-
-        function observeSentinel(sentinel, immediate) {
-            if (sentinel.dataset.observed) return;
-            sentinel.dataset.observed = 'true';
-
-            // For initial page load, trigger immediately to preload next batch
-            if (immediate) {
-                htmx.trigger(sentinel, 'prefetch');
-                return;
-            }
-
-            const observer = new IntersectionObserver((entries) => {
-                if (entries[0].isIntersecting) {
-                    observer.disconnect();
-                    htmx.trigger(sentinel, 'prefetch');
-                }
-            }, { rootMargin: `0px 0px ${ROOT_MARGIN_PX}px 0px` });
-            observer.observe(sentinel);
-        }
-
-        function observeSentinels(immediate) {
-            document.querySelectorAll('.load-more-sentinel').forEach(s => observeSentinel(s, immediate));
-        }
-
-        // Observe on initial load - trigger immediately to preload
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', () => observeSentinels(true));
-        } else {
-            observeSentinels(true);
-        }
-
-        // Re-observe after HTMX loads new content
-        document.body.addEventListener('htmx:load', () => observeSentinels(false));
-    })();
+    });
 </script>
 
 <dialog id="confirm_dialog" class="modal">
@@ -162,6 +105,47 @@
     </form>
 </dialog>
 
+<template id="photo-viewer-template">
+    <div id="photo-viewer" class="photo-viewer-container hidden">
+        <div id="photo-viewer-backdrop" class="photo-viewer-backdrop"></div>
+        <div class="photo-viewer-content">
+            <div class="photo-viewer-toolbar">
+                <button id="photo-viewer-close" class="photo-viewer-close btn btn-ghost btn-circle" title="Close">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+            <div class="photo-viewer-media-container">
+                <div class="photo-viewer-media"></div>
+            </div>
+            <button id="photo-viewer-prev" class="photo-viewer-nav photo-viewer-nav-prev btn btn-circle btn-ghost" title="Previous">
+                <span class="material-symbols-outlined">chevron_left</span>
+            </button>
+            <button id="photo-viewer-next" class="photo-viewer-nav photo-viewer-nav-next btn btn-circle btn-ghost" title="Next">
+                <span class="material-symbols-outlined">chevron_right</span>
+            </button>
+            <div class="photo-viewer-actions">
+                <div id="viewer-actions-container" class="photo-viewer-actions-inner">
+                    <!-- Server-rendered actions swapped here by JS -->
+                </div>
+            </div>
+            <div id="photo-info-panel" class="photo-viewer-info-panel">
+                <div class="photo-viewer-info-header">
+                    <h3>Details</h3>
+                    <button id="photo-info-close" class="btn btn-ghost btn-circle btn-sm">
+                        <span class="material-symbols-outlined">close</span>
+                    </button>
+                </div>
+                <div id="photo-info-content" class="photo-viewer-info-content">
+                    <span class="loading loading-spinner loading-sm htmx-indicator"></span>
+                </div>
+            </div>
+        </div>
+    </div>
+</template>
+
 <script src="/assets/js/timeline-scrollbar.js"></script>
+<script src="/assets/js/photo-viewer-touch.js"></script>
+<script src="/assets/js/photo-viewer-animation.js"></script>
+<script src="/assets/js/photo-viewer.js"></script>
 </body>
 </html>

@@ -1,0 +1,32 @@
+{
+  "db_name": "SQLite",
+  "query": "select\n                        folder as \"name!\",\n                        count(*) as \"photo_count!: i64\",\n                        max(case when rn = 1 then id end) as \"cover_photo_id!: i64\"\n                    from (\n                        select folder, id,\n                               row_number() over (partition by folder order by created_at desc) as rn\n                        from photos\n                        where (user_id is null or user_id = $1)\n                          and trashed_on is null\n                          and folder is not null and folder != ''\n                    )\n                    group by folder\n                    order by folder",
+  "describe": {
+    "columns": [
+      {
+        "name": "name!",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "photo_count!: i64",
+        "ordinal": 1,
+        "type_info": "Integer"
+      },
+      {
+        "name": "cover_photo_id!: i64",
+        "ordinal": 2,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      false,
+      true
+    ]
+  },
+  "hash": "4da8fc4706054e9f3a908e8a71c4ad5e81d513d81f77ddcd5fad9045aeccb8a9"
+}

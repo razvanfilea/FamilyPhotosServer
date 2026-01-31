@@ -1,6 +1,6 @@
 import { test, expect } from './fixtures/auth';
 import * as selectors from './selectors';
-import { checkPhotoGridState, openFirstPhotoModal, waitForHtmxSwap } from './helpers';
+import { checkPhotoGridState, openFirstPhotoViewer, waitForHtmxSwap } from './helpers';
 
 test.describe('Favorites Page', () => {
   test('favorites page loads successfully', async ({ authenticatedPage: page }) => {
@@ -40,7 +40,7 @@ test.describe('Favorites Page', () => {
     // First go to gallery to find a photo
     await page.goto('/');
 
-    const opened = await openFirstPhotoModal(page);
+    const opened = await openFirstPhotoViewer(page);
     if (!opened) {
       test.skip();
       return;

@@ -3,8 +3,9 @@
 node_modules/
 storage/
 assets/css/main.css
-playwright-report/
-test-results/
+playwright/playwright-report/
+playwright/test-results/
+package-lock.json
 
 .env
 *.db*

@@ -7,6 +7,7 @@ use mimalloc::MiMalloc;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
 use std::net::SocketAddr;
 use std::str::FromStr;
+use std::time::Duration;
 use tokio::net::TcpListener;
 use tower_sessions_sqlx_store::SqliteStore;
 use tracing::{error, info};
@@ -48,6 +49,7 @@ async fn main() {
         .foreign_keys(true)
         .journal_mode(SqliteJournalMode::Wal)
         .synchronous(SqliteSynchronous::Normal)
+        .busy_timeout(Duration::from_secs(30))
         .pragma("temp_store", "memory")
         .pragma("cache_size", "-20000")
         .optimize_on_close(true, None);

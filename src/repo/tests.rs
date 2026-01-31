@@ -5,6 +5,7 @@
 //! - Integration tests for cross-repo scenarios
 
 use crate::model::photo::Photo;
+use crate::model::photo_category::PhotoCategory;
 use crate::model::user::User;
 use sqlx::SqlitePool;
 use time::OffsetDateTime;
@@ -169,7 +170,7 @@ mod integration {
         // Get paginated photos
         let mut tx = pool.begin().await?;
         let paginated = tx
-            .get_photos_paginated("user1", false, false, None, 2)
+            .get_photos_paginated("user1", PhotoCategory::All, None, 2)
             .await?;
         tx.commit().await?;
 
@@ -329,17 +330,23 @@ mod integration {
         tx.commit().await?;
 
         // All folders (now using pool directly since get_folders_with_counts is on PhotosRepo)
-        let folders = pool.get_folders_with_counts("user1", false, false).await?;
+        let folders = pool
+            .get_folders_with_counts("user1", PhotoCategory::All)
+            .await?;
         assert_eq!(folders.len(), 2);
 
         // Personal only
-        let folders = pool.get_folders_with_counts("user1", true, false).await?;
+        let folders = pool
+            .get_folders_with_counts("user1", PhotoCategory::Personal)
+            .await?;
         assert_eq!(folders.len(), 1);
         assert_eq!(folders[0].name, "personal_folder");
         assert_eq!(folders[0].photo_count, 2);
 
         // Family only
-        let folders = pool.get_folders_with_counts("user1", false, true).await?;
+        let folders = pool
+            .get_folders_with_counts("user1", PhotoCategory::Family)
+            .await?;
         assert_eq!(folders.len(), 1);
         assert_eq!(folders[0].name, "family_folder");
         assert_eq!(folders[0].photo_count, 3);

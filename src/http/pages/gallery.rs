@@ -4,47 +4,17 @@ use crate::http::auth::AuthenticatedUser;
 use crate::http::error::{HttpError, HttpResult};
 use crate::http::template_into_response::TemplateIntoResponse;
 use crate::model::photo::Photo;
-use crate::repo::PhotoCursor;
-use crate::repo::{FavoritesRepo, PaginatedPhotos, PhotosRepo};
+use crate::model::photo_category::PhotoCategory;
+use crate::repo::{FavoritesRepo, PaginatedPhotos, PhotoCursor, PhotosRepo};
 use askama::Template;
 use axum::extract::{Path, Query, State};
 use axum::response::Response;
 use base64::Engine;
 use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use sqlx::SqlitePool;
 use std::collections::HashSet;
-use std::fmt;
 use time::{Month, OffsetDateTime};
-
-#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-pub enum PhotoCategory {
-    #[default]
-    All,
-    Personal,
-    Family,
-}
-
-impl fmt::Display for PhotoCategory {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            PhotoCategory::All => write!(f, "all"),
-            PhotoCategory::Personal => write!(f, "personal"),
-            PhotoCategory::Family => write!(f, "family"),
-        }
-    }
-}
-
-impl PhotoCategory {
-    /// Convert category to (personal_only, family_only) filter flags
-    pub fn to_filters(self) -> (bool, bool) {
-        match self {
-            PhotoCategory::All => (false, false),
-            PhotoCategory::Personal => (true, false),
-            PhotoCategory::Family => (false, true),
-        }
-    }
-}
 
 #[derive(Debug, Default, Deserialize)]
 pub struct GalleryQuery {
@@ -103,7 +73,26 @@ struct FolderPageTemplate {
 #[template(path = "gallery/photo_modal.html")]
 struct PhotoModalTemplate {
     photo: Photo,
+    photo_id: i64,
     is_favorite: bool,
+    is_video: bool,
+    mime_type: String,
+}
+
+#[derive(Template)]
+#[template(path = "gallery/photo_info_panel.html")]
+struct PhotoInfoPanelTemplate {
+    photo: Photo,
+    file_size_formatted: String,
+}
+
+#[derive(Template)]
+#[template(path = "gallery/viewer_media.html")]
+struct ViewerMediaTemplate {
+    photo_id: i64,
+    is_favorite: bool,
+    is_video: bool,
+    mime_type: String,
 }
 
 pub struct PhotoView {
@@ -285,6 +274,18 @@ impl ProcessedPhotos {
             last_month,
         }
     }
+
+    /// Fetch favorites and convert paginated photos in one step
+    pub async fn from_paginated_with_favorites(
+        paginated: PaginatedPhotos,
+        pool: &SqlitePool,
+        user_id: &str,
+        skip_month: Option<(i32, Month)>,
+    ) -> sqlx::Result<Self> {
+        let photo_ids: Vec<i64> = paginated.photos.iter().map(|p| p.id).collect();
+        let favorite_ids = pool.check_favorites_for_ids(user_id, &photo_ids).await?;
+        Ok(Self::from_paginated(paginated, &favorite_ids, skip_month))
+    }
 }
 
 pub async fn gallery_page(
@@ -293,26 +294,16 @@ pub async fn gallery_page(
     Query(query): Query<GalleryQuery>,
 ) -> HttpResult<Response> {
     let category = query.category;
-    let (personal_only, family_only) = category.to_filters();
+    let mut tx = state.pool.begin().await?;
 
-    // Get paginated photos
-    let paginated = state
-        .pool
-        .get_photos_paginated(&user.id, personal_only, family_only, None, PAGE_SIZE)
+    let paginated = tx
+        .get_photos_paginated(&user.id, category, None, PAGE_SIZE)
         .await?;
 
-    // Only check favorites for the photos we're displaying
     let photo_ids: Vec<i64> = paginated.photos.iter().map(|p| p.id).collect();
-    let favorite_ids = state
-        .pool
-        .check_favorites_for_ids(&user.id, &photo_ids)
-        .await?;
+    let favorite_ids = tx.check_favorites_for_ids(&user.id, &photo_ids).await?;
 
-    // Get month summaries for timeline
-    let month_summaries = state
-        .pool
-        .get_month_summaries(&user.id, personal_only, family_only)
-        .await?;
+    let month_summaries = state.pool.get_month_summaries(&user.id, category).await?;
 
     let timeline = build_timeline_data(month_summaries);
     let processed = ProcessedPhotos::from_paginated(paginated, &favorite_ids, None);
@@ -335,21 +326,15 @@ pub async fn photo_grid(
     Query(query): Query<GalleryQuery>,
 ) -> HttpResult<Response> {
     let category = query.category;
-    let (personal_only, family_only) = category.to_filters();
 
     let paginated = state
         .pool
-        .get_photos_paginated(&user.id, personal_only, family_only, None, PAGE_SIZE)
+        .get_photos_paginated(&user.id, category, None, PAGE_SIZE)
         .await?;
 
-    // Only check favorites for the photos we're displaying
-    let photo_ids: Vec<i64> = paginated.photos.iter().map(|p| p.id).collect();
-    let favorite_ids = state
-        .pool
-        .check_favorites_for_ids(&user.id, &photo_ids)
-        .await?;
-
-    let processed = ProcessedPhotos::from_paginated(paginated, &favorite_ids, None);
+    let processed =
+        ProcessedPhotos::from_paginated_with_favorites(paginated, &state.pool, &user.id, None)
+            .await?;
 
     PhotoGridTemplate {
         groups: processed.groups,
@@ -365,28 +350,25 @@ pub async fn folder_page(
     AuthenticatedUser(user): AuthenticatedUser,
     State(state): State<AppStateRef>,
     Path(folder_name): Path<String>,
+    Query(query): Query<GalleryQuery>,
 ) -> HttpResult<Response> {
-    // Get paginated photos for this folder
+    let category = query.category;
+    let is_personal = matches!(category, PhotoCategory::Personal | PhotoCategory::All);
+
     let paginated = state
         .pool
-        .get_folder_photos_paginated(&user.id, &folder_name, None, PAGE_SIZE)
+        .get_folder_photos_paginated(&user.id, &folder_name, is_personal, None, PAGE_SIZE)
         .await?;
 
-    // Only check favorites for the photos we're displaying
-    let photo_ids: Vec<i64> = paginated.photos.iter().map(|p| p.id).collect();
-    let favorite_ids = state
-        .pool
-        .check_favorites_for_ids(&user.id, &photo_ids)
-        .await?;
-
-    // Get month summaries for timeline
     let month_summaries = state
         .pool
-        .get_folder_month_summaries(&user.id, &folder_name)
+        .get_folder_month_summaries(&user.id, &folder_name, is_personal)
         .await?;
 
     let timeline = build_timeline_data(month_summaries);
-    let processed = ProcessedPhotos::from_paginated(paginated, &favorite_ids, None);
+    let processed =
+        ProcessedPhotos::from_paginated_with_favorites(paginated, &state.pool, &user.id, None)
+            .await?;
 
     FolderPageTemplate {
         groups: processed.groups,
@@ -395,7 +377,7 @@ pub async fn folder_page(
         has_more: processed.has_more,
         last_month: processed.last_month,
         load_more_url: format!("/folder/{}/more", folder_name),
-        category: None,
+        category: Some(category),
         timeline_json: timeline.data_json,
         total_photos: timeline.total_photos,
     }
@@ -408,30 +390,21 @@ pub async fn load_more_gallery(
     Query(query): Query<PaginatedQuery>,
 ) -> HttpResult<Response> {
     let category = query.category;
-    let (personal_only, family_only) = category.to_filters();
-
     let cursor = parse_optional_cursor(query.cursor.as_deref())?;
     let skip_month = query.last_month.as_ref().and_then(|m| parse_month_key(m));
 
     let paginated = state
         .pool
-        .get_photos_paginated(
-            &user.id,
-            personal_only,
-            family_only,
-            cursor.as_ref(),
-            PAGE_SIZE,
-        )
+        .get_photos_paginated(&user.id, category, cursor.as_ref(), PAGE_SIZE)
         .await?;
 
-    // Only check favorites for the photos we're displaying
-    let photo_ids: Vec<i64> = paginated.photos.iter().map(|p| p.id).collect();
-    let favorite_ids = state
-        .pool
-        .check_favorites_for_ids(&user.id, &photo_ids)
-        .await?;
-
-    let processed = ProcessedPhotos::from_paginated(paginated, &favorite_ids, skip_month);
+    let processed = ProcessedPhotos::from_paginated_with_favorites(
+        paginated,
+        &state.pool,
+        &user.id,
+        skip_month,
+    )
+    .await?;
 
     PhotoBatchTemplate {
         groups: processed.groups,
@@ -450,22 +423,30 @@ pub async fn load_more_folder(
     Path(folder_name): Path<String>,
     Query(query): Query<PaginatedQuery>,
 ) -> HttpResult<Response> {
+    let category = query.category;
+    let is_personal = matches!(category, PhotoCategory::Personal | PhotoCategory::All);
+
     let cursor = parse_optional_cursor(query.cursor.as_deref())?;
     let skip_month = query.last_month.as_ref().and_then(|m| parse_month_key(m));
 
     let paginated = state
         .pool
-        .get_folder_photos_paginated(&user.id, &folder_name, cursor.as_ref(), PAGE_SIZE)
+        .get_folder_photos_paginated(
+            &user.id,
+            &folder_name,
+            is_personal,
+            cursor.as_ref(),
+            PAGE_SIZE,
+        )
         .await?;
 
-    // Only check favorites for the photos we're displaying
-    let photo_ids: Vec<i64> = paginated.photos.iter().map(|p| p.id).collect();
-    let favorite_ids = state
-        .pool
-        .check_favorites_for_ids(&user.id, &photo_ids)
-        .await?;
-
-    let processed = ProcessedPhotos::from_paginated(paginated, &favorite_ids, skip_month);
+    let processed = ProcessedPhotos::from_paginated_with_favorites(
+        paginated,
+        &state.pool,
+        &user.id,
+        skip_month,
+    )
+    .await?;
 
     PhotoBatchTemplate {
         groups: processed.groups,
@@ -473,7 +454,7 @@ pub async fn load_more_folder(
         has_more: processed.has_more,
         last_month: processed.last_month,
         load_more_url: format!("/folder/{}/more", folder_name),
-        category: None,
+        category: Some(category),
     }
     .try_into_response()
 }
@@ -491,7 +472,82 @@ pub async fn photo_modal(
 
     let is_favorite = state.pool.check_favorite(photo_id, &user.id).await?;
 
-    PhotoModalTemplate { photo, is_favorite }.try_into_response()
+    // Detect if this is a video file using mime_guess
+    let mime = mime_guess::from_path(&photo.name).first_or_octet_stream();
+    let is_video = mime.type_() == mime_guess::mime::VIDEO;
+    let mime_type = mime.to_string();
+
+    let photo_id = photo.id;
+    PhotoModalTemplate {
+        photo,
+        photo_id,
+        is_favorite,
+        is_video,
+        mime_type,
+    }
+    .try_into_response()
+}
+
+pub async fn photo_info_panel(
+    AuthenticatedUser(user): AuthenticatedUser,
+    State(state): State<AppStateRef>,
+    Path(photo_id): Path<i64>,
+) -> HttpResult<Response> {
+    let photo = state
+        .pool
+        .get_photo(photo_id, &user.id)
+        .await?
+        .ok_or(HttpError::NotFound)?;
+
+    let file_size_formatted = format_file_size(photo.file_size);
+
+    PhotoInfoPanelTemplate {
+        photo,
+        file_size_formatted,
+    }
+    .try_into_response()
+}
+
+pub async fn photo_viewer_media(
+    AuthenticatedUser(user): AuthenticatedUser,
+    State(state): State<AppStateRef>,
+    Path(photo_id): Path<i64>,
+) -> HttpResult<Response> {
+    let photo = state
+        .pool
+        .get_photo(photo_id, &user.id)
+        .await?
+        .ok_or(HttpError::NotFound)?;
+
+    let is_favorite = state.pool.check_favorite(photo_id, &user.id).await?;
+
+    let mime = mime_guess::from_path(&photo.name).first_or_octet_stream();
+    let is_video = mime.type_() == mime_guess::mime::VIDEO;
+    let mime_type = mime.to_string();
+
+    ViewerMediaTemplate {
+        photo_id,
+        is_favorite,
+        is_video,
+        mime_type,
+    }
+    .try_into_response()
+}
+
+fn format_file_size(bytes: i64) -> String {
+    const KB: i64 = 1024;
+    const MB: i64 = KB * 1024;
+    const GB: i64 = MB * 1024;
+
+    if bytes >= GB {
+        format!("{:.1} GB", bytes as f64 / GB as f64)
+    } else if bytes >= MB {
+        format!("{:.1} MB", bytes as f64 / MB as f64)
+    } else if bytes >= KB {
+        format!("{:.1} KB", bytes as f64 / KB as f64)
+    } else {
+        format!("{} B", bytes)
+    }
 }
 
 #[cfg(test)]
@@ -558,13 +614,6 @@ mod tests {
         // Non-numeric
         assert!(parse_month_key("abcd-06").is_none());
         assert!(parse_month_key("2024-ab").is_none());
-    }
-
-    #[test]
-    fn test_photo_category_to_filters() {
-        assert_eq!(PhotoCategory::All.to_filters(), (false, false));
-        assert_eq!(PhotoCategory::Personal.to_filters(), (true, false));
-        assert_eq!(PhotoCategory::Family.to_filters(), (false, true));
     }
 
     #[test]

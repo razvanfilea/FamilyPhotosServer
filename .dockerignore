@@ -1,6 +1,9 @@
 /target
 /node_modules
 /assets/css/main.css
+/playwright-report
+/test-results
+/storage
 
 .env
 *.db*
