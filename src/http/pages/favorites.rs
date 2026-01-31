@@ -1,11 +1,11 @@
 use crate::http::AppStateRef;
+use crate::http::auth::AuthenticatedUser;
 use crate::http::error::HttpResult;
 use crate::http::pages::gallery::{
-    MonthGroup, PAGE_SIZE, PaginatedQuery, PhotoBatchTemplate, ProcessedPhotos, parse_month_key,
-    parse_optional_cursor,
+    MonthGroup, PAGE_SIZE, PaginatedQuery, PhotoBatchTemplate, PhotoCategory, ProcessedPhotos,
+    parse_month_key, parse_optional_cursor,
 };
 use crate::http::template_into_response::TemplateIntoResponse;
-use crate::http::utils::AuthSession;
 use crate::repo::{FavoritesRepo, PhotosTransactionRepo};
 use askama::Template;
 use axum::extract::{Query, State};
@@ -22,26 +22,16 @@ struct FavoritesPageTemplate {
 }
 
 pub async fn favorites_page(
-    auth_session: AuthSession,
+    AuthenticatedUser(user): AuthenticatedUser,
     State(state): State<AppStateRef>,
 ) -> HttpResult<Response> {
-    let user = auth_session.user.expect("User must be authenticated");
-
     let mut tx = state.pool.begin().await?;
 
-    // Get paginated favorite photos
     let paginated = tx
         .get_favorite_photos_paginated(&user.id, None, PAGE_SIZE)
         .await?;
 
-    let favorite_ids: HashSet<i64> = tx
-        .get_favorite_photos(&user.id)
-        .await?
-        .into_iter()
-        .collect();
-    tx.commit().await?;
-
-    let processed = ProcessedPhotos::from_paginated(paginated, &favorite_ids, None);
+    let processed = ProcessedPhotos::from_paginated(paginated, &HashSet::default(), None);
 
     FavoritesPageTemplate {
         groups: processed.groups,
@@ -53,12 +43,10 @@ pub async fn favorites_page(
 }
 
 pub async fn load_more_favorites(
-    auth_session: AuthSession,
+    AuthenticatedUser(user): AuthenticatedUser,
     State(state): State<AppStateRef>,
     Query(query): Query<PaginatedQuery>,
 ) -> HttpResult<Response> {
-    let user = auth_session.user.expect("User must be authenticated");
-
     let cursor = parse_optional_cursor(query.cursor.as_deref())?;
     let skip_month = query.last_month.as_ref().and_then(|m| parse_month_key(m));
 
@@ -66,11 +54,7 @@ pub async fn load_more_favorites(
     let paginated = tx
         .get_favorite_photos_paginated(&user.id, cursor.as_ref(), PAGE_SIZE)
         .await?;
-    let favorite_ids: HashSet<i64> = tx
-        .get_favorite_photos(&user.id)
-        .await?
-        .into_iter()
-        .collect();
+    let favorite_ids = tx.get_favorite_photos(&user.id).await?;
     tx.commit().await?;
 
     let processed = ProcessedPhotos::from_paginated(paginated, &favorite_ids, skip_month);

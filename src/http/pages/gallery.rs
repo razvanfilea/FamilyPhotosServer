@@ -1,8 +1,8 @@
 use super::timeline::build_timeline_data;
 use crate::http::AppStateRef;
+use crate::http::auth::AuthenticatedUser;
 use crate::http::error::{HttpError, HttpResult};
 use crate::http::template_into_response::TemplateIntoResponse;
-use crate::http::utils::AuthSession;
 use crate::model::photo::Photo;
 use crate::repo::PhotoCursor;
 use crate::repo::{FavoritesRepo, PaginatedPhotos, PhotosRepo, PhotosTransactionRepo};
@@ -318,11 +318,10 @@ pub fn extract_grouped_folders(photos: &[Photo], user_id: &str) -> GroupedFolder
 }
 
 pub async fn gallery_page(
-    auth_session: AuthSession,
+    AuthenticatedUser(user): AuthenticatedUser,
     State(state): State<AppStateRef>,
     Query(query): Query<GalleryQuery>,
 ) -> HttpResult<Response> {
-    let user = auth_session.user.expect("User must be authenticated");
     let category = query.category;
     let (personal_only, family_only) = category.to_filters();
 
@@ -333,11 +332,7 @@ pub async fn gallery_page(
         .get_photos_paginated(&user.id, personal_only, family_only, None, PAGE_SIZE)
         .await?;
 
-    let favorite_ids: HashSet<i64> = tx
-        .get_favorite_photos(&user.id)
-        .await?
-        .into_iter()
-        .collect();
+    let favorite_ids = tx.get_favorite_photos(&user.id).await?;
 
     // Get month summaries for timeline
     let month_summaries = tx
@@ -361,11 +356,10 @@ pub async fn gallery_page(
 }
 
 pub async fn photo_grid(
-    auth_session: AuthSession,
+    AuthenticatedUser(user): AuthenticatedUser,
     State(state): State<AppStateRef>,
     Query(query): Query<GalleryQuery>,
 ) -> HttpResult<Response> {
-    let user = auth_session.user.expect("User must be authenticated");
     let category = query.category;
     let (personal_only, family_only) = category.to_filters();
 
@@ -373,11 +367,7 @@ pub async fn photo_grid(
     let paginated = tx
         .get_photos_paginated(&user.id, personal_only, family_only, None, PAGE_SIZE)
         .await?;
-    let favorite_ids: HashSet<i64> = tx
-        .get_favorite_photos(&user.id)
-        .await?
-        .into_iter()
-        .collect();
+    let favorite_ids = tx.get_favorite_photos(&user.id).await?;
     tx.commit().await?;
 
     let processed = ProcessedPhotos::from_paginated(paginated, &favorite_ids, None);
@@ -393,12 +383,10 @@ pub async fn photo_grid(
 }
 
 pub async fn folder_page(
-    auth_session: AuthSession,
+    AuthenticatedUser(user): AuthenticatedUser,
     State(state): State<AppStateRef>,
     Path(folder_name): Path<String>,
 ) -> HttpResult<Response> {
-    let user = auth_session.user.expect("User must be authenticated");
-
     let mut tx = state.pool.begin().await?;
 
     // Get paginated photos for this folder
@@ -406,11 +394,7 @@ pub async fn folder_page(
         .get_folder_photos_paginated(&user.id, &folder_name, None, PAGE_SIZE)
         .await?;
 
-    let favorite_ids: HashSet<i64> = tx
-        .get_favorite_photos(&user.id)
-        .await?
-        .into_iter()
-        .collect();
+    let favorite_ids = tx.get_favorite_photos(&user.id).await?;
 
     // Get month summaries for timeline
     let month_summaries = tx
@@ -436,11 +420,10 @@ pub async fn folder_page(
 }
 
 pub async fn load_more_gallery(
-    auth_session: AuthSession,
+    AuthenticatedUser(user): AuthenticatedUser,
     State(state): State<AppStateRef>,
     Query(query): Query<PaginatedQuery>,
 ) -> HttpResult<Response> {
-    let user = auth_session.user.expect("User must be authenticated");
     let category = query.category;
     let (personal_only, family_only) = category.to_filters();
 
@@ -457,11 +440,7 @@ pub async fn load_more_gallery(
             PAGE_SIZE,
         )
         .await?;
-    let favorite_ids: HashSet<i64> = tx
-        .get_favorite_photos(&user.id)
-        .await?
-        .into_iter()
-        .collect();
+    let favorite_ids = tx.get_favorite_photos(&user.id).await?;
     tx.commit().await?;
 
     let processed = ProcessedPhotos::from_paginated(paginated, &favorite_ids, skip_month);
@@ -478,13 +457,11 @@ pub async fn load_more_gallery(
 }
 
 pub async fn load_more_folder(
-    auth_session: AuthSession,
+    AuthenticatedUser(user): AuthenticatedUser,
     State(state): State<AppStateRef>,
     Path(folder_name): Path<String>,
     Query(query): Query<PaginatedQuery>,
 ) -> HttpResult<Response> {
-    let user = auth_session.user.expect("User must be authenticated");
-
     let cursor = parse_optional_cursor(query.cursor.as_deref())?;
     let skip_month = query.last_month.as_ref().and_then(|m| parse_month_key(m));
 
@@ -492,11 +469,7 @@ pub async fn load_more_folder(
     let paginated = tx
         .get_folder_photos_paginated(&user.id, &folder_name, cursor.as_ref(), PAGE_SIZE)
         .await?;
-    let favorite_ids: HashSet<i64> = tx
-        .get_favorite_photos(&user.id)
-        .await?
-        .into_iter()
-        .collect();
+    let favorite_ids = tx.get_favorite_photos(&user.id).await?;
     tx.commit().await?;
 
     let processed = ProcessedPhotos::from_paginated(paginated, &favorite_ids, skip_month);
@@ -513,26 +486,17 @@ pub async fn load_more_folder(
 }
 
 pub async fn photo_modal(
-    auth_session: AuthSession,
+    AuthenticatedUser(user): AuthenticatedUser,
     State(state): State<AppStateRef>,
     Path(photo_id): Path<i64>,
 ) -> HttpResult<Response> {
-    let user = auth_session.user.expect("User must be authenticated");
-
     let mut tx = state.pool.begin().await?;
     let photo = tx
         .get_photo(photo_id, &user.id)
         .await?
-        .ok_or(crate::http::error::HttpError::NotFound)?;
+        .ok_or(HttpError::NotFound)?;
 
-    let favorites: HashSet<i64> = tx
-        .get_favorite_photos(&user.id)
-        .await?
-        .into_iter()
-        .collect();
-    tx.commit().await?;
-
-    let is_favorite = favorites.contains(&photo.id);
+    let is_favorite = tx.check_favorite(photo_id, &user.id).await?;
 
     PhotoModalTemplate { photo, is_favorite }.try_into_response()
 }

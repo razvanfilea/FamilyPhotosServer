@@ -1,8 +1,8 @@
-use crate::http::AppStateRef;
+use crate::http::auth::AuthenticatedUser;
 use crate::http::error::HttpResult;
 use crate::http::pages::gallery::{GalleryQuery, PhotoCategory};
 use crate::http::template_into_response::TemplateIntoResponse;
-use crate::http::utils::AuthSession;
+use crate::http::AppStateRef;
 use crate::repo::{FolderInfo, PhotosTransactionRepo};
 use askama::Template;
 use axum::extract::{Query, State};
@@ -16,11 +16,10 @@ struct FoldersPageTemplate {
 }
 
 pub async fn folders_page(
-    auth_session: AuthSession,
+    AuthenticatedUser(user): AuthenticatedUser,
     State(state): State<AppStateRef>,
     Query(query): Query<GalleryQuery>,
 ) -> HttpResult<Response> {
-    let user = auth_session.user.expect("User must be authenticated");
     let category = query.category;
     let (personal_only, family_only) = category.to_filters();
 

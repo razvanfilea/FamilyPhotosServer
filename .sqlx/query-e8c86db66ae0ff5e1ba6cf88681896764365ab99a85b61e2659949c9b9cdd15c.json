@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "select exists(select 1 from favorite_photos where photo_id = $1 and user_id = $2)",
+  "describe": {
+    "columns": [
+      {
+        "name": "exists(select 1 from favorite_photos where photo_id = $1 and user_id = $2)",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "e8c86db66ae0ff5e1ba6cf88681896764365ab99a85b61e2659949c9b9cdd15c"
+}

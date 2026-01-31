@@ -1,9 +1,6 @@
+{% import "macros.html" as macros %}
 {% if groups.is_empty() %}
-<div class="flex flex-col items-center justify-center min-h-[60vh] gap-6">
-    <span class="material-symbols-outlined text-8xl text-base-content/30">photo_library</span>
-    <p class="text-xl text-base-content/70">No photos yet</p>
-    <p class="text-base-content/50">Upload some photos to get started</p>
-</div>
+{{ macros::empty_state(icon="photo_library", message="No photos yet", sub_message="Upload some photos to get started") }}
 {% else %}
 <div class="photo-grid">
     {% for group in groups %}

@@ -16,11 +16,11 @@ pub fn router() -> Router {
         .route("/profile", get(profile))
 }
 
-fn wants_json(headers: &HeaderMap) -> bool {
+fn wants_html(headers: &HeaderMap) -> bool {
     headers
         .get(header::ACCEPT)
         .and_then(|v| v.to_str().ok())
-        .map(|v| v.contains("application/json"))
+        .map(|v| v.contains("text/html"))
         .unwrap_or(false)
 }
 
@@ -29,21 +29,21 @@ async fn login_handler(
     headers: HeaderMap,
     Form(credentials): Form<UserCredentials>,
 ) -> Response {
-    let wants_json = wants_json(&headers);
+    let wants_html = wants_html(&headers);
 
     let error_response = |message: &str| -> Response {
-        if wants_json {
-            HttpError::BadRequest(message.to_string()).into_response()
-        } else {
+        if wants_html {
             login_error(message)
+        } else {
+            HttpError::BadRequest(message.to_string()).into_response()
         }
     };
 
     let internal_error = || -> Response {
-        if wants_json {
-            HttpError::Internal("Server encountered a problem".to_string()).into_response()
-        } else {
+        if wants_html {
             login_error("Server encountered a problem. Please try again later.")
+        } else {
+            HttpError::Internal("Server encountered a problem".to_string()).into_response()
         }
     };
 
@@ -59,10 +59,10 @@ async fn login_handler(
         Ok(Some(user)) => user,
         Ok(None) => {
             warn!("Wrong credentials for user: {}", credentials.user_id);
-            return if wants_json {
-                HttpError::Unauthorized.into_response()
-            } else {
+            return if wants_html {
                 login_error("Invalid user ID or password")
+            } else {
+                HttpError::Unauthorized.into_response()
             };
         }
         Err(e) => {
@@ -81,10 +81,10 @@ async fn login_handler(
 
     debug!("User has been logged in: {}", user.id);
 
-    if wants_json {
-        Json(SimpleUser::from(user)).into_response()
-    } else {
+    if wants_html {
         [("HX-Refresh", "true"), ("HX-Replace-Url", "/")].into_response()
+    } else {
+        Json(SimpleUser::from(user)).into_response()
     }
 }
 
@@ -110,7 +110,7 @@ async fn profile(auth_session: AuthSession) -> impl IntoResponse {
 }
 
 pub async fn logout(mut auth: AuthSession, headers: HeaderMap) -> Response {
-    let wants_json = wants_json(&headers);
+    let wants_html = wants_html(&headers);
 
     if let Some(user) = &auth.user {
         debug!("Logging out user: {}", user.id);
@@ -123,9 +123,9 @@ pub async fn logout(mut auth: AuthSession, headers: HeaderMap) -> Response {
         return HttpError::Internal("Failed to logout".to_string()).into_response();
     }
 
-    if wants_json {
-        Json(serde_json::json!({"message": "Logged out"})).into_response()
-    } else {
+    if wants_html {
         Redirect::to("/").into_response()
+    } else {
+        Json(serde_json::json!({"message": "Logged out"})).into_response()
     }
 }

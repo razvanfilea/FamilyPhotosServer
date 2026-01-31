@@ -4,17 +4,11 @@
 
 {% block page_title %}Trash{% endblock %}
 
+{% import "macros.html" as macros %}
+
 {% block content %}
 {% if photos.is_empty() %}
-<div class="flex flex-col items-center justify-center min-h-[60vh] gap-6">
-    <span class="material-symbols-outlined text-8xl text-base-content/30">delete</span>
-    <p class="text-xl text-base-content/70">Trash is empty</p>
-    <p class="text-base-content/50">Deleted photos will appear here for 30 days</p>
-    <a href="/" class="btn btn-primary">
-        <span class="material-symbols-outlined">arrow_back</span>
-        Back to All Photos
-    </a>
-</div>
+{{ macros::empty_state(icon="delete", message="Trash is empty", sub_message="Deleted photos will appear here for 30 days", cta_url="/", cta_text="Back to All Photos") }}
 {% else %}
 <div class="mb-4 p-4 bg-base-200 rounded-lg">
     <p class="text-sm text-base-content/70">
