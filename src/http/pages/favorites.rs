@@ -6,7 +6,7 @@ use crate::http::pages::gallery::{
     parse_month_key, parse_optional_cursor,
 };
 use crate::http::template_into_response::TemplateIntoResponse;
-use crate::repo::{FavoritesRepo, PhotosTransactionRepo};
+use crate::repo::PhotosRepo;
 use askama::Template;
 use axum::extract::{Query, State};
 use axum::response::Response;
@@ -25,9 +25,8 @@ pub async fn favorites_page(
     AuthenticatedUser(user): AuthenticatedUser,
     State(state): State<AppStateRef>,
 ) -> HttpResult<Response> {
-    let mut tx = state.pool.begin().await?;
-
-    let paginated = tx
+    let paginated = state
+        .pool
         .get_favorite_photos_paginated(&user.id, None, PAGE_SIZE)
         .await?;
 
@@ -50,14 +49,12 @@ pub async fn load_more_favorites(
     let cursor = parse_optional_cursor(query.cursor.as_deref())?;
     let skip_month = query.last_month.as_ref().and_then(|m| parse_month_key(m));
 
-    let mut tx = state.pool.begin().await?;
-    let paginated = tx
+    let paginated = state
+        .pool
         .get_favorite_photos_paginated(&user.id, cursor.as_ref(), PAGE_SIZE)
         .await?;
-    let favorite_ids = tx.get_favorite_photos(&user.id).await?;
-    tx.commit().await?;
 
-    let processed = ProcessedPhotos::from_paginated(paginated, &favorite_ids, skip_month);
+    let processed = ProcessedPhotos::from_paginated(paginated, &HashSet::default(), skip_month);
 
     PhotoBatchTemplate {
         groups: processed.groups,

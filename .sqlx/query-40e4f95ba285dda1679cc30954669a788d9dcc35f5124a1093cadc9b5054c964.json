@@ -1,0 +1,32 @@
+{
+  "db_name": "SQLite",
+  "query": "select\n                cast(strftime('%Y', created_at) as integer) as \"year!: i32\",\n                cast(strftime('%m', created_at) as integer) as \"month!: i32\",\n                count(*) as \"count!: i64\"\n            from photos\n            where (user_id is null or user_id = $1)\n              and trashed_on is null\n              and (($2 = 0 and $3 = 0) or ($2 = 1 and user_id = $1) or ($3 = 1 and user_id is null))\n            group by 1, 2\n            order by 1 desc, 2 desc",
+  "describe": {
+    "columns": [
+      {
+        "name": "year!: i32",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "month!: i32",
+        "ordinal": 1,
+        "type_info": "Integer"
+      },
+      {
+        "name": "count!: i64",
+        "ordinal": 2,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "40e4f95ba285dda1679cc30954669a788d9dcc35f5124a1093cadc9b5054c964"
+}

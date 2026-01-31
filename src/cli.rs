@@ -59,9 +59,7 @@ enum SessionsCommand {
     Clear,
 }
 
-/**
- * @return true if the program should exit
- */
+/// Returns true if the program should exit.
 pub async fn run_cli(state: AppStateRef) -> bool {
     let cli = Cli::parse();
 

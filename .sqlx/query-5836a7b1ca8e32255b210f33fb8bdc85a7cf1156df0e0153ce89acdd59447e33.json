@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "select distinct folder as 'folder!' from photos\n             where user_id = $1\n               and folder is not null and folder != ''\n               and trashed_on is null\n             order by folder",
+  "describe": {
+    "columns": [
+      {
+        "name": "folder!",
+        "ordinal": 0,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "5836a7b1ca8e32255b210f33fb8bdc85a7cf1156df0e0153ce89acdd59447e33"
+}

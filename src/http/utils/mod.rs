@@ -7,13 +7,13 @@ use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum_extra::TypedHeader;
 use axum_extra::headers::Range;
-use bytes::Bytes;
 use std::io::{BufWriter, SeekFrom, Write};
 use std::ops::Bound;
 use tempfile::NamedTempFile;
 use tokio::fs;
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
 use tokio::sync::mpsc;
+use tokio_util::bytes::Bytes;
 use tokio_util::io::ReaderStream;
 
 pub type AuthSession = axum_login::AuthSession<UsersRepository>;
@@ -35,7 +35,6 @@ pub async fn file_to_response(
         .expect("Photo must have a name")
         .to_string_lossy();
 
-    // Parse range header if present
     let (start, end, is_range_request) = if let Some(TypedHeader(range)) = range_header {
         if let Some((start_bound, end_bound)) = range.satisfiable_ranges(file_size).next() {
             let start = match start_bound {
@@ -50,7 +49,6 @@ pub async fn file_to_response(
             };
             (start, end, true)
         } else {
-            // Range not satisfiable
             return Ok((
                 StatusCode::RANGE_NOT_SATISFIABLE,
                 [(header::CONTENT_RANGE, format!("bytes */{}", file_size))],
@@ -63,13 +61,11 @@ pub async fn file_to_response(
 
     let content_length = end - start + 1;
 
-    // Open file and seek to start position
     let mut file = fs::File::open(photo_path).await?;
     if start > 0 {
         file.seek(SeekFrom::Start(start)).await?;
     }
 
-    // Limit reads to content_length bytes
     let limited_reader = file.take(content_length);
     let stream = ReaderStream::new(limited_reader);
     let body = Body::from_stream(stream);
@@ -137,9 +133,6 @@ impl WrittenFile {
     }
 }
 
-///
-/// Returns the number of bytes written to disk
-///
 pub async fn write_field_to_file(mut field: multipart::Field<'_>) -> HttpResult<WrittenFile> {
     let temp_file = NamedTempFile::new()?;
     let (tx, rx) = mpsc::channel::<Bytes>(8);

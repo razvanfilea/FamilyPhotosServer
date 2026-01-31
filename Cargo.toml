@@ -12,7 +12,6 @@ rayon = "1.11"
 
 # Axum
 axum = { version = "0.8.1", features = ["multipart"] }
-bytes = "1"
 axum-extra = { version = "0.12", default-features = false, features = ["typed-header"] }
 tower-http = { version = "0.6", features = ["trace", "cors", "set-header", "fs"] }
 axum-login = "0.18"
@@ -47,7 +46,7 @@ time = { version = "0.3", features = ["macros", "parsing", "serde"] }
 dotenvy = "0.15"
 argon2 = { version = "=0.6.0-rc.6" }
 blake3 = { version = "1.8", features = ["mmap"] }
-uuid = { version = "1.19", features = ["v4"] }
+uuid = { version = "1.20", features = ["v4"] }
 fast-thumbhash = { git = "https://github.com/razvanfilea/fast-thumbhash" }
 mimalloc = "0.1"
 
