@@ -137,7 +137,6 @@ where
         ))
     })?;
 
-    // Generate to temp file
     if mime.type_() == "video" {
         generate_video_frame(load_path, temp_path)?;
     } else {

@@ -34,10 +34,8 @@ async fn main() {
             return;
         }
     };
-    // Creates the necessary folders
     let storage_resolver = StorageResolver::new(vars.storage_path, vars.previews_path);
 
-    // Logging
     tracing_subscriber::registry()
         .with(EnvFilter::new(std::env::var("RUST_LOG").unwrap_or_else(
             |_| "info,axum_login=off,tower_sessions=off,sqlx=warn,tower_http=info".into(),
@@ -66,7 +64,6 @@ async fn main() {
         .await
         .expect("Failed to run migrations");
 
-    // Migrate the sessions store and delete expired sessions
     let session_store = SqliteStore::new(pool.clone());
     session_store
         .migrate()
@@ -81,7 +78,6 @@ async fn main() {
         .await
         .expect("Failed to delete expired sessions");
 
-    // Run the CLI
     if cli::run_cli(app_state).await {
         return;
     }

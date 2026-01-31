@@ -100,11 +100,9 @@ async fn move_photos_service(
 ) -> sqlx::Result<Vec<Photo>> {
     let mut moved_photos = Vec::with_capacity(photo_ids.len());
 
-    // Acquire a connection from the pool
     let mut conn = state.pool.acquire().await?;
 
     for photo_id in photo_ids {
-        // Create a separate transaction for each photo
         let mut tx = conn.begin().await?;
 
         let Some(mut photo) = tx.get_photo(*photo_id, user_id).await? else {

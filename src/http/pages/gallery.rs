@@ -5,7 +5,7 @@ use crate::http::error::{HttpError, HttpResult};
 use crate::http::template_into_response::TemplateIntoResponse;
 use crate::model::photo::Photo;
 use crate::repo::PhotoCursor;
-use crate::repo::{FavoritesRepo, PaginatedPhotos, PhotosRepo, PhotosTransactionRepo};
+use crate::repo::{FavoritesRepo, PaginatedPhotos, PhotosRepo};
 use askama::Template;
 use axum::extract::{Path, Query, State};
 use axum::response::Response;
@@ -50,11 +50,6 @@ impl PhotoCategory {
 pub struct GalleryQuery {
     #[serde(default)]
     pub category: PhotoCategory,
-}
-
-pub struct GroupedFolders {
-    pub personal: Vec<String>,
-    pub family: Vec<String>,
 }
 
 #[derive(Template)]
@@ -133,7 +128,7 @@ impl PhotoView {
     }
 }
 
-pub const PAGE_SIZE: i64 = 500;
+pub const PAGE_SIZE: u32 = 500;
 
 /// A group of photos from the same month/year
 pub struct MonthGroup {
@@ -292,31 +287,6 @@ impl ProcessedPhotos {
     }
 }
 
-pub fn extract_grouped_folders(photos: &[Photo], user_id: &str) -> GroupedFolders {
-    let mut personal_folders: HashSet<String> = HashSet::new();
-    let mut family_folders: HashSet<String> = HashSet::new();
-
-    for photo in photos {
-        if let Some(folder) = &photo.folder {
-            if folder.is_empty() {
-                continue;
-            }
-            if photo.user_id.as_deref() == Some(user_id) {
-                personal_folders.insert(folder.clone());
-            } else if photo.user_id.is_none() {
-                family_folders.insert(folder.clone());
-            }
-        }
-    }
-
-    let mut personal: Vec<String> = personal_folders.into_iter().collect();
-    let mut family: Vec<String> = family_folders.into_iter().collect();
-    personal.sort();
-    family.sort();
-
-    GroupedFolders { personal, family }
-}
-
 pub async fn gallery_page(
     AuthenticatedUser(user): AuthenticatedUser,
     State(state): State<AppStateRef>,
@@ -325,20 +295,24 @@ pub async fn gallery_page(
     let category = query.category;
     let (personal_only, family_only) = category.to_filters();
 
-    let mut tx = state.pool.begin().await?;
-
     // Get paginated photos
-    let paginated = tx
+    let paginated = state
+        .pool
         .get_photos_paginated(&user.id, personal_only, family_only, None, PAGE_SIZE)
         .await?;
 
-    let favorite_ids = tx.get_favorite_photos(&user.id).await?;
+    // Only check favorites for the photos we're displaying
+    let photo_ids: Vec<i64> = paginated.photos.iter().map(|p| p.id).collect();
+    let favorite_ids = state
+        .pool
+        .check_favorites_for_ids(&user.id, &photo_ids)
+        .await?;
 
     // Get month summaries for timeline
-    let month_summaries = tx
+    let month_summaries = state
+        .pool
         .get_month_summaries(&user.id, personal_only, family_only)
         .await?;
-    tx.commit().await?;
 
     let timeline = build_timeline_data(month_summaries);
     let processed = ProcessedPhotos::from_paginated(paginated, &favorite_ids, None);
@@ -363,12 +337,17 @@ pub async fn photo_grid(
     let category = query.category;
     let (personal_only, family_only) = category.to_filters();
 
-    let mut tx = state.pool.begin().await?;
-    let paginated = tx
+    let paginated = state
+        .pool
         .get_photos_paginated(&user.id, personal_only, family_only, None, PAGE_SIZE)
         .await?;
-    let favorite_ids = tx.get_favorite_photos(&user.id).await?;
-    tx.commit().await?;
+
+    // Only check favorites for the photos we're displaying
+    let photo_ids: Vec<i64> = paginated.photos.iter().map(|p| p.id).collect();
+    let favorite_ids = state
+        .pool
+        .check_favorites_for_ids(&user.id, &photo_ids)
+        .await?;
 
     let processed = ProcessedPhotos::from_paginated(paginated, &favorite_ids, None);
 
@@ -387,20 +366,24 @@ pub async fn folder_page(
     State(state): State<AppStateRef>,
     Path(folder_name): Path<String>,
 ) -> HttpResult<Response> {
-    let mut tx = state.pool.begin().await?;
-
     // Get paginated photos for this folder
-    let paginated = tx
+    let paginated = state
+        .pool
         .get_folder_photos_paginated(&user.id, &folder_name, None, PAGE_SIZE)
         .await?;
 
-    let favorite_ids = tx.get_favorite_photos(&user.id).await?;
+    // Only check favorites for the photos we're displaying
+    let photo_ids: Vec<i64> = paginated.photos.iter().map(|p| p.id).collect();
+    let favorite_ids = state
+        .pool
+        .check_favorites_for_ids(&user.id, &photo_ids)
+        .await?;
 
     // Get month summaries for timeline
-    let month_summaries = tx
+    let month_summaries = state
+        .pool
         .get_folder_month_summaries(&user.id, &folder_name)
         .await?;
-    tx.commit().await?;
 
     let timeline = build_timeline_data(month_summaries);
     let processed = ProcessedPhotos::from_paginated(paginated, &favorite_ids, None);
@@ -430,8 +413,8 @@ pub async fn load_more_gallery(
     let cursor = parse_optional_cursor(query.cursor.as_deref())?;
     let skip_month = query.last_month.as_ref().and_then(|m| parse_month_key(m));
 
-    let mut tx = state.pool.begin().await?;
-    let paginated = tx
+    let paginated = state
+        .pool
         .get_photos_paginated(
             &user.id,
             personal_only,
@@ -440,8 +423,13 @@ pub async fn load_more_gallery(
             PAGE_SIZE,
         )
         .await?;
-    let favorite_ids = tx.get_favorite_photos(&user.id).await?;
-    tx.commit().await?;
+
+    // Only check favorites for the photos we're displaying
+    let photo_ids: Vec<i64> = paginated.photos.iter().map(|p| p.id).collect();
+    let favorite_ids = state
+        .pool
+        .check_favorites_for_ids(&user.id, &photo_ids)
+        .await?;
 
     let processed = ProcessedPhotos::from_paginated(paginated, &favorite_ids, skip_month);
 
@@ -465,12 +453,17 @@ pub async fn load_more_folder(
     let cursor = parse_optional_cursor(query.cursor.as_deref())?;
     let skip_month = query.last_month.as_ref().and_then(|m| parse_month_key(m));
 
-    let mut tx = state.pool.begin().await?;
-    let paginated = tx
+    let paginated = state
+        .pool
         .get_folder_photos_paginated(&user.id, &folder_name, cursor.as_ref(), PAGE_SIZE)
         .await?;
-    let favorite_ids = tx.get_favorite_photos(&user.id).await?;
-    tx.commit().await?;
+
+    // Only check favorites for the photos we're displaying
+    let photo_ids: Vec<i64> = paginated.photos.iter().map(|p| p.id).collect();
+    let favorite_ids = state
+        .pool
+        .check_favorites_for_ids(&user.id, &photo_ids)
+        .await?;
 
     let processed = ProcessedPhotos::from_paginated(paginated, &favorite_ids, skip_month);
 
@@ -490,13 +483,13 @@ pub async fn photo_modal(
     State(state): State<AppStateRef>,
     Path(photo_id): Path<i64>,
 ) -> HttpResult<Response> {
-    let mut tx = state.pool.begin().await?;
-    let photo = tx
+    let photo = state
+        .pool
         .get_photo(photo_id, &user.id)
         .await?
         .ok_or(HttpError::NotFound)?;
 
-    let is_favorite = tx.check_favorite(photo_id, &user.id).await?;
+    let is_favorite = state.pool.check_favorite(photo_id, &user.id).await?;
 
     PhotoModalTemplate { photo, is_favorite }.try_into_response()
 }

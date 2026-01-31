@@ -4,6 +4,7 @@ use crate::http::pages::gallery::PhotoView;
 use crate::http::template_into_response::TemplateIntoResponse;
 use crate::http::AppStateRef;
 use crate::repo::{FavoritesRepo, PhotosRepo, PhotosTransactionRepo};
+use std::collections::HashSet;
 use askama::Template;
 use axum::extract::{Path, State};
 use axum::response::{IntoResponse, Response};
@@ -21,15 +22,18 @@ pub async fn trash_page(
     AuthenticatedUser(user): AuthenticatedUser,
     State(state): State<AppStateRef>,
 ) -> HttpResult<Response> {
+    // Use optimized query that only fetches trashed photos
+    let trashed_photos = state.pool.get_trashed_photos(&user.id).await?;
+    let photo_ids: Vec<i64> = trashed_photos.iter().map(|p| p.id).collect();
 
-    let mut tx = state.pool.begin().await?;
-    let all_photos = tx.get_photos_by_user_and_public(&user.id).await?.photos;
-    let favorite_ids = tx.get_favorite_photos(&user.id).await?;
-    tx.commit().await?;
+    // Only check favorites for the photos we're displaying
+    let favorite_ids: HashSet<i64> = state
+        .pool
+        .check_favorites_for_ids(&user.id, &photo_ids)
+        .await?;
 
-    let photos: Vec<PhotoView> = all_photos
+    let photos: Vec<PhotoView> = trashed_photos
         .into_iter()
-        .filter(|p| p.trashed_on.is_some())
         .map(|p| PhotoView::from_photo(p, &favorite_ids))
         .collect();
 

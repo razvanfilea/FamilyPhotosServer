@@ -7,3 +7,6 @@ pub mod users_repo;
 pub use favorites_repo::*;
 pub use photos_hash_repo::*;
 pub use photos_repo::*;
+
+#[cfg(test)]
+pub mod tests;

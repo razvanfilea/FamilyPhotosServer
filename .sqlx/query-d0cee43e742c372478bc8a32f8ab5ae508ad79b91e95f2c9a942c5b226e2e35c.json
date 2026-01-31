@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "update photos set thumb_hash = $2 where id = $1 returning *",
+  "query": "select * from photos\n                where (user_id is null or user_id = $1)\n                  and trashed_on is null\n                  and folder = $2\n                  and (created_at < $3 or (created_at = $3 and id < $4))\n                order by created_at desc, id desc\n                limit $5",
   "describe": {
     "columns": [
       {
@@ -45,7 +45,7 @@
       }
     ],
     "parameters": {
-      "Right": 2
+      "Right": 5
     },
     "nullable": [
       false,
@@ -58,5 +58,5 @@
       true
     ]
   },
-  "hash": "59d1a36e35525d9b823b92c96ec5edf03918818bb3251e40b644d0a1c45a7d84"
+  "hash": "d0cee43e742c372478bc8a32f8ab5ae508ad79b91e95f2c9a942c5b226e2e35c"
 }

@@ -1,0 +1,32 @@
+{
+  "db_name": "SQLite",
+  "query": "select\n                folder as \"name!\",\n                count(*) as \"photo_count!: i64\",\n                (select id from photos p2\n                 where p2.folder = photos.folder\n                   and p2.trashed_on is null\n                   and (p2.user_id is null or p2.user_id = $1)\n                   and (($2 = 0 and $3 = 0) or ($2 = 1 and p2.user_id = $1) or ($3 = 1 and p2.user_id is null))\n                 order by p2.created_at desc limit 1) as \"cover_photo_id!: i64\"\n            from photos\n            where (user_id is null or user_id = $1)\n              and trashed_on is null\n              and folder is not null and folder != ''\n              and (($2 = 0 and $3 = 0) or ($2 = 1 and user_id = $1) or ($3 = 1 and user_id is null))\n            group by folder\n            order by folder asc",
+  "describe": {
+    "columns": [
+      {
+        "name": "name!",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "photo_count!: i64",
+        "ordinal": 1,
+        "type_info": "Integer"
+      },
+      {
+        "name": "cover_photo_id!: i64",
+        "ordinal": 2,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      true,
+      false,
+      true
+    ]
+  },
+  "hash": "5a7883e8e9d30332a617c497c82542ca04d9e97892f3d7071861658bdcba1349"
+}

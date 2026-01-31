@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT * FROM photos\n                WHERE (user_id IS NULL OR user_id = $1)\n                  AND trashed_on IS NULL\n                  AND (($3 = 0 AND $4 = 0) OR ($3 = 1 AND user_id = $1) OR ($4 = 1 AND user_id IS NULL))\n                ORDER BY created_at DESC, id DESC\n                LIMIT $2",
+  "query": "select p.* from photos p\n                inner join favorite_photos f on p.id = f.photo_id and f.user_id = $1\n                where (p.user_id is null or p.user_id = $1)\n                  and p.trashed_on is null\n                  and (p.created_at < $2 or (p.created_at = $2 and p.id < $3))\n                order by p.created_at desc, p.id desc\n                limit $4",
   "describe": {
     "columns": [
       {
@@ -58,5 +58,5 @@
       true
     ]
   },
-  "hash": "29dfdd7f56b9cae36770b26138a091f4e9469d574062b76390e0c9fc4c1124fc"
+  "hash": "0368c6fbca2c504ad49b9979a95a745cbad3c49200210ee30fe4135c55389fe7"
 }
