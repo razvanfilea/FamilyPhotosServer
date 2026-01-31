@@ -1,8 +1,8 @@
 use crate::http::AppStateRef;
 use crate::http::error::HttpResult;
 use crate::http::pages::gallery::{
-    MonthGroup, PAGE_SIZE, PaginatedQuery, PhotoBatchTemplate, ProcessedPhotos, decode_cursor,
-    parse_month_key,
+    MonthGroup, PAGE_SIZE, PaginatedQuery, PhotoBatchTemplate, ProcessedPhotos, parse_month_key,
+    parse_optional_cursor,
 };
 use crate::http::template_into_response::TemplateIntoResponse;
 use crate::http::utils::AuthSession;
@@ -59,7 +59,7 @@ pub async fn load_more_favorites(
 ) -> HttpResult<Response> {
     let user = auth_session.user.expect("User must be authenticated");
 
-    let cursor = query.cursor.as_ref().and_then(|c| decode_cursor(c));
+    let cursor = parse_optional_cursor(query.cursor.as_deref())?;
     let skip_month = query.last_month.as_ref().and_then(|m| parse_month_key(m));
 
     let mut tx = state.pool.begin().await?;
