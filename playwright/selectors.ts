@@ -47,3 +47,18 @@ export const TIMELINE = '[data-testid="timeline"], .timeline, [id*="timeline"]';
 export const LOGIN_USER_ID = 'input[name="user_id"]';
 export const LOGIN_PASSWORD = 'input[name="password"]';
 export const LOGIN_SUBMIT = 'button[type="submit"]';
+
+// Photo Viewer (fullscreen)
+export const PHOTO_VIEWER = '#photo-viewer:not(.hidden), .photo-viewer-container:not(.hidden)';
+export const PHOTO_VIEWER_BACKDROP = '#photo-viewer-backdrop, .photo-viewer-backdrop';
+export const PHOTO_VIEWER_CLOSE = '#photo-viewer-close, .photo-viewer-close';
+export const PHOTO_VIEWER_NAV_PREV = '#photo-viewer-prev, .photo-viewer-nav-prev';
+export const PHOTO_VIEWER_NAV_NEXT = '#photo-viewer-next, .photo-viewer-nav-next';
+export const PHOTO_VIEWER_FAVORITE = '#viewer-fav-btn';
+export const PHOTO_VIEWER_DELETE = '#viewer-delete-btn';
+export const PHOTO_VIEWER_INFO_BTN = '#viewer-info-btn';
+export const PHOTO_VIEWER_INFO_PANEL = '#photo-info-panel.open, .photo-viewer-info-panel.open';
+export const PHOTO_VIEWER_INFO_CLOSE = '#photo-info-close';
+export const PHOTO_VIEWER_DOWNLOAD = '#viewer-download-btn';
+export const PHOTO_VIEWER_SHARE = '#viewer-share-btn';
+

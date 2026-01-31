@@ -1,8 +1,6 @@
 <div id="photo-card-{{ photo.id }}" class="photo-card"
-     hx-get="/photo/{{ photo.id }}"
-     hx-target="#photo_modal_content"
-     hx-swap="innerHTML"
-     hx-on::after-request="openPhotoModal()">
+     data-photo-id="{{ photo.id }}"
+     onclick="photoViewer.open({{ photo.id }}, this)">
     <img data-src="/photos/preview/{{ photo.id }}"
          alt=""
          {% if let Some(thumb_hash) = photo.thumb_hash %}data-thumbhash="{{ thumb_hash }}"{% endif %}

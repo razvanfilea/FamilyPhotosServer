@@ -1,9 +1,9 @@
 use crate::http::error::HttpError;
 use crate::http::template_into_response::TemplateIntoResponse;
-use crate::http::utils::AuthSession;
+use crate::http::utils::{AuthSession, WantsHtml};
 use crate::model::user::{SimpleUser, UserCredentials};
 use askama::Template;
-use axum::http::{HeaderMap, StatusCode, header};
+use axum::http::StatusCode;
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use axum::{Form, Json, Router};
@@ -16,21 +16,11 @@ pub fn router() -> Router {
         .route("/profile", get(profile))
 }
 
-fn wants_html(headers: &HeaderMap) -> bool {
-    headers
-        .get(header::ACCEPT)
-        .and_then(|v| v.to_str().ok())
-        .map(|v| v.contains("text/html"))
-        .unwrap_or(false)
-}
-
 async fn login_handler(
     mut auth: AuthSession,
-    headers: HeaderMap,
+    WantsHtml(wants_html): WantsHtml,
     Form(credentials): Form<UserCredentials>,
 ) -> Response {
-    let wants_html = wants_html(&headers);
-
     let error_response = |message: &str| -> Response {
         if wants_html {
             login_error(message)
@@ -109,9 +99,7 @@ async fn profile(auth_session: AuthSession) -> impl IntoResponse {
         })
 }
 
-pub async fn logout(mut auth: AuthSession, headers: HeaderMap) -> Response {
-    let wants_html = wants_html(&headers);
-
+pub async fn logout(mut auth: AuthSession, WantsHtml(wants_html): WantsHtml) -> Response {
     if let Some(user) = &auth.user {
         debug!("Logging out user: {}", user.id);
     }

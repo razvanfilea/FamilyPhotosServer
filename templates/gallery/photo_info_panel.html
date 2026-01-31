@@ -1,0 +1,21 @@
+<div class="space-y-4">
+    <div>
+        <label class="text-xs text-base-content/60">Filename</label>
+        <p class="font-medium break-all">{{ photo.name }}</p>
+    </div>
+    <div>
+        <label class="text-xs text-base-content/60">Folder</label>
+        <p class="flex items-center gap-1">
+            <span class="material-symbols-outlined text-sm">folder</span>
+            {% if let Some(folder) = &photo.folder %}{{ folder }}{% else %}Root{% endif %}
+        </p>
+    </div>
+    <div>
+        <label class="text-xs text-base-content/60">Created</label>
+        <p>{{ photo.created_at }}</p>
+    </div>
+    <div>
+        <label class="text-xs text-base-content/60">Size</label>
+        <p>{{ file_size_formatted }}</p>
+    </div>
+</div>

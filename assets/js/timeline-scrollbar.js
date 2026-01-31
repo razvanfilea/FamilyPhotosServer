@@ -92,13 +92,6 @@ class TimelineScrollbar {
             }
         });
 
-        // Track hover for tooltip
-        this.track.addEventListener('mousemove', (e) => this.onTrackHover(e));
-        this.track.addEventListener('mouseleave', () => this.hideTooltip());
-
-        // Click to jump
-        this.track.addEventListener('click', (e) => this.onTrackClick(e));
-
         // Thumb dragging
         this.thumb.addEventListener('mousedown', (e) => this.startDrag(e));
         document.addEventListener('mousemove', this.boundOnDrag);
@@ -176,34 +169,37 @@ class TimelineScrollbar {
         const trackBottom = window.innerHeight - 16; // bottom-4 = 1rem = 16px
         const trackHeight = trackBottom - trackTop;
 
-        // Find first occurrence of each year
+        // Group month entries by year, only show first occurrence of each year
+        const seenYears = new Set();
         const yearPositions = [];
         for (const entry of this.timelineData) {
-            const existingYear = yearPositions.find(yp => yp.year === entry.year);
-            if (!existingYear) {
+            if (!seenYears.has(entry.year)) {
+                seenYears.add(entry.year);
                 const position = this.getPositionForEntry(entry, trackTop, trackHeight);
                 yearPositions.push({ year: entry.year, position });
             }
         }
 
-        // Filter out overlapping markers (minimum 24px apart)
-        const MIN_SPACING = 24;
-        const visibleMarkers = [];
-        for (const yp of yearPositions) {
-            const tooClose = visibleMarkers.some(
-                vm => Math.abs(vm.position - yp.position) < MIN_SPACING
-            );
-            if (!tooClose) {
-                visibleMarkers.push(yp);
+        // Spread out overlapping markers (minimum spacing)
+        const MIN_SPACING = 20;
+        for (let i = 1; i < yearPositions.length; i++) {
+            const prev = yearPositions[i - 1];
+            const curr = yearPositions[i];
+            if (curr.position - prev.position < MIN_SPACING) {
+                curr.position = prev.position + MIN_SPACING;
             }
         }
 
-        // Create markers only for non-overlapping positions
-        visibleMarkers.forEach(({ year, position }) => {
+        // Create markers for all years
+        yearPositions.forEach(({ year, position }) => {
             const marker = document.createElement('div');
             marker.className = 'timeline-year-marker';
             marker.textContent = year;
             marker.style.top = `${position}px`;
+            marker.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.jumpToYear(year);
+            });
             this.container.appendChild(marker);
             this.yearMarkers.push(marker);
         });
@@ -252,39 +248,66 @@ class TimelineScrollbar {
     }
 
     updateTopVisibleMonth() {
-        if (this.monthVisibility.size === 0) {
-            this.topVisibleMonth = this.findClosestMonth();
-            return;
-        }
-
-        const visibleHeaders = [];
-        for (const monthKey of this.monthVisibility.keys()) {
-            const header = document.querySelector(`.month-header[data-month="${monthKey}"]`);
-            if (header) {
-                visibleHeaders.push({ monthKey, top: header.getBoundingClientRect().top });
-            }
-        }
-
-        visibleHeaders.sort((a, b) => a.top - b.top);
-        const topHeader = visibleHeaders.find(h => h.top >= 80) || visibleHeaders[visibleHeaders.length - 1];
-        if (topHeader) {
-            this.topVisibleMonth = topHeader.monthKey;
-        }
-    }
-
-    findClosestMonth() {
+        // Find the month header that is at or just above the top of the visible area
         const headers = document.querySelectorAll('.month-header[data-month]');
-        let closest = null;
-        let closestDistance = Infinity;
+        const topThreshold = 100; // Consider headers within 100px of the top
+
+        let bestMatch = null;
+        let bestTop = -Infinity;
 
         for (const header of headers) {
-            const distance = Math.abs(header.getBoundingClientRect().top - 80);
-            if (distance < closestDistance) {
-                closestDistance = distance;
-                closest = header.dataset.month;
+            const top = header.getBoundingClientRect().top;
+            // Find the header closest to (but at or above) the threshold
+            if (top <= topThreshold && top > bestTop) {
+                bestTop = top;
+                bestMatch = header.dataset.month;
             }
         }
-        return closest;
+
+        // If no header is above the threshold, find the first one below it
+        if (!bestMatch) {
+            let closestBelow = null;
+            let closestBelowTop = Infinity;
+            for (const header of headers) {
+                const top = header.getBoundingClientRect().top;
+                if (top > topThreshold && top < closestBelowTop) {
+                    closestBelowTop = top;
+                    closestBelow = header.dataset.month;
+                }
+            }
+            bestMatch = closestBelow;
+        }
+
+        this.topVisibleMonth = bestMatch;
+    }
+
+    /**
+     * Get the year from a month key (e.g., "2024-06" -> 2024)
+     */
+    getYearFromMonthKey(monthKey) {
+        if (!monthKey) return null;
+        const parts = monthKey.split('-');
+        return parts.length > 0 ? parseInt(parts[0], 10) : null;
+    }
+
+    /**
+     * Format a month key (e.g., "2024-06") to a readable label (e.g., "June 2024")
+     */
+    formatMonthLabel(monthKey) {
+        if (!monthKey) return null;
+        const [yearStr, monthStr] = monthKey.split('-');
+        const year = parseInt(yearStr, 10);
+        const month = parseInt(monthStr, 10);
+
+        const monthNames = [
+            'January', 'February', 'March', 'April', 'May', 'June',
+            'July', 'August', 'September', 'October', 'November', 'December'
+        ];
+
+        if (month >= 1 && month <= 12) {
+            return `${monthNames[month - 1]} ${year}`;
+        }
+        return `${year}`;
     }
 
     getEntryAtPosition(y) {
@@ -324,11 +347,8 @@ class TimelineScrollbar {
         let progress = 0;
 
         if (this.topVisibleMonth && this.timelineData?.length > 0) {
-            const [yearStr, monthStr] = this.topVisibleMonth.split('-');
-            const year = parseInt(yearStr, 10);
-            const month = parseInt(monthStr, 10);
-
-            const entry = this.timelineData.find(e => e.year === year && e.month === month);
+            // Find exact month entry using year_month field
+            const entry = this.timelineData.find(e => e.year_month === this.topVisibleMonth);
 
             if (entry && this.totalPhotos > 0) {
                 const baseProgress = entry.cumulative_before / this.totalPhotos;
@@ -349,14 +369,16 @@ class TimelineScrollbar {
     }
 
     getProgressWithinMonth(entry) {
-        const monthKey = `${entry.year}-${String(entry.month).padStart(2, '0')}`;
-        const header = document.querySelector(`.month-header[data-month="${monthKey}"]`);
+        // Find the month header for this specific month
+        const header = document.querySelector(`.month-header[data-month="${entry.year_month}"]`);
         if (!header) return 0;
 
         const headerRect = header.getBoundingClientRect();
+
+        // Find the next month's header
         const allHeaders = Array.from(document.querySelectorAll('.month-header[data-month]'));
-        const headerIndex = allHeaders.indexOf(header);
-        const nextHeader = allHeaders[headerIndex + 1];
+        const currentIndex = allHeaders.findIndex(h => h.dataset.month === entry.year_month);
+        const nextHeader = allHeaders[currentIndex + 1];
 
         let sectionHeight;
         if (nextHeader) {
@@ -376,33 +398,27 @@ class TimelineScrollbar {
     updateScrollTooltip() {
         if (this.isDragging || !this.timelineData?.length) return;
 
+        // Use the visible month from DOM for accurate display
         if (this.topVisibleMonth) {
-            const [yearStr, monthStr] = this.topVisibleMonth.split('-');
-            const entry = this.timelineData.find(e =>
-                e.year === parseInt(yearStr, 10) && e.month === parseInt(monthStr, 10)
-            );
-            if (entry) {
-                this.tooltip.textContent = entry.label;
-                this.tooltip.style.top = `${this.thumbCenterY}px`;
-                this.tooltip.classList.add('visible');
-                return;
+            // Validate month exists in timeline data
+            const validMonth = this.timelineData.some(e => e.year_month === this.topVisibleMonth);
+            if (validMonth) {
+                const label = this.formatMonthLabel(this.topVisibleMonth);
+                if (label) {
+                    this.tooltip.textContent = label;
+                    this.tooltip.style.top = `${this.thumbCenterY}px`;
+                    this.tooltip.classList.add('visible');
+                    return;
+                }
             }
         }
 
-        // Fallback
+        // Fallback to month label from timeline data
         const entry = this.getEntryAtPosition(this.thumbCenterY);
         if (entry) {
-            this.tooltip.textContent = entry.label;
+            const label = this.formatMonthLabel(entry.year_month);
+            this.tooltip.textContent = label || entry.year;
             this.tooltip.style.top = `${this.thumbCenterY}px`;
-            this.tooltip.classList.add('visible');
-        }
-    }
-
-    onTrackHover(e) {
-        const entry = this.getEntryAtPosition(e.clientY);
-        if (entry) {
-            this.tooltip.textContent = entry.label;
-            this.tooltip.style.top = `${e.clientY}px`;
             this.tooltip.classList.add('visible');
         }
     }
@@ -411,26 +427,18 @@ class TimelineScrollbar {
         this.tooltip.classList.remove('visible');
     }
 
-    onTrackClick(e) {
-        const entry = this.getEntryAtPosition(e.clientY);
-        if (!entry) return;
-
-        const monthKey = `${entry.year}-${String(entry.month).padStart(2, '0')}`;
-        this.jumpToMonth(monthKey);
-    }
-
-    jumpToMonth(monthKey) {
-        const target = document.querySelector(`.month-header[data-month="${monthKey}"]`);
+    jumpToYear(year) {
+        // Find first month-header of this year
+        const target = document.querySelector(`.month-header[data-month^="${year}-"]`);
         if (target) {
             // Check if the target is in a virtualized page
             const page = target.closest('.photo-page');
             if (page && page.classList.contains('virtualized')) {
                 // Wait for page to materialize then scroll
-                this.scrollTarget = monthKey;
-                this.showLoadingIndicator(monthKey);
-                // The page will be materialized by the IntersectionObserver
+                this.scrollTarget = year;
+                this.showLoadingIndicator(year);
                 // Watch for the target to appear
-                this.watchForTarget(monthKey);
+                this.watchForTarget(year);
             } else {
                 // Target is in DOM and visible, scroll to it
                 target.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -439,15 +447,15 @@ class TimelineScrollbar {
             }
         } else {
             // Target not loaded, start auto-scroll
-            this.scrollTarget = monthKey;
-            this.showLoadingIndicator(monthKey);
+            this.scrollTarget = year;
+            this.showLoadingIndicator(year);
             this.autoScrollToLoadMore();
         }
     }
 
-    watchForTarget(monthKey) {
+    watchForTarget(year) {
         const checkTarget = () => {
-            const target = document.querySelector(`.month-header[data-month="${monthKey}"]`);
+            const target = document.querySelector(`.month-header[data-month^="${year}-"]`);
             if (target) {
                 const page = target.closest('.photo-page');
                 if (!page || !page.classList.contains('virtualized')) {
@@ -461,7 +469,7 @@ class TimelineScrollbar {
                 }
             }
             // Keep checking if we still have a scroll target
-            if (this.scrollTarget === monthKey) {
+            if (this.scrollTarget === year) {
                 setTimeout(checkTarget, 100);
             }
         };
@@ -481,7 +489,8 @@ class TimelineScrollbar {
     checkScrollTarget() {
         if (!this.scrollTarget) return;
 
-        const target = document.querySelector(`.month-header[data-month="${this.scrollTarget}"]`);
+        const year = this.scrollTarget;
+        const target = document.querySelector(`.month-header[data-month^="${year}-"]`);
         if (target) {
             // Found the target, scroll to it
             setTimeout(() => {
@@ -507,16 +516,13 @@ class TimelineScrollbar {
         this.hideLoadingIndicator();
     }
 
-    showLoadingIndicator(monthKey) {
+    showLoadingIndicator(year) {
         if (!this.loadingIndicator) {
             this.loadingIndicator = document.createElement('div');
             this.loadingIndicator.className = 'timeline-loading-indicator';
             this.container.appendChild(this.loadingIndicator);
         }
-        const entry = this.timelineData.find(e =>
-            `${e.year}-${String(e.month).padStart(2, '0')}` === monthKey
-        );
-        this.loadingIndicator.textContent = `Loading ${entry?.label || monthKey}...`;
+        this.loadingIndicator.textContent = `Loading ${year}...`;
         this.loadingIndicator.style.display = 'block';
     }
 
@@ -550,7 +556,8 @@ class TimelineScrollbar {
         // Update tooltip while dragging
         const entry = this.getEntryAtPosition(e.clientY);
         if (entry) {
-            this.tooltip.textContent = entry.label;
+            const label = this.formatMonthLabel(entry.year_month);
+            this.tooltip.textContent = label || entry.year;
             this.tooltip.style.top = `${e.clientY}px`;
             this.tooltip.classList.add('visible');
         }

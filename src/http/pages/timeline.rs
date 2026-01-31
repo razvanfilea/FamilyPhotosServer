@@ -1,15 +1,14 @@
 use crate::repo::MonthSummary;
 use serde::Serialize;
-use time::Month;
 
 /// Timeline entry for JSON serialization (used by timeline scrollbar)
 #[derive(Serialize)]
 pub struct TimelineEntry {
+    pub year_month: String,
     pub year: i32,
-    pub month: u8,
     pub count: i64,
     pub cumulative_before: i64,
-    pub label: String,
+    pub cover_photo_id: i64,
 }
 
 /// Result of building timeline data from month summaries
@@ -26,16 +25,15 @@ pub fn build_timeline_data(summaries: Vec<MonthSummary>) -> TimelineData {
     let entries: Vec<TimelineEntry> = summaries
         .into_iter()
         .map(|s| {
+            // Derive year_month from max_created_at (e.g. "2024-03-15 10:30:00" -> "2024-03")
+            let year_month = &s.max_created_at[..7];
+            let year: i32 = year_month[..4].parse().unwrap_or(0);
             let entry = TimelineEntry {
-                year: s.year,
-                month: s.month,
+                year_month: year_month.to_string(),
+                year,
                 count: s.count,
                 cumulative_before: cumulative,
-                label: format!(
-                    "{} {}",
-                    Month::try_from(s.month).map_or_else(|_| "?".to_string(), |m| m.to_string()),
-                    s.year
-                ),
+                cover_photo_id: s.cover_photo_id,
             };
             cumulative += s.count;
             entry

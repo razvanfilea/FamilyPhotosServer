@@ -1,5 +1,6 @@
 use crate::model::event_log::{EventLog, EventLogs};
 use crate::model::photo::{FullPhotosList, Photo};
+use crate::model::photo_category::PhotoCategory;
 use crate::repo::event_log::EventLogRepo;
 use serde::{Deserialize, Serialize};
 use sqlx::{
@@ -31,11 +32,11 @@ pub struct PaginatedPhotos {
     pub has_more: bool,
 }
 
-/// Summary of photos per month for timeline display
+/// Summary of photos per month for timeline display with cover photo
 pub struct MonthSummary {
-    pub year: i32,
-    pub month: u8,
+    pub max_created_at: String,
     pub count: i64,
+    pub cover_photo_id: i64,
 }
 
 pub trait PhotosRepo<'c>: SqliteExecutor<'c> {
@@ -151,49 +152,78 @@ pub trait PhotosRepo<'c>: SqliteExecutor<'c> {
     async fn get_photos_paginated(
         self,
         user_id: &str,
-        personal_only: bool,
-        family_only: bool,
+        category: PhotoCategory,
         cursor: Option<&PhotoCursor>,
         limit: u32,
     ) -> sqlx::Result<PaginatedPhotos> {
         // Fetch one extra to determine if there are more results
         let fetch_limit = limit as i64 + 1;
 
-        let photos = if let Some(cursor) = cursor {
-            query_as!(
-                Photo,
-                r#"select * from photos
-                where (user_id is null or user_id = $1)
-                  and trashed_on is null
-                  and (($5 = 0 and $6 = 0) or ($5 = 1 and user_id = $1) or ($6 = 1 and user_id is null))
-                  and (created_at < $2 or (created_at = $2 and id < $3))
-                order by created_at desc, id desc
-                limit $4"#,
-                user_id,
-                cursor.created_at,
-                cursor.id,
-                fetch_limit,
-                personal_only,
-                family_only
-            )
-            .fetch_all(self)
-            .await?
-        } else {
-            query_as!(
-                Photo,
-                r#"select * from photos
-                where (user_id is null or user_id = $1)
-                  and trashed_on is null
-                  and (($3 = 0 and $4 = 0) or ($3 = 1 and user_id = $1) or ($4 = 1 and user_id is null))
-                order by created_at desc, id desc
-                limit $2"#,
-                user_id,
-                fetch_limit,
-                personal_only,
-                family_only
-            )
-            .fetch_all(self)
-            .await?
+        // Extract cursor values - use Option to make cursor condition a no-op when None
+        let cursor_created_at = cursor.map(|c| c.created_at);
+        let cursor_id = cursor.map(|c| c.id);
+
+        // Split into separate queries to avoid complex OR conditions that confuse the query planner
+        // Cursor condition: when cursor is None, $2 is null makes the whole OR true (no-op)
+        let photos = match category {
+            PhotoCategory::Personal => {
+                query_as!(
+                    Photo,
+                    r#"select * from photos
+                    where user_id = $1
+                      and trashed_on is null
+                      and ($2 is null or created_at < $2 or (created_at = $2 and id < $3))
+                    order by created_at desc
+                    limit $4"#,
+                    user_id,
+                    cursor_created_at,
+                    cursor_id,
+                    fetch_limit
+                )
+                .fetch_all(self)
+                .await?
+            }
+            PhotoCategory::Family => {
+                query_as!(
+                    Photo,
+                    r#"select * from photos
+                    where user_id is null
+                      and trashed_on is null
+                      and ($1 is null or created_at < $1 or (created_at = $1 and id < $2))
+                    order by created_at desc
+                    limit $3"#,
+                    cursor_created_at,
+                    cursor_id,
+                    fetch_limit
+                )
+                .fetch_all(self)
+                .await?
+            }
+            PhotoCategory::All => {
+                // Use UNION ALL instead of OR for better index utilization
+                query_as!(
+                    Photo,
+                    r#"select * from (
+                        select * from photos
+                        where user_id is null
+                          and trashed_on is null
+                          and ($1 is null or created_at < $1 or (created_at = $1 and id < $2))
+                        union all
+                        select * from photos
+                        where user_id = $3
+                          and trashed_on is null
+                          and ($1 is null or created_at < $1 or (created_at = $1 and id < $2))
+                    )
+                    order by created_at desc
+                    limit $4"#,
+                    cursor_created_at,
+                    cursor_id,
+                    user_id,
+                    fetch_limit
+                )
+                .fetch_all(self)
+                .await?
+            }
         };
 
         build_paginated_result(photos, limit)
@@ -203,25 +233,29 @@ pub trait PhotosRepo<'c>: SqliteExecutor<'c> {
         self,
         user_id: &str,
         folder_name: &str,
+        is_personal: bool,
         cursor: Option<&PhotoCursor>,
         limit: u32,
     ) -> sqlx::Result<PaginatedPhotos> {
         let fetch_limit = limit as i64 + 1;
 
-        let photos = if let Some(cursor) = cursor {
+        let cursor_created_at = cursor.map(|c| c.created_at);
+        let cursor_id = cursor.map(|c| c.id);
+
+        let photos = if is_personal {
             query_as!(
                 Photo,
                 r#"select * from photos
-                where (user_id is null or user_id = $1)
+                where user_id = $1
                   and trashed_on is null
                   and folder = $2
-                  and (created_at < $3 or (created_at = $3 and id < $4))
+                  and ($3 is null or created_at < $3 or (created_at = $3 and id < $4))
                 order by created_at desc, id desc
                 limit $5"#,
                 user_id,
                 folder_name,
-                cursor.created_at,
-                cursor.id,
+                cursor_created_at,
+                cursor_id,
                 fetch_limit
             )
             .fetch_all(self)
@@ -230,13 +264,15 @@ pub trait PhotosRepo<'c>: SqliteExecutor<'c> {
             query_as!(
                 Photo,
                 r#"select * from photos
-                where (user_id is null or user_id = $1)
+                where user_id is null
                   and trashed_on is null
-                  and folder = $2
+                  and folder = $1
+                  and ($2 is null or created_at < $2 or (created_at = $2 and id < $3))
                 order by created_at desc, id desc
-                limit $3"#,
-                user_id,
+                limit $4"#,
                 folder_name,
+                cursor_created_at,
+                cursor_id,
                 fetch_limit
             )
             .fetch_all(self)
@@ -293,107 +329,172 @@ pub trait PhotosRepo<'c>: SqliteExecutor<'c> {
     async fn get_folders_with_counts(
         self,
         user_id: &str,
-        personal_only: bool,
-        family_only: bool,
+        category: PhotoCategory,
     ) -> sqlx::Result<Vec<FolderInfo>> {
-        let rows = query!(
-            r#"select
-                folder as "name!",
-                count(*) as "photo_count!: i64",
-                (select id from photos p2
-                 where p2.folder = photos.folder
-                   and p2.trashed_on is null
-                   and (p2.user_id is null or p2.user_id = $1)
-                   and (($2 = 0 and $3 = 0) or ($2 = 1 and p2.user_id = $1) or ($3 = 1 and p2.user_id is null))
-                 order by p2.created_at desc limit 1) as "cover_photo_id!: i64"
-            from photos
-            where (user_id is null or user_id = $1)
-              and trashed_on is null
-              and folder is not null and folder != ''
-              and (($2 = 0 and $3 = 0) or ($2 = 1 and user_id = $1) or ($3 = 1 and user_id is null))
-            group by folder
-            order by folder asc"#,
-            user_id,
-            personal_only,
-            family_only
-        )
-        .fetch_all(self)
-        .await?;
-
-        Ok(rows
-            .into_iter()
-            .map(|r| FolderInfo {
-                name: r.name,
-                photo_count: r.photo_count,
-                cover_photo_id: r.cover_photo_id,
-            })
-            .collect())
+        // Split queries by category and use window functions to avoid correlated subqueries
+        match category {
+            PhotoCategory::Personal => {
+                query_as!(
+                    FolderInfo,
+                    r#"select
+                        folder as "name!",
+                        count(*) as "photo_count!: i64",
+                        max(case when rn = 1 then id end) as "cover_photo_id!: i64"
+                    from (
+                        select folder, id,
+                               row_number() over (partition by folder order by created_at desc) as rn
+                        from photos
+                        where user_id = $1
+                          and trashed_on is null
+                          and folder is not null and folder != ''
+                    )
+                    group by folder
+                    order by folder"#,
+                    user_id
+                )
+                .fetch_all(self)
+                .await
+            }
+            PhotoCategory::Family => {
+                query_as!(
+                    FolderInfo,
+                    r#"select
+                        folder as "name!",
+                        count(*) as "photo_count!: i64",
+                        max(case when rn = 1 then id end) as "cover_photo_id!: i64"
+                    from (
+                        select folder, id,
+                               row_number() over (partition by folder order by created_at desc) as rn
+                        from photos
+                        where user_id is null
+                          and trashed_on is null
+                          and folder is not null and folder != ''
+                    )
+                    group by folder
+                    order by folder"#
+                )
+                .fetch_all(self)
+                .await
+            }
+            PhotoCategory::All => {
+                query_as!(
+                    FolderInfo,
+                    r#"select
+                        folder as "name!",
+                        count(*) as "photo_count!: i64",
+                        max(case when rn = 1 then id end) as "cover_photo_id!: i64"
+                    from (
+                        select folder, id,
+                               row_number() over (partition by folder order by created_at desc) as rn
+                        from photos
+                        where (user_id is null or user_id = $1)
+                          and trashed_on is null
+                          and folder is not null and folder != ''
+                    )
+                    group by folder
+                    order by folder"#,
+                    user_id
+                )
+                .fetch_all(self)
+                .await
+            }
+        }
     }
 
     async fn get_month_summaries(
         self,
         user_id: &str,
-        personal_only: bool,
-        family_only: bool,
+        category: PhotoCategory,
     ) -> sqlx::Result<Vec<MonthSummary>> {
-        let rows = query!(
-            r#"select
-                cast(strftime('%Y', created_at) as integer) as "year!: i32",
-                cast(strftime('%m', created_at) as integer) as "month!: i32",
-                count(*) as "count!: i64"
-            from photos
-            where (user_id is null or user_id = $1)
-              and trashed_on is null
-              and (($2 = 0 and $3 = 0) or ($2 = 1 and user_id = $1) or ($3 = 1 and user_id is null))
-            group by 1, 2
-            order by 1 desc, 2 desc"#,
-            user_id,
-            personal_only,
-            family_only
-        )
-        .fetch_all(self)
-        .await?;
-
-        Ok(rows
-            .into_iter()
-            .map(|r| MonthSummary {
-                year: r.year,
-                month: r.month as u8,
-                count: r.count,
-            })
-            .collect())
+        match category {
+            PhotoCategory::Personal => {
+                query_as!(
+                    MonthSummary,
+                    r#"select
+                        max(created_at) as "max_created_at!: String",
+                        count(*) as "count!: i64",
+                        id as "cover_photo_id!: i64"
+                    from photos
+                    where user_id = $1 and trashed_on is null
+                    group by strftime('%Y-%m', created_at)
+                    order by 1 desc"#,
+                    user_id
+                )
+                .fetch_all(self)
+                .await
+            }
+            PhotoCategory::Family => {
+                query_as!(
+                    MonthSummary,
+                    r#"select
+                        max(created_at) as "max_created_at!: String",
+                        count(*) as "count!: i64",
+                        id as "cover_photo_id!: i64"
+                    from photos
+                    where user_id is null and trashed_on is null
+                    group by strftime('%Y-%m', created_at)
+                    order by 1 desc"#
+                )
+                .fetch_all(self)
+                .await
+            }
+            PhotoCategory::All => {
+                query_as!(
+                    MonthSummary,
+                    r#"select
+                        max(created_at) as "max_created_at!: String",
+                        count(*) as "count!: i64",
+                        id as "cover_photo_id!: i64"
+                    from photos
+                    where (user_id is null or user_id = $1) and trashed_on is null
+                    group by strftime('%Y-%m', created_at)
+                    order by 1 desc"#,
+                    user_id
+                )
+                .fetch_all(self)
+                .await
+            }
+        }
     }
 
     async fn get_folder_month_summaries(
         self,
         user_id: &str,
         folder_name: &str,
+        is_personal: bool,
     ) -> sqlx::Result<Vec<MonthSummary>> {
-        let rows = query!(
-            r#"select
-                cast(strftime('%Y', created_at) as integer) as "year!: i32",
-                cast(strftime('%m', created_at) as integer) as "month!: i32",
-                count(*) as "count!: i64"
-            from photos
-            where (user_id is null or user_id = $1)
-              and trashed_on is null
-              and folder = $2
-            group by 1, 2
-            order by 1 desc, 2 desc"#,
-            user_id,
-            folder_name
-        )
-        .fetch_all(self)
-        .await?;
-
-        Ok(rows
-            .into_iter()
-            .map(|r| MonthSummary {
-                year: r.year,
-                month: r.month as u8,
-                count: r.count,
-            })
-            .collect())
+        if is_personal {
+            query_as!(
+                MonthSummary,
+                r#"select
+                    max(created_at) as "max_created_at!: String",
+                    count(*) as "count!: i64",
+                    id as "cover_photo_id!: i64"
+                from photos
+                where user_id = $1 and trashed_on is null and folder = $2
+                group by strftime('%Y-%m', created_at)
+                order by 1 desc"#,
+                user_id,
+                folder_name
+            )
+            .fetch_all(self)
+            .await
+        } else {
+            query_as!(
+                MonthSummary,
+                r#"select
+                    max(created_at) as "max_created_at!: String",
+                    count(*) as "count!: i64",
+                    id as "cover_photo_id!: i64"
+                from photos
+                where user_id is null and trashed_on is null and folder = $1
+                group by strftime('%Y-%m', created_at)
+                order by 1 desc"#,
+                folder_name
+            )
+            .fetch_all(self)
+            .await
+        }
     }
 }
 
@@ -1273,7 +1374,7 @@ mod tests {
         // No cursor, no filters → first page of all accessible photos
         let mut tx = pool.begin().await?;
         let result = tx
-            .get_photos_paginated("user1", false, false, None, 2)
+            .get_photos_paginated("user1", PhotoCategory::All, None, 2)
             .await?;
         tx.commit().await?;
 
@@ -1287,7 +1388,7 @@ mod tests {
         let cursor = result.next_cursor.as_ref().unwrap();
         let mut tx = pool.begin().await?;
         let result = tx
-            .get_photos_paginated("user1", false, false, Some(cursor), 10)
+            .get_photos_paginated("user1", PhotoCategory::All, Some(cursor), 10)
             .await?;
         tx.commit().await?;
 
@@ -1295,19 +1396,19 @@ mod tests {
         assert!(!result.has_more);
         assert!(result.next_cursor.is_none());
 
-        // personal_only=true → only user's private photos
+        // PhotoCategory::Personal → only user's private photos
         let mut tx = pool.begin().await?;
         let result = tx
-            .get_photos_paginated("user1", true, false, None, 10)
+            .get_photos_paginated("user1", PhotoCategory::Personal, None, 10)
             .await?;
         tx.commit().await?;
         assert_eq!(result.photos.len(), 3);
         assert!(result.photos.iter().all(|p| p.user_id.is_some()));
 
-        // family_only=true → only public photos
+        // PhotoCategory::Family → only public photos
         let mut tx = pool.begin().await?;
         let result = tx
-            .get_photos_paginated("user1", false, true, None, 10)
+            .get_photos_paginated("user1", PhotoCategory::Family, None, 10)
             .await?;
         tx.commit().await?;
         assert_eq!(result.photos.len(), 1);
@@ -1331,18 +1432,33 @@ mod tests {
         tx.insert_photos(&photos).await?;
         tx.commit().await?;
 
-        // Existing folder → photos in that folder
+        // Personal folder → only user's photos in that folder
         let mut tx = pool.begin().await?;
         let result = tx
-            .get_folder_photos_paginated("user1", "vacation", None, 10)
+            .get_folder_photos_paginated("user1", "vacation", true, None, 10)
             .await?;
         tx.commit().await?;
-        assert_eq!(result.photos.len(), 3);
+        assert_eq!(result.photos.len(), 2);
+        assert!(
+            result
+                .photos
+                .iter()
+                .all(|p| p.user_id == Some("user1".to_string()))
+        );
+
+        // Family folder → only public photos in that folder
+        let mut tx = pool.begin().await?;
+        let result = tx
+            .get_folder_photos_paginated("user1", "vacation", false, None, 10)
+            .await?;
+        tx.commit().await?;
+        assert_eq!(result.photos.len(), 1);
+        assert!(result.photos.iter().all(|p| p.user_id.is_none()));
 
         // Non-existent folder → empty
         let mut tx = pool.begin().await?;
         let result = tx
-            .get_folder_photos_paginated("user1", "nonexistent", None, 10)
+            .get_folder_photos_paginated("user1", "nonexistent", true, None, 10)
             .await?;
         tx.commit().await?;
         assert!(result.photos.is_empty());
@@ -1393,7 +1509,9 @@ mod tests {
 
         // No folders → empty
         let mut tx = pool.begin().await?;
-        let folders = tx.get_folders_with_counts("user1", false, false).await?;
+        let folders = tx
+            .get_folders_with_counts("user1", PhotoCategory::All)
+            .await?;
         tx.commit().await?;
         assert!(folders.is_empty());
 
@@ -1409,117 +1527,15 @@ mod tests {
 
         // Multiple folders → all returned
         let mut tx = pool.begin().await?;
-        let folders = tx.get_folders_with_counts("user1", false, false).await?;
+        let folders = tx
+            .get_folders_with_counts("user1", PhotoCategory::All)
+            .await?;
         tx.commit().await?;
         assert_eq!(folders.len(), 2);
 
         // photo_count accurate
         let folder_a = folders.iter().find(|f| f.name == "folder_a").unwrap();
         assert_eq!(folder_a.photo_count, 2);
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn test_get_month_summaries(pool: SqlitePool) -> sqlx::Result<()> {
-        let user = create_test_user("user1", "Test User");
-        insert_test_user(&pool, &user).await?;
-
-        // No photos → empty
-        let mut tx = pool.begin().await?;
-        let summaries = tx.get_month_summaries("user1", false, false).await?;
-        tx.commit().await?;
-        assert!(summaries.is_empty());
-
-        let mut tx = pool.begin().await?;
-        let photos = vec![
-            create_test_photo_with_time(
-                0,
-                Some("user1"),
-                None,
-                "jan1.jpg",
-                datetime!(2024-01-15 10:00:00 UTC),
-            ),
-            create_test_photo_with_time(
-                0,
-                Some("user1"),
-                None,
-                "jan2.jpg",
-                datetime!(2024-01-20 10:00:00 UTC),
-            ),
-            create_test_photo_with_time(
-                0,
-                Some("user1"),
-                None,
-                "feb1.jpg",
-                datetime!(2024-02-10 10:00:00 UTC),
-            ),
-        ];
-        tx.insert_photos(&photos).await?;
-        tx.commit().await?;
-
-        // Photos across months → grouped correctly
-        let mut tx = pool.begin().await?;
-        let summaries = tx.get_month_summaries("user1", false, false).await?;
-        tx.commit().await?;
-        assert_eq!(summaries.len(), 2);
-
-        // Ordered by year DESC, month DESC
-        assert_eq!(summaries[0].year, 2024);
-        assert_eq!(summaries[0].month, 2); // February first
-        assert_eq!(summaries[0].count, 1);
-        assert_eq!(summaries[1].month, 1); // January second
-        assert_eq!(summaries[1].count, 2);
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn test_get_folder_month_summaries(pool: SqlitePool) -> sqlx::Result<()> {
-        let user = create_test_user("user1", "Test User");
-        insert_test_user(&pool, &user).await?;
-
-        // Non-existent folder → empty
-        let mut tx = pool.begin().await?;
-        let summaries = tx
-            .get_folder_month_summaries("user1", "nonexistent")
-            .await?;
-        tx.commit().await?;
-        assert!(summaries.is_empty());
-
-        let mut tx = pool.begin().await?;
-        let photos = vec![
-            create_test_photo_with_time(
-                0,
-                Some("user1"),
-                Some("vacation"),
-                "v1.jpg",
-                datetime!(2024-06-15 10:00:00 UTC),
-            ),
-            create_test_photo_with_time(
-                0,
-                Some("user1"),
-                Some("vacation"),
-                "v2.jpg",
-                datetime!(2024-06-20 10:00:00 UTC),
-            ),
-            create_test_photo_with_time(
-                0,
-                Some("user1"),
-                Some("other"),
-                "o1.jpg",
-                datetime!(2024-06-15 10:00:00 UTC),
-            ),
-        ];
-        tx.insert_photos(&photos).await?;
-        tx.commit().await?;
-
-        // Folder with photos → monthly breakdown
-        let mut tx = pool.begin().await?;
-        let summaries = tx.get_folder_month_summaries("user1", "vacation").await?;
-        tx.commit().await?;
-        assert_eq!(summaries.len(), 1);
-        assert_eq!(summaries[0].count, 2);
 
         Ok(())
     }

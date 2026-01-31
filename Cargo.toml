@@ -44,7 +44,7 @@ regex = "1"
 wait-timeout = "0.2"
 time = { version = "0.3", features = ["macros", "parsing", "serde"] }
 dotenvy = "0.15"
-argon2 = { version = "=0.6.0-rc.6" }
+argon2 = { version = "=0.6.0-rc.8" }
 blake3 = { version = "1.8", features = ["mmap"] }
 uuid = { version = "1.20", features = ["v4"] }
 fast-thumbhash = { git = "https://github.com/razvanfilea/fast-thumbhash" }

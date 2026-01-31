@@ -1,0 +1,39 @@
+<div id="viewer-actions-content">
+    <button id="viewer-fav-btn" class="photo-viewer-action btn btn-ghost btn-circle"
+            data-action="favorite"
+            data-favorite="{{ is_favorite }}"
+            {% if is_favorite %}hx-delete{% else %}hx-post{% endif %}="/favorite/{{ photo_id }}?source=viewer"
+            hx-target="#viewer-fav-btn"
+            hx-swap="outerHTML"
+            title="{% if is_favorite %}Remove from favorites{% else %}Add to favorites{% endif %}">
+        <span class="material-symbols-outlined {% if is_favorite %}text-warning{% endif %}"
+              style="font-variation-settings: 'FILL' {% if is_favorite %}1{% else %}0{% endif %};">
+            favorite
+        </span>
+    </button>
+
+    <button id="viewer-info-btn" class="photo-viewer-action btn btn-ghost btn-circle"
+            hx-get="/photo/{{ photo_id }}/info-panel"
+            hx-target="#photo-info-content"
+            hx-swap="innerHTML"
+            title="Info">
+        <span class="material-symbols-outlined">info</span>
+    </button>
+
+    <button id="viewer-share-btn" class="photo-viewer-action btn btn-ghost btn-circle" title="Share">
+        <span class="material-symbols-outlined">share</span>
+    </button>
+
+    <a id="viewer-download-btn" href="/photos/download/{{ photo_id }}" download class="photo-viewer-action btn btn-ghost btn-circle" title="Download">
+        <span class="material-symbols-outlined">download</span>
+    </a>
+
+    <button id="viewer-delete-btn" class="photo-viewer-action btn btn-ghost btn-circle text-error"
+            hx-post="/trash/{{ photo_id }}"
+            hx-target="#photo-card-{{ photo_id }}"
+            hx-swap="outerHTML"
+            hx-confirm="Are you sure you want to delete this photo?"
+            title="Delete">
+        <span class="material-symbols-outlined">delete</span>
+    </button>
+</div>

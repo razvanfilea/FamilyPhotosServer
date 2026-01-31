@@ -1,26 +1,28 @@
 /**
- * Updates active tab state based on URL category parameter
- * Used by gallery pages with category tabs
+ * Updates active segment state based on URL category parameter
+ * Used by gallery pages with segmented button category selectors
  */
-function updateActiveTabs() {
+function updateActiveSegments() {
     const params = new URLSearchParams(window.location.search);
     const category = params.get('category') || 'all';
-    document.querySelectorAll('.tabs .tab').forEach(tab => {
-        const hxGet = tab.getAttribute('hx-get');
+    document.querySelectorAll('.join .segment').forEach(segment => {
+        const hxGet = segment.getAttribute('hx-get');
         if (hxGet) {
-            const tabCategory = new URL(hxGet, window.location.origin).searchParams.get('category');
-            tab.classList.toggle('tab-active', tabCategory === category);
+            const segmentCategory = new URL(hxGet, window.location.origin).searchParams.get('category');
+            const isSelected = segmentCategory === category;
+            segment.classList.toggle('btn-active', isSelected);
+            segment.setAttribute('aria-pressed', isSelected ? 'true' : 'false');
         }
     });
 }
 
 // Listen for HTMX history events
-document.addEventListener('htmx:pushedIntoHistory', updateActiveTabs);
-window.addEventListener('popstate', updateActiveTabs);
+document.addEventListener('htmx:pushedIntoHistory', updateActiveSegments);
+window.addEventListener('popstate', updateActiveSegments);
 
-// Also call after HTMX swaps that might contain tabs
+// Also call after HTMX swaps that might change category state
 document.addEventListener('htmx:afterSwap', function(e) {
     if (e.detail.target.id === 'photo-grid-container') {
-        updateActiveTabs();
+        updateActiveSegments();
     }
 });

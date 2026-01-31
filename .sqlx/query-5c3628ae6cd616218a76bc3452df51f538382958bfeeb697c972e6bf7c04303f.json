@@ -1,0 +1,32 @@
+{
+  "db_name": "SQLite",
+  "query": "select\n                        max(created_at) as \"max_created_at!: String\",\n                        count(*) as \"count!: i64\",\n                        id as \"cover_photo_id!: i64\"\n                    from photos\n                    where user_id = $1 and trashed_on is null\n                    group by strftime('%Y-%m', created_at)\n                    order by 1 desc",
+  "describe": {
+    "columns": [
+      {
+        "name": "max_created_at!: String",
+        "ordinal": 0,
+        "type_info": "Null"
+      },
+      {
+        "name": "count!: i64",
+        "ordinal": 1,
+        "type_info": "Null"
+      },
+      {
+        "name": "cover_photo_id!: i64",
+        "ordinal": 2,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      null,
+      null,
+      false
+    ]
+  },
+  "hash": "5c3628ae6cd616218a76bc3452df51f538382958bfeeb697c972e6bf7c04303f"
+}
