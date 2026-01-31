@@ -1,8 +1,8 @@
-use crate::http::AppStateRef;
+use crate::http::auth::AuthenticatedUser;
 use crate::http::error::{HttpError, HttpResult};
 use crate::http::pages::gallery::PhotoView;
 use crate::http::template_into_response::TemplateIntoResponse;
-use crate::http::utils::AuthSession;
+use crate::http::AppStateRef;
 use crate::repo::{FavoritesRepo, PhotosRepo, PhotosTransactionRepo};
 use askama::Template;
 use axum::extract::{Path, State};
@@ -18,18 +18,13 @@ struct TrashPageTemplate {
 }
 
 pub async fn trash_page(
-    auth_session: AuthSession,
+    AuthenticatedUser(user): AuthenticatedUser,
     State(state): State<AppStateRef>,
 ) -> HttpResult<Response> {
-    let user = auth_session.user.expect("User must be authenticated");
 
     let mut tx = state.pool.begin().await?;
     let all_photos = tx.get_photos_by_user_and_public(&user.id).await?.photos;
-    let favorite_ids: std::collections::HashSet<i64> = tx
-        .get_favorite_photos(&user.id)
-        .await?
-        .into_iter()
-        .collect();
+    let favorite_ids = tx.get_favorite_photos(&user.id).await?;
     tx.commit().await?;
 
     let photos: Vec<PhotoView> = all_photos
@@ -42,11 +37,10 @@ pub async fn trash_page(
 }
 
 pub async fn restore_photo(
-    auth_session: AuthSession,
+    AuthenticatedUser(user): AuthenticatedUser,
     State(state): State<AppStateRef>,
     Path(photo_id): Path<i64>,
 ) -> HttpResult<Response> {
-    let user = auth_session.user.expect("User must be authenticated");
 
     let mut tx = state.pool.begin().await?;
 
@@ -60,15 +54,14 @@ pub async fn restore_photo(
     tx.commit().await?;
 
     // Return empty response with HX-Trigger to refresh the page
-    Ok(([("HX-Refresh", "true")]).into_response())
+    Ok([("HX-Refresh", "true")].into_response())
 }
 
 pub async fn permanent_delete(
-    auth_session: AuthSession,
+    AuthenticatedUser(user): AuthenticatedUser,
     State(state): State<AppStateRef>,
     Path(photo_id): Path<i64>,
 ) -> HttpResult<Response> {
-    let user = auth_session.user.expect("User must be authenticated");
 
     let mut tx = state.pool.begin().await?;
 

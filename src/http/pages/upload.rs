@@ -1,8 +1,8 @@
-use crate::http::AppStateRef;
+use crate::http::auth::AuthenticatedUser;
 use crate::http::error::HttpResult;
 use crate::http::pages::gallery::extract_grouped_folders;
 use crate::http::template_into_response::TemplateIntoResponse;
-use crate::http::utils::AuthSession;
+use crate::http::AppStateRef;
 use crate::repo::PhotosTransactionRepo;
 use askama::Template;
 use axum::extract::State;
@@ -16,10 +16,9 @@ struct UploadPageTemplate {
 }
 
 pub async fn upload_page(
-    auth_session: AuthSession,
+    AuthenticatedUser(user): AuthenticatedUser,
     State(state): State<AppStateRef>,
 ) -> HttpResult<Response> {
-    let user = auth_session.user.expect("User must be authenticated");
 
     let mut tx = state.pool.begin().await?;
     let photos = tx.get_photos_by_user_and_public(&user.id).await?.photos;

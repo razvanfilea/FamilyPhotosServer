@@ -17,6 +17,7 @@ use tower_http::{cors, trace};
 use tower_sessions_sqlx_store::SqliteStore;
 use tracing::{Level, info, warn};
 
+mod auth;
 mod error;
 mod pages;
 mod photos_api;

@@ -124,24 +124,22 @@ async fn delete_invalid_photo_previews(app_state: AppStateRef) -> Result<(), sql
         }
 
         // Check for 0-byte/invalid files
-        if let Ok(metadata) = fs::metadata(path) {
-            if metadata.len() < MIN_PREVIEW_SIZE {
-                if fs::remove_file(path).is_ok() {
-                    invalid_count += 1;
-                }
-                continue;
+        if let Ok(metadata) = fs::metadata(path)
+            && metadata.len() < MIN_PREVIEW_SIZE
+        {
+            if fs::remove_file(path).is_ok() {
+                invalid_count += 1;
             }
+            continue;
         }
 
         // Check for orphaned previews
-        if let Some(stem) = path.file_stem() {
-            if let Ok(photo_id) = stem.to_string_lossy().parse::<i64>() {
-                if !photos.contains(&photo_id) {
-                    if fs::remove_file(path).is_ok() {
-                        orphan_count += 1;
-                    }
-                }
-            }
+        if let Some(stem) = path.file_stem()
+            && let Ok(photo_id) = stem.to_string_lossy().parse::<i64>()
+            && !photos.contains(&photo_id)
+            && fs::remove_file(path).is_ok()
+        {
+            orphan_count += 1;
         }
     }
 

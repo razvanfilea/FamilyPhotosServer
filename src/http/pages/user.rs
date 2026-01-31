@@ -3,14 +3,14 @@ use crate::http::utils::AuthSession;
 use askama::Template;
 use axum::response::{IntoResponse, Redirect};
 
+#[derive(Template)]
+#[template(path = "user/login_page.html")]
+struct LoginTemplate;
+
 pub async fn login_page(auth_session: AuthSession) -> impl IntoResponse {
     if auth_session.user.is_some() {
         return Redirect::to("/").into_response();
     }
-
-    #[derive(Template)]
-    #[template(path = "user/login_page.html")]
-    struct LoginTemplate;
 
     LoginTemplate.into_response()
 }

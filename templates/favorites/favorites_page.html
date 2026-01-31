@@ -4,38 +4,17 @@
 
 {% block page_title %}Favorites{% endblock %}
 
+{% import "macros.html" as macros %}
+
 {% block content %}
 {% if groups.is_empty() %}
-<div class="flex flex-col items-center justify-center min-h-[60vh] gap-6">
-    <span class="material-symbols-outlined text-8xl text-base-content/30" style="font-variation-settings: 'FILL' 1;">favorite</span>
-    <p class="text-xl text-base-content/70">No favorites yet</p>
-    <p class="text-base-content/50">Click the heart icon on photos to add them to favorites</p>
-    <a href="/" class="btn btn-primary">
-        <span class="material-symbols-outlined">arrow_back</span>
-        Browse Photos
-    </a>
-</div>
+{{ macros::empty_state(icon="favorite", icon_fill=true, message="No favorites yet", sub_message="Click the heart icon on photos to add them to favorites", cta_url="/", cta_text="Browse Photos") }}
 {% else %}
 <div class="photo-grid">
-    {% for group in groups %}
-    {% if group.show_header %}
-    {% include "components/month_header.html" %}
-    {% endif %}
-    {% for photo in group.photos %}
-    {% include "components/photo_card.html" %}
-    {% endfor %}
-    {% endfor %}
-    {% if has_more %}
-    {% if let Some(cursor) = next_cursor %}
-    <div id="load-more-sentinel"
-         class="col-span-full py-8 flex justify-center"
-         hx-get="/favorites/more?cursor={{ cursor }}{% if let Some(month) = last_month %}&last_month={{ month }}{% endif %}"
-         hx-trigger="revealed"
-         hx-swap="outerHTML">
-        <span class="loading loading-spinner loading-lg text-primary"></span>
-    </div>
-    {% endif %}
-    {% endif %}
+    {% include "components/photo_grid_content.html" %}
+    {% let load_more_url = "/favorites/more" %}
+    {% let category = None::<PhotoCategory> %}
+    {% include "components/load_more_trigger.html" %}
 </div>
 {% endif %}
 {% endblock %}

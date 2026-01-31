@@ -12,6 +12,17 @@ pub trait FavoritesRepo<'c>: SqliteExecutor<'c> {
         .map(|vec| vec.into_iter().collect())
     }
 
+    async fn check_favorite(self, photo_id: i64, user_id: &str) -> sqlx::Result<bool> {
+        query_scalar!(
+            "select exists(select 1 from favorite_photos where photo_id = $1 and user_id = $2)",
+            photo_id,
+            user_id
+        )
+        .fetch_one(self)
+        .await
+        .map(|exists| exists != 0)
+    }
+
     async fn insert_favorite(self, photo_id: i64, user_id: &str) -> sqlx::Result<()> {
         query!(
             "insert into favorite_photos (photo_id, user_id) values ($1, $2)",

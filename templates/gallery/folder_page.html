@@ -4,30 +4,18 @@
 
 {% block page_title %}{{ current_folder.as_deref().unwrap_or("Folder") }}{% endblock %}
 
+{% import "macros.html" as macros %}
+
 {% block content %}
 <script>
 window.TIMELINE_DATA = {{ timeline_json|safe }};
 window.TOTAL_PHOTOS = {{ total_photos }};
 </script>
 {% if groups.is_empty() %}
-<div class="flex flex-col items-center justify-center min-h-[60vh] gap-6">
-    <span class="material-symbols-outlined text-8xl text-base-content/30">folder_open</span>
-    <p class="text-xl text-base-content/70">This folder is empty</p>
-    <a href="/" class="btn btn-primary">
-        <span class="material-symbols-outlined">arrow_back</span>
-        Back to All Photos
-    </a>
-</div>
+{{ macros::empty_state(icon="folder_open", message="This folder is empty", cta_url="/", cta_text="Back to All Photos") }}
 {% else %}
 <div class="photo-grid">
-    {% for group in groups %}
-    {% if group.show_header %}
-    {% include "components/month_header.html" %}
-    {% endif %}
-    {% for photo in group.photos %}
-    {% include "components/photo_card.html" %}
-    {% endfor %}
-    {% endfor %}
+    {% include "components/photo_grid_content.html" %}
     {% include "components/load_more_trigger.html" %}
 </div>
 {% endif %}

@@ -4,6 +4,8 @@
 
 {% block page_title %}All Photos{% endblock %}
 
+{% import "macros.html" as macros %}
+
 {% block content %}
 <script>
 window.TIMELINE_DATA = {{ timeline_json|safe }};
@@ -26,21 +28,10 @@ window.TOTAL_PHOTOS = {{ total_photos }};
 
 <div id="photo-grid-container">
 {% if groups.is_empty() %}
-<div class="flex flex-col items-center justify-center min-h-[60vh] gap-6">
-    <span class="material-symbols-outlined text-8xl text-base-content/30">photo_library</span>
-    <p class="text-xl text-base-content/70">No photos yet</p>
-    <p class="text-base-content/50">Upload some photos to get started</p>
-</div>
+{{ macros::empty_state(icon="photo_library", message="No photos yet", sub_message="Upload some photos to get started") }}
 {% else %}
 <div class="photo-grid">
-    {% for group in groups %}
-    {% if group.show_header %}
-    {% include "components/month_header.html" %}
-    {% endif %}
-    {% for photo in group.photos %}
-    {% include "components/photo_card.html" %}
-    {% endfor %}
-    {% endfor %}
+    {% include "components/photo_grid_content.html" %}
     {% let load_more_url = "/gallery/more" %}
     {% let category = Some(current_category) %}
     {% include "components/load_more_trigger.html" %}

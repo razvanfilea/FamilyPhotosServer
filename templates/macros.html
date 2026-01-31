@@ -1,0 +1,14 @@
+{% macro empty_state(icon, message, icon_fill=false, title="", sub_message="", cta_url="", cta_text="Go Back", cta_icon="arrow_back") %}
+<div class="flex flex-col items-center justify-center min-h-[60vh] gap-6">
+    <span class="material-symbols-outlined text-8xl text-base-content/30"{% if icon_fill %} style="font-variation-settings: 'FILL' 1;"{% endif %}>{{ icon }}</span>
+    {% if !title.is_empty() %}<h1 class="text-4xl font-bold">{{ title }}</h1>{% endif %}
+    <p class="text-xl text-base-content/70">{{ message }}</p>
+    {% if !sub_message.is_empty() %}<p class="text-base-content/50">{{ sub_message }}</p>{% endif %}
+    {% if !cta_url.is_empty() %}
+    <a href="{{ cta_url }}" class="btn btn-primary">
+        <span class="material-symbols-outlined">{{ cta_icon }}</span>
+        {{ cta_text }}
+    </a>
+    {% endif %}
+</div>
+{% endmacro %}

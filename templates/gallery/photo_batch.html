@@ -1,9 +1,2 @@
-{% for group in groups %}
-{% if group.show_header %}
-{% include "components/month_header.html" %}
-{% endif %}
-{% for photo in group.photos %}
-{% include "components/photo_card.html" %}
-{% endfor %}
-{% endfor %}
+{% include "components/photo_grid_content.html" %}
 {% include "components/load_more_trigger.html" %}
