@@ -26,7 +26,7 @@
              {% if let Some(thumb_hash) = photo.thumb_hash %}data-thumbhash="{{ thumb_hash }}"{% endif %}
              class="w-full h-full object-cover"/>
 
-        <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+        <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2">
             <button class="btn btn-sm btn-success"
                     hx-post="/trash/restore/{{ photo.id }}"
                     hx-swap="none"
@@ -40,6 +40,7 @@
                     hx-swap="none"
                     title="Delete permanently">
                 <span class="material-symbols-outlined">delete_forever</span>
+                Delete
             </button>
         </div>
     </div>

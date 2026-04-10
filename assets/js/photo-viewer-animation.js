@@ -88,6 +88,12 @@ function tryFinishViewerTransition(viewer) {
 }
 
 function animateViewerClose(viewer) {
+    // Clean up any existing clone from open animation
+    if (viewer.animClone) {
+        viewer.animClone.remove();
+        viewer.animClone = null;
+    }
+
     const media = viewer.mediaContainer;
     const thumb = viewer.thumbnailElement;
     const thumbRect = thumb ? thumb.getBoundingClientRect() : null;

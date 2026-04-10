@@ -74,7 +74,7 @@ test.describe('Pagination', () => {
           await folderLink.click();
           await expect(page).toHaveURL(/\/folder\//);
 
-          const folderMatch = href.match(/\/folder\/(.+)/);
+          const folderMatch = href.match(/\/folder\/([^?]+)/);
           if (folderMatch) {
             const folderName = folderMatch[1];
             const response = await page.request.get(`/folder/${folderName}/more`);

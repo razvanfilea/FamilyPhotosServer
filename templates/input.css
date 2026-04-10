@@ -57,11 +57,11 @@
     }
 
     .photo-grid {
-        @apply grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-0.5;
+        @apply grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-7 xl:grid-cols-10 gap-px md:gap-0.5;
     }
 
     .month-header {
-        @apply col-span-full flex items-center gap-4 py-4;
+        @apply col-span-full flex items-center gap-4 py-4 px-3 md:px-0;
     }
 
     .month-header h2 {
@@ -81,13 +81,18 @@
         display: flex;
     }
 
+    .folder-grid {
+        @apply grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 p-4;
+    }
+
     .folder-card {
         @apply flex flex-col cursor-pointer;
-        @apply hover:opacity-80 transition-all duration-200;
+        @apply hover:opacity-90 transition-opacity duration-200;
     }
 
     .folder-card-image {
-        @apply aspect-square rounded-lg overflow-hidden bg-base-300;
+        @apply aspect-square rounded-xl overflow-hidden bg-base-300 shadow-sm;
+        @apply ring-1 ring-base-content/5;
         @apply hover:ring-2 hover:ring-primary transition-all duration-200;
     }
 
@@ -96,7 +101,7 @@
     }
 
     .folder-card-info {
-        @apply flex flex-col mt-2 px-1;
+        @apply flex flex-col mt-2.5 px-0.5;
     }
 
     /* Timeline Scrollbar */
