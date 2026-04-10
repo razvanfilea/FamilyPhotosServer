@@ -9,12 +9,12 @@
     <form class="flex flex-col gap-6 w-full max-w-sm" hx-post="/login" hx-target="#error" hx-swap="outerHTML">
         <h1 class="text-3xl font-bold text-center mb-2">Login</h1>
 
-        <label class="input input-bordered flex items-center gap-2">
+        <label class="input input-bordered w-full flex items-center gap-2">
             <span class="material-symbols-outlined">person</span>
             <input type="text" class="grow" placeholder="User ID" name="user_id" required autocomplete="username"/>
         </label>
 
-        <label class="input input-bordered flex items-center gap-2">
+        <label class="input input-bordered w-full flex items-center gap-2">
             <span class="material-symbols-outlined">key</span>
             <input type="password" class="grow" placeholder="Password" name="password" id="password" required autocomplete="current-password"/>
         </label>

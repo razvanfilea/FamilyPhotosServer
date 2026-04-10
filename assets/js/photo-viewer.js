@@ -16,6 +16,8 @@ class PhotoViewer {
 
         // Zoom state
         this.currentScale = 1;
+        this.translateX = 0;
+        this.translateY = 0;
 
         this.createElements();
         this.bindEvents();
@@ -112,18 +114,25 @@ class PhotoViewer {
         });
     }
 
-    applyZoom(scale) {
+    applyTransform() {
         const img = this.mediaContainer.querySelector('img, video');
         if (img) {
-            img.style.transform = `scale(${scale})`;
+            img.style.transform = `translate(${this.translateX}px, ${this.translateY}px) scale(${this.currentScale})`;
         }
+    }
+
+    applyZoom(scale) {
+        this.currentScale = scale;
+        this.applyTransform();
     }
 
     resetZoom() {
         this.currentScale = 1;
+        this.translateX = 0;
+        this.translateY = 0;
         const img = this.mediaContainer.querySelector('img, video');
         if (img) {
-            img.style.transform = 'scale(1)';
+            img.style.transform = '';
         }
     }
 

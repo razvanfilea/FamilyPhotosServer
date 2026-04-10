@@ -10,9 +10,9 @@
 {% if folders.is_empty() %}
 {{ macros::empty_state(icon="folder_off", message="No folders yet", sub_message="Upload some photos to folders to get started", cta_url="/upload", cta_text="Upload Photos", cta_icon="cloud_upload") }}
 {% else %}
-<div class="photo-grid">
+<div class="folder-grid">
     {% for folder in folders %}
-    <a href="/folder/{{ folder.name|urlencode }}" class="folder-card">
+    <a href="/folder/{{ folder.name|urlencode }}?category={{ category }}" class="folder-card">
         <div class="folder-card-image">
             <img src="/photos/preview/{{ folder.cover_photo_id }}"
                  alt="{{ folder.name }}"
