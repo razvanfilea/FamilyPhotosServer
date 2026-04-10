@@ -26,7 +26,7 @@ pub async fn folders_page(
 
     // Get folders with counts for the selected category
     let folders = state
-        .pool
+        .read_pool
         .get_folders_with_counts(&user.id, category)
         .await?;
 
@@ -40,7 +40,7 @@ pub async fn folders_list_json(
 ) -> HttpResult<Json<Vec<FolderInfo>>> {
     // Get all folders (personal and family)
     let folders = state
-        .pool
+        .read_pool
         .get_folders_with_counts(&user.id, PhotoCategory::All)
         .await?;
 

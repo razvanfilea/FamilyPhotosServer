@@ -21,7 +21,10 @@ async fn get_favorites(
     let user = auth_session.user.ok_or(HttpError::Unauthorized)?;
 
     Ok(Json(
-        state.pool.get_favorite_photos(user.id.as_str()).await?,
+        state
+            .read_pool
+            .get_favorite_photos(user.id.as_str())
+            .await?,
     ))
 }
 
@@ -31,7 +34,7 @@ async fn add_favorite(
     auth_session: AuthSession,
 ) -> HttpResult<impl IntoResponse> {
     let user = auth_session.user.ok_or(HttpError::Unauthorized)?;
-    let mut tx = state.pool.begin().await?;
+    let mut tx = state.write_pool.begin().await?;
 
     tx.get_photo(photo_id, &user.id)
         .await?
@@ -50,7 +53,7 @@ async fn delete_favorite(
     auth_session: AuthSession,
 ) -> HttpResult<impl IntoResponse> {
     let user = auth_session.user.ok_or(HttpError::Unauthorized)?;
-    let mut tx = state.pool.begin().await?;
+    let mut tx = state.write_pool.begin().await?;
 
     tx.get_photo(photo_id, &user.id)
         .await?

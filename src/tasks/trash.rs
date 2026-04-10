@@ -4,7 +4,7 @@ use tokio::fs;
 use tracing::{error, info, warn};
 
 pub async fn cleanup_trash(app_state: AppStateRef) -> Result<(), sqlx::Error> {
-    let mut tx = app_state.pool.begin().await?;
+    let mut tx = app_state.write_pool.begin().await?;
 
     for photo in tx.get_expired_trash_photos().await?.iter() {
         if let Err(e) = fs::remove_file(

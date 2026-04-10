@@ -26,7 +26,7 @@ pub async fn scan_new_files(app_state: AppStateRef) -> sqlx::Result<()> {
     users.push(None); // Scan the public folder
 
     for user_id in users {
-        let mut tx = app_state.pool.begin().await?;
+        let mut tx = app_state.write_pool.begin().await?;
 
         let existing_photos: Vec<Photo> = tx
             .get_photos_by_user(user_id.as_deref())

@@ -24,12 +24,12 @@ pub async fn trash_page(
     State(state): State<AppStateRef>,
 ) -> HttpResult<Response> {
     // Use optimized query that only fetches trashed photos
-    let trashed_photos = state.pool.get_trashed_photos(&user.id).await?;
+    let trashed_photos = state.read_pool.get_trashed_photos(&user.id).await?;
     let photo_ids: Vec<i64> = trashed_photos.iter().map(|p| p.id).collect();
 
     // Only check favorites for the photos we're displaying
     let favorite_ids: HashSet<i64> = state
-        .pool
+        .read_pool
         .check_favorites_for_ids(&user.id, &photo_ids)
         .await?;
 
@@ -46,7 +46,7 @@ pub async fn trash_photo(
     State(state): State<AppStateRef>,
     Path(photo_id): Path<i64>,
 ) -> HttpResult<Response> {
-    let mut tx = state.pool.begin().await?;
+    let mut tx = state.write_pool.begin().await?;
 
     let mut photo = tx
         .get_photo(photo_id, &user.id)
@@ -66,7 +66,7 @@ pub async fn restore_photo(
     State(state): State<AppStateRef>,
     Path(photo_id): Path<i64>,
 ) -> HttpResult<Response> {
-    let mut tx = state.pool.begin().await?;
+    let mut tx = state.write_pool.begin().await?;
 
     let mut photo = tx
         .get_photo(photo_id, &user.id)
@@ -86,7 +86,7 @@ pub async fn permanent_delete(
     State(state): State<AppStateRef>,
     Path(photo_id): Path<i64>,
 ) -> HttpResult<Response> {
-    let mut tx = state.pool.begin().await?;
+    let mut tx = state.write_pool.begin().await?;
 
     let photo = tx
         .get_photo(photo_id, &user.id)

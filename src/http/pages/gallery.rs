@@ -294,7 +294,7 @@ pub async fn gallery_page(
     Query(query): Query<GalleryQuery>,
 ) -> HttpResult<Response> {
     let category = query.category;
-    let mut tx = state.pool.begin().await?;
+    let mut tx = state.read_pool.begin().await?;
 
     let paginated = tx
         .get_photos_paginated(&user.id, category, None, PAGE_SIZE)
@@ -303,7 +303,10 @@ pub async fn gallery_page(
     let photo_ids: Vec<i64> = paginated.photos.iter().map(|p| p.id).collect();
     let favorite_ids = tx.check_favorites_for_ids(&user.id, &photo_ids).await?;
 
-    let month_summaries = state.pool.get_month_summaries(&user.id, category).await?;
+    let month_summaries = state
+        .read_pool
+        .get_month_summaries(&user.id, category)
+        .await?;
 
     let timeline = build_timeline_data(month_summaries);
     let processed = ProcessedPhotos::from_paginated(paginated, &favorite_ids, None);
@@ -328,12 +331,12 @@ pub async fn photo_grid(
     let category = query.category;
 
     let paginated = state
-        .pool
+        .read_pool
         .get_photos_paginated(&user.id, category, None, PAGE_SIZE)
         .await?;
 
     let processed =
-        ProcessedPhotos::from_paginated_with_favorites(paginated, &state.pool, &user.id, None)
+        ProcessedPhotos::from_paginated_with_favorites(paginated, &state.read_pool, &user.id, None)
             .await?;
 
     PhotoGridTemplate {
@@ -356,18 +359,18 @@ pub async fn folder_page(
     let is_personal = matches!(category, PhotoCategory::Personal | PhotoCategory::All);
 
     let paginated = state
-        .pool
+        .read_pool
         .get_folder_photos_paginated(&user.id, &folder_name, is_personal, None, PAGE_SIZE)
         .await?;
 
     let month_summaries = state
-        .pool
+        .read_pool
         .get_folder_month_summaries(&user.id, &folder_name, is_personal)
         .await?;
 
     let timeline = build_timeline_data(month_summaries);
     let processed =
-        ProcessedPhotos::from_paginated_with_favorites(paginated, &state.pool, &user.id, None)
+        ProcessedPhotos::from_paginated_with_favorites(paginated, &state.read_pool, &user.id, None)
             .await?;
 
     FolderPageTemplate {
@@ -394,13 +397,13 @@ pub async fn load_more_gallery(
     let skip_month = query.last_month.as_ref().and_then(|m| parse_month_key(m));
 
     let paginated = state
-        .pool
+        .read_pool
         .get_photos_paginated(&user.id, category, cursor.as_ref(), PAGE_SIZE)
         .await?;
 
     let processed = ProcessedPhotos::from_paginated_with_favorites(
         paginated,
-        &state.pool,
+        &state.read_pool,
         &user.id,
         skip_month,
     )
@@ -430,7 +433,7 @@ pub async fn load_more_folder(
     let skip_month = query.last_month.as_ref().and_then(|m| parse_month_key(m));
 
     let paginated = state
-        .pool
+        .read_pool
         .get_folder_photos_paginated(
             &user.id,
             &folder_name,
@@ -442,7 +445,7 @@ pub async fn load_more_folder(
 
     let processed = ProcessedPhotos::from_paginated_with_favorites(
         paginated,
-        &state.pool,
+        &state.read_pool,
         &user.id,
         skip_month,
     )
@@ -465,12 +468,12 @@ pub async fn photo_modal(
     Path(photo_id): Path<i64>,
 ) -> HttpResult<Response> {
     let photo = state
-        .pool
+        .read_pool
         .get_photo(photo_id, &user.id)
         .await?
         .ok_or(HttpError::NotFound)?;
 
-    let is_favorite = state.pool.check_favorite(photo_id, &user.id).await?;
+    let is_favorite = state.read_pool.check_favorite(photo_id, &user.id).await?;
 
     // Detect if this is a video file using mime_guess
     let mime = mime_guess::from_path(&photo.name).first_or_octet_stream();
@@ -494,7 +497,7 @@ pub async fn photo_info_panel(
     Path(photo_id): Path<i64>,
 ) -> HttpResult<Response> {
     let photo = state
-        .pool
+        .read_pool
         .get_photo(photo_id, &user.id)
         .await?
         .ok_or(HttpError::NotFound)?;
@@ -514,12 +517,12 @@ pub async fn photo_viewer_media(
     Path(photo_id): Path<i64>,
 ) -> HttpResult<Response> {
     let photo = state
-        .pool
+        .read_pool
         .get_photo(photo_id, &user.id)
         .await?
         .ok_or(HttpError::NotFound)?;
 
-    let is_favorite = state.pool.check_favorite(photo_id, &user.id).await?;
+    let is_favorite = state.read_pool.check_favorite(photo_id, &user.id).await?;
 
     let mime = mime_guess::from_path(&photo.name).first_or_octet_stream();
     let is_video = mime.type_() == mime_guess::mime::VIDEO;

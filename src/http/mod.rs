@@ -77,7 +77,8 @@ pub fn router(
 
 pub struct AppState {
     pub storage: StorageResolver,
-    pub pool: SqlitePool,
+    pub read_pool: SqlitePool,
+    pub write_pool: SqlitePool,
     pub users_repo: UsersRepository,
     pub preview_generation: Mutex<()>,
 }
@@ -85,11 +86,12 @@ pub struct AppState {
 impl AppState {
     pub const CSS_VERSION: &str = env!("CSS_VERSION");
 
-    pub fn new(pool: SqlitePool, storage: StorageResolver) -> Self {
+    pub fn new(read_pool: SqlitePool, write_pool: SqlitePool, storage: StorageResolver) -> Self {
         Self {
             storage,
-            users_repo: UsersRepository::new(pool.clone()),
-            pool,
+            users_repo: UsersRepository::new(write_pool.clone()),
+            read_pool,
+            write_pool,
             preview_generation: Mutex::new(()),
         }
     }

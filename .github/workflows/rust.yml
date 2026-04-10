@@ -16,10 +16,20 @@ env:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: sqlite:/tmp/ci-test.db?mode=rwc
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+      - name: Install sqlx-cli
+        uses: taiki-e/install-action@v2
+        with:
+          tool: sqlx-cli
+      - name: Setup test database
+        run: |
+          sqlx database create
+          sqlx migrate run
       - run: cargo test --all-features
 
   # TODO: Enable e2e tests once sample test data is added

@@ -20,7 +20,7 @@ async fn trash_photo(
     auth_session: AuthSession,
 ) -> HttpResult<impl IntoResponse> {
     let user = auth_session.user.ok_or(HttpError::Unauthorized)?;
-    let mut tx = state.pool.begin().await?;
+    let mut tx = state.write_pool.begin().await?;
 
     let mut photo = tx
         .get_photo(photo_id, &user.id)
@@ -42,7 +42,7 @@ async fn restore_photo(
     auth_session: AuthSession,
 ) -> HttpResult<impl IntoResponse> {
     let user = auth_session.user.ok_or(HttpError::Unauthorized)?;
-    let mut tx = state.pool.begin().await?;
+    let mut tx = state.write_pool.begin().await?;
 
     let mut photo = tx
         .get_photo(photo_id, &user.id)

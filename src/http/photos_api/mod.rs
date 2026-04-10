@@ -57,7 +57,7 @@ async fn update_timestamp(
     auth: AuthSession,
 ) -> HttpResult<impl IntoResponse> {
     let user = auth.user.ok_or(HttpError::Unauthorized)?;
-    let mut tx = state.pool.begin().await?;
+    let mut tx = state.write_pool.begin().await?;
 
     let mut photo = tx
         .get_photo(photo_id, &user.id)
@@ -79,7 +79,10 @@ async fn get_duplicates(
 ) -> HttpResult<impl IntoResponse> {
     let user = auth.user.ok_or(HttpError::Unauthorized)?;
 
-    let photos = state.pool.get_duplicates_for_user(user.id.as_str()).await?;
+    let photos = state
+        .read_pool
+        .get_duplicates_for_user(user.id.as_str())
+        .await?;
 
     Ok(Json(photos))
 }
@@ -94,7 +97,7 @@ async fn preview_photo(
     let storage = &state.storage;
 
     let photo = state
-        .pool
+        .read_pool
         .get_photo(photo_id, &user.id)
         .await?
         .ok_or(HttpError::NotFound)?;
@@ -148,7 +151,7 @@ async fn download_photo(
 ) -> HttpResult<impl IntoResponse> {
     let user = auth.user.ok_or(HttpError::Unauthorized)?;
     let photo = state
-        .pool
+        .read_pool
         .get_photo(photo_id, &user.id)
         .await?
         .ok_or(HttpError::NotFound)?;
@@ -165,7 +168,7 @@ async fn get_photo_exif(
 ) -> HttpResult<impl IntoResponse> {
     let user = auth.user.ok_or(HttpError::Unauthorized)?;
     let photo = state
-        .pool
+        .read_pool
         .get_photo(photo_id, &user.id)
         .await?
         .ok_or(HttpError::NotFound)?;
@@ -213,7 +216,7 @@ async fn upload_photo(
 
     let written_file = write_field_to_file(field).await?;
 
-    let mut tx = state.pool.begin().await?;
+    let mut tx = state.write_pool.begin().await?;
     let photo = tx
         .get_photo_with_hash(&written_file.hash, photo_user_id.as_deref())
         .await?;
@@ -279,7 +282,7 @@ async fn delete_photo(
     auth: AuthSession,
 ) -> HttpResult<impl IntoResponse> {
     let user = auth.user.ok_or(HttpError::Unauthorized)?;
-    let mut tx = state.pool.begin().await?;
+    let mut tx = state.write_pool.begin().await?;
 
     let photo = tx
         .get_photo(photo_id, &user.id)

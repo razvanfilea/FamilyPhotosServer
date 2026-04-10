@@ -85,7 +85,7 @@ pub fn start_periodic_tasks(
 async fn resolve_duplicates_db_entry(app_state: AppStateRef) -> Result<(), sqlx::Error> {
     debug!("Started resolving duplicates");
 
-    let mut tx = app_state.pool.begin().await?;
+    let mut tx = app_state.write_pool.begin().await?;
     let photos = tx.get_photos_with_same_location().await?;
 
     for photo in photos {
@@ -105,7 +105,7 @@ async fn delete_invalid_photo_previews(app_state: AppStateRef) -> Result<(), sql
     use crate::previews::MIN_PREVIEW_SIZE;
 
     let photos: HashSet<i64> = app_state
-        .pool
+        .read_pool
         .get_all_photo_ids()
         .await?
         .into_iter()
@@ -157,7 +157,7 @@ async fn delete_old_event_logs(app_state: AppStateRef) -> Result<(), sqlx::Error
     const MAX_EVENT_LONG_ROWS_TO_KEEP: u32 = 512;
 
     app_state
-        .pool
+        .write_pool
         .delete_old_events(MAX_EVENT_LONG_ROWS_TO_KEEP)
         .await
 }

@@ -1,7 +1,7 @@
+use crate::http::AppStateRef;
 use crate::http::auth::AuthenticatedUser;
 use crate::http::error::HttpResult;
 use crate::http::template_into_response::TemplateIntoResponse;
-use crate::http::AppStateRef;
 use crate::repo::PhotosRepo;
 use askama::Template;
 use axum::extract::State;
@@ -19,8 +19,11 @@ pub async fn upload_page(
     State(state): State<AppStateRef>,
 ) -> HttpResult<Response> {
     // Use optimized queries that only fetch distinct folder names
-    let personal_folders = state.pool.get_distinct_personal_folders(&user.id).await?;
-    let family_folders = state.pool.get_distinct_family_folders().await?;
+    let personal_folders = state
+        .read_pool
+        .get_distinct_personal_folders(&user.id)
+        .await?;
+    let family_folders = state.read_pool.get_distinct_family_folders().await?;
 
     UploadPageTemplate {
         personal_folders,

@@ -10,7 +10,7 @@ use tracing::{error, info};
 pub async fn compute_photos_hash(app_state: AppStateRef) -> Result<(), sqlx::Error> {
     const CHUNK_SIZE: usize = 256;
 
-    let mut tx = app_state.pool.begin().await?;
+    let mut tx = app_state.write_pool.begin().await?;
     let photos = tx.get_photos_without_hash().await?;
 
     if photos.is_empty() {

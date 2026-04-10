@@ -37,7 +37,7 @@ async fn move_folder(
     let target_folder_name = query.target_folder_name.filter(|s| !s.is_empty());
 
     let photos_to_move = state
-        .pool
+        .read_pool
         .get_photo_ids_in_folder(source_user_name, &query.source_folder_name)
         .await?;
 
@@ -100,7 +100,7 @@ async fn move_photos_service(
 ) -> sqlx::Result<Vec<Photo>> {
     let mut moved_photos = Vec::with_capacity(photo_ids.len());
 
-    let mut conn = state.pool.acquire().await?;
+    let mut conn = state.write_pool.acquire().await?;
 
     for photo_id in photo_ids {
         let mut tx = conn.begin().await?;

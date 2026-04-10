@@ -114,7 +114,7 @@ async fn user_commands(state: AppStateRef, command: UsersCommand) {
 
             for user in users {
                 let count = state
-                    .pool
+                    .read_pool
                     .get_photos_by_user(Some(user.id.as_str()))
                     .await
                     .expect("Failed to get photos count")

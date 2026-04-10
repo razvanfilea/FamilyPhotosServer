@@ -29,7 +29,7 @@ pub async fn favorites_page(
     State(state): State<AppStateRef>,
 ) -> HttpResult<Response> {
     let paginated = state
-        .pool
+        .read_pool
         .get_favorite_photos_paginated(&user.id, None, PAGE_SIZE)
         .await?;
 
@@ -53,7 +53,7 @@ pub async fn load_more_favorites(
     let skip_month = query.last_month.as_ref().and_then(|m| parse_month_key(m));
 
     let paginated = state
-        .pool
+        .read_pool
         .get_favorite_photos_paginated(&user.id, cursor.as_ref(), PAGE_SIZE)
         .await?;
 
@@ -96,7 +96,7 @@ pub async fn toggle_favorite(
     Query(query): Query<FavoriteQuery>,
     method: Method,
 ) -> HttpResult<Response> {
-    let mut tx = state.pool.begin().await?;
+    let mut tx = state.write_pool.begin().await?;
     tx.get_photo(photo_id, &user.id)
         .await?
         .ok_or(HttpError::NotFound)?;

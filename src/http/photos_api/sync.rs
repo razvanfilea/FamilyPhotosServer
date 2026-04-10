@@ -20,7 +20,7 @@ async fn full_photos_list(
     auth: AuthSession,
 ) -> HttpResult<impl IntoResponse> {
     let user = auth.user.ok_or(HttpError::Unauthorized)?;
-    let mut tx = state.pool.begin().await?;
+    let mut tx = state.read_pool.begin().await?;
 
     let photos = tx.get_photos_by_user_and_public(user.id.as_str()).await?;
 
@@ -40,7 +40,7 @@ async fn partial_photos_list(
     let user = auth.user.ok_or(HttpError::Unauthorized)?;
     let last_synced_event_id = query.last_synced_event_id;
 
-    let mut tx = state.pool.begin().await?;
+    let mut tx = state.read_pool.begin().await?;
 
     let events = tx
         .get_events_for_user(last_synced_event_id, user.id.as_str())

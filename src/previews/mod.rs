@@ -19,7 +19,7 @@ pub fn is_valid_preview(path: &Path) -> bool {
 
 pub async fn generate_all_previews(app_state: &AppState) -> sqlx::Result<()> {
     let _ = app_state.preview_generation.lock().await;
-    let mut tx = app_state.pool.begin().await?;
+    let mut tx = app_state.read_pool.begin().await?;
 
     let missing_previews_ids = tx.get_all_photo_ids().await?.into_iter().filter(|id| {
         let preview_path = app_state

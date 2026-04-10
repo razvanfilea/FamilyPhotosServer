@@ -4,10 +4,7 @@ use crate::utils::env_reader::EnvVariables;
 use crate::utils::storage_resolver::StorageResolver;
 use axum_login::tower_sessions::ExpiredDeletion;
 use mimalloc::MiMalloc;
-use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
 use std::net::SocketAddr;
-use std::str::FromStr;
-use std::time::Duration;
 use tokio::net::TcpListener;
 use tower_sessions_sqlx_store::SqliteStore;
 use tracing::{error, info};
@@ -19,6 +16,7 @@ use tracing_subscriber::util::SubscriberInitExt;
 static GLOBAL: MiMalloc = MiMalloc;
 
 mod cli;
+mod db;
 mod http;
 mod model;
 mod previews;
@@ -44,35 +42,17 @@ async fn main() {
         .with(tracing_subscriber::fmt::layer().compact())
         .init();
 
-    let connection_options = SqliteConnectOptions::from_str(&vars.database_url)
-        .expect("Failed to parse Database URL")
-        .foreign_keys(true)
-        .journal_mode(SqliteJournalMode::Wal)
-        .synchronous(SqliteSynchronous::Normal)
-        .busy_timeout(Duration::from_secs(30))
-        .pragma("temp_store", "memory")
-        .pragma("cache_size", "-20000")
-        .optimize_on_close(true, None);
+    let (read_pool, write_pool) = db::init_pools(&vars.database_url).await;
 
-    let pool = SqlitePoolOptions::new()
-        .min_connections(1)
-        .max_connections(4)
-        .connect_with(connection_options)
-        .await
-        .expect("Failed to create DB Pool");
+    db::run_migrations(&write_pool).await;
 
-    sqlx::migrate!()
-        .run(&pool)
-        .await
-        .expect("Failed to run migrations");
-
-    let session_store = SqliteStore::new(pool.clone());
+    let session_store = SqliteStore::new(write_pool.clone());
     session_store
         .migrate()
         .await
         .expect("Failed to run schema migration for authentication");
 
-    let app_state = AppState::new(pool, storage_resolver);
+    let app_state = AppState::new(read_pool, write_pool, storage_resolver);
     let app_state = Box::leak(Box::new(app_state));
 
     session_store
