@@ -53,7 +53,7 @@ impl Photo {
     }
 
     pub fn construct_partial_preview_path(photo_id: i64) -> String {
-        format!("{}.jpg", photo_id)
+        format!("{}.webp", photo_id)
     }
 }
 

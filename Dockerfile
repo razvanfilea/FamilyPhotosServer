@@ -1,6 +1,6 @@
 ARG TARGET_ARCH=x86_64-unknown-linux-musl
 
-FROM rust:1.94-alpine AS base
+FROM rust:1.96-alpine AS base
 ARG TARGET_ARCH
 USER root
 
@@ -36,7 +36,7 @@ ARG TARGET_ARCH
 
 RUN apk add --no-cache \
     imagemagick imagemagick-jpeg imagemagick-webp imagemagick-jxl imagemagick-heic imagemagick-raw \
-    ffmpegthumbnailer
+    ffmpeg
 
 COPY --from=builder /app/target/${TARGET_ARCH}/release/familyphotos ./
 COPY --from=builder /app/assets/ ./assets/

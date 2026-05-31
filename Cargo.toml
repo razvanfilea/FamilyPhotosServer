@@ -47,7 +47,7 @@ dotenvy = "0.15"
 argon2 = { version = "=0.6.0-rc.8" }
 blake3 = { version = "1.8", features = ["mmap"] }
 uuid = { version = "1.20", features = ["v4"] }
-fast-thumbhash = { git = "https://github.com/razvanfilea/fast-thumbhash" }
+fast-thumbhash = "0.2"
 mimalloc = "0.1"
 
 [profile.dev.package.sqlx-macros]
