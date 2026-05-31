@@ -1,5 +1,6 @@
 mod favorite;
 mod move_photos;
+mod reencode;
 mod sync;
 mod trash;
 
@@ -33,6 +34,7 @@ pub fn router(app_state: AppStateRef) -> Router {
         .nest("/sync", sync::router())
         .nest("/move", move_photos::router())
         .nest("/trash", trash::router())
+        .nest("/reencode", reencode::router())
         .route("/timestamp/{photo_id}", post(update_timestamp))
         .route("/duplicates", get(get_duplicates))
         .route("/download/{photo_id}", get(download_photo))
