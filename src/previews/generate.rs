@@ -8,9 +8,7 @@ use mime_guess::MimeGuess;
 use tracing::warn;
 use wait_timeout::ChildExt;
 
-const PREVIEW_TARGET_SIZE: u32 = 250;
-const VIDEO_PREVIEW_TARGET_SIZE: &str = "500";
-pub const THUMB_HASH_IMAGE_SIZE: usize = 72;
+pub const THUMB_HASH_IMAGE_SIZE: usize = 64;
 
 const GENERATION_TIMEOUT: Duration = Duration::from_secs(15);
 pub const MIN_PREVIEW_SIZE: u64 = 100;
@@ -27,17 +25,34 @@ fn read_stderr(child: &mut std::process::Child) -> String {
         .unwrap_or_default()
 }
 
-fn generate_video_frame<P: AsRef<Path>, R: AsRef<Path>>(
-    load_path: P,
-    save_path: R,
-) -> io::Result<()> {
-    let mut child = Command::new("ffmpegthumbnailer")
+const PREVIEW_SIZE: u32 = 320;
+const VIDEO_SCALE_FILTER: &str = "scale='if(gt(iw,ih),-1,320)':'if(gt(iw,ih),320,-1)'";
+
+fn generate_video_frame(load_path: &Path, save_path: &Path) -> io::Result<()> {
+    let filter = format!("thumbnail,{VIDEO_SCALE_FILTER}");
+    run_ffmpeg_frame(load_path, save_path, &filter)
+}
+
+fn generate_video_frame_simple(load_path: &Path, save_path: &Path) -> io::Result<()> {
+    run_ffmpeg_frame(load_path, save_path, VIDEO_SCALE_FILTER)
+}
+
+fn run_ffmpeg_frame(load_path: &Path, save_path: &Path, video_filter: &str) -> io::Result<()> {
+    let mut child = Command::new("ffmpeg")
+        .arg("-ss")
+        .arg("0")
         .arg("-i")
-        .arg(load_path.as_ref())
-        .arg("-o")
-        .arg(save_path.as_ref())
-        .arg("-s")
-        .arg(VIDEO_PREVIEW_TARGET_SIZE)
+        .arg(load_path)
+        .arg("-vf")
+        .arg(video_filter)
+        .arg("-frames:v")
+        .arg("1")
+        .arg("-c:v")
+        .arg("libwebp")
+        .arg("-quality")
+        .arg("75")
+        .arg("-y")
+        .arg(save_path)
         .stderr(Stdio::piped())
         .spawn()?;
 
@@ -46,24 +61,18 @@ fn generate_video_frame<P: AsRef<Path>, R: AsRef<Path>>(
             if !status.success() {
                 let stderr = read_stderr(&mut child);
                 warn!(
-                    "ffmpegthumbnailer failed for {}: exit={}, stderr={}",
-                    load_path.as_ref().display(),
+                    "ffmpeg failed for {}: exit={}, stderr={}",
+                    load_path.display(),
                     status,
                     stderr
                 );
-                return Err(io::Error::other(format!(
-                    "ffmpegthumbnailer failed: {}",
-                    stderr
-                )));
+                return Err(io::Error::other(format!("ffmpeg failed: {}", stderr)));
             }
             Ok(())
         }
         Ok(None) => {
             child.kill()?;
-            Err(io::Error::new(
-                io::ErrorKind::TimedOut,
-                "ffmpegthumbnailer timeout",
-            ))
+            Err(io::Error::new(io::ErrorKind::TimedOut, "ffmpeg timeout"))
         }
         Err(e) => {
             child.kill()?;
@@ -72,16 +81,18 @@ fn generate_video_frame<P: AsRef<Path>, R: AsRef<Path>>(
     }
 }
 
-fn generate_image_preview<P: AsRef<Path>, R: AsRef<Path>>(
-    load_path: P,
-    save_path: R,
-) -> io::Result<()> {
+fn generate_image_preview(load_path: &Path, save_path: &Path) -> io::Result<()> {
     let mut child = Command::new("magick")
-        .arg(load_path.as_ref())
+        .arg(format!("{}[0]", load_path.display())) // [0] selects first frame for GIFs
         .arg("-auto-orient")
         .arg("-thumbnail")
-        .arg(format!("{PREVIEW_TARGET_SIZE}x{PREVIEW_TARGET_SIZE}^"))
-        .arg(save_path.as_ref())
+        .arg(format!("{PREVIEW_SIZE}x{PREVIEW_SIZE}^>"))
+        .arg("-quality")
+        .arg("75")
+        .arg("-define")
+        .arg("webp:method=4")
+        .arg("-strip")
+        .arg(save_path)
         .stderr(Stdio::piped())
         .spawn()?;
 
@@ -91,7 +102,7 @@ fn generate_image_preview<P: AsRef<Path>, R: AsRef<Path>>(
                 let stderr = read_stderr(&mut child);
                 warn!(
                     "ImageMagick failed for {}: exit={}, stderr={}",
-                    load_path.as_ref().display(),
+                    load_path.display(),
                     status,
                     stderr
                 );
@@ -126,8 +137,10 @@ where
         .parent()
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "save_path has no parent"))?;
 
-    // Create temp file in same directory
-    let temp_file = tempfile::NamedTempFile::new_in(preview_dir)?;
+    // Create temp file in same directory with .webp suffix
+    let temp_file = tempfile::Builder::new()
+        .suffix(".webp")
+        .tempfile_in(preview_dir)?;
     let temp_path = temp_file.path();
 
     let mime = MimeGuess::from_path(load_path).first().ok_or_else(|| {
@@ -138,7 +151,8 @@ where
     })?;
 
     if mime.type_() == "video" {
-        generate_video_frame(load_path, temp_path)?;
+        generate_video_frame(load_path, temp_path)
+            .or_else(|_| generate_video_frame_simple(load_path, temp_path))?;
     } else {
         generate_image_preview(load_path, temp_path)?;
     }
@@ -158,28 +172,61 @@ where
     Ok(())
 }
 
-pub fn generate_thumb_hash_raw_image(load_path: &Path) -> io::Result<Vec<u8>> {
+pub struct ThumbHashImage {
+    pub width: usize,
+    pub height: usize,
+    pub rgba: Vec<u8>,
+}
+
+pub fn generate_thumb_hash_raw_image(load_path: &Path) -> io::Result<ThumbHashImage> {
     let size = THUMB_HASH_IMAGE_SIZE;
+
+    // Get dimensions after resize (fit within box, preserve aspect ratio)
+    let dims_output = Command::new("magick")
+        .arg(load_path)
+        .args([
+            "-auto-orient",
+            "-resize",
+            &format!("{size}x{size}"),
+            "-format",
+            "%wx%h",
+            "info:",
+        ])
+        .output()?;
+
+    let dims_str = String::from_utf8_lossy(&dims_output.stdout);
+    let (w_str, h_str) = dims_str
+        .trim()
+        .split_once('x')
+        .ok_or_else(|| io::Error::other("failed to parse dimensions"))?;
+    let width: usize = w_str
+        .parse()
+        .map_err(|_| io::Error::other("invalid width"))?;
+    let height: usize = h_str
+        .parse()
+        .map_err(|_| io::Error::other("invalid height"))?;
+
+    // Get raw RGB pixels (no alpha needed for photos)
     let child = Command::new("magick")
         .arg(load_path)
         .args([
             "-auto-orient",
             "-resize",
-            &format!("{size}x{size}^"),
-            "-gravity",
-            "center",
-            "-extent",
             &format!("{size}x{size}"),
             "-colorspace",
             "sRGB",
             "-depth",
             "8",
-            "-define",
-            "quantum:format=unsigned",
-            "rgba:-", // no alpha channel, 3 bytes per pixel
+            "rgba:-",
         ])
         .stdout(Stdio::piped())
         .spawn()?;
 
-    child.wait_with_output().map(|output| output.stdout)
+    let output = child.wait_with_output()?;
+
+    Ok(ThumbHashImage {
+        width,
+        height,
+        rgba: output.stdout,
+    })
 }

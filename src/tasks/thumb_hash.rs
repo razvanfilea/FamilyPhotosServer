@@ -1,7 +1,7 @@
 use crate::http::AppStateRef;
-use crate::previews::{MIN_PREVIEW_SIZE, THUMB_HASH_IMAGE_SIZE, generate_thumb_hash_raw_image};
+use crate::previews::{MIN_PREVIEW_SIZE, generate_thumb_hash_raw_image};
 use crate::repo::{PhotosRepo, PhotosTransactionRepo};
-use fast_thumbhash::ThumbHashEncoder;
+use fast_thumbhash::rgba_to_thumb_hash;
 use rayon::prelude::*;
 use std::path::Path;
 use tokio::task::spawn_blocking;
@@ -19,13 +19,6 @@ pub async fn generate_thumb_hashes(app_state: AppStateRef) -> Result<(), sqlx::E
 
     spawn_blocking(move || {
         photos.par_chunks(CHUNK_SIZE).for_each(|chunk| {
-            let Ok(mut encoder) =
-                ThumbHashEncoder::new(THUMB_HASH_IMAGE_SIZE, THUMB_HASH_IMAGE_SIZE)
-                    .inspect_err(|e| error!("Failed to create thumb hash encoder: {}", e))
-            else {
-                return;
-            };
-
             let chunk = chunk
                 .iter()
                 .filter_map(|photo| {
@@ -40,7 +33,7 @@ pub async fn generate_thumb_hashes(app_state: AppStateRef) -> Result<(), sqlx::E
                         _ => return None,
                     }
 
-                    match generate_thumb_image_hash(&mut encoder, &preview_path) {
+                    match generate_thumb_image_hash(&preview_path) {
                         Ok(thumb_hash) => Some((photo.id, thumb_hash)),
                         Err(e) => {
                             error!(
@@ -72,17 +65,12 @@ pub async fn generate_thumb_hashes(app_state: AppStateRef) -> Result<(), sqlx::E
 
     tx.commit().await?;
 
-    info!("Updated {} thumb hashes", count);
+    info!("Updated {count} thumb hashes");
 
     Ok(())
 }
 
-fn generate_thumb_image_hash(
-    encoder: &mut ThumbHashEncoder,
-    preview_path: &Path,
-) -> Result<Vec<u8>, std::io::Error> {
-    let thumb_image = generate_thumb_hash_raw_image(preview_path)?;
-    encoder
-        .encode_rgba(&thumb_image)
-        .map_err(std::io::Error::other)
+fn generate_thumb_image_hash(preview_path: &Path) -> Result<Vec<u8>, std::io::Error> {
+    let img = generate_thumb_hash_raw_image(preview_path)?;
+    Ok(rgba_to_thumb_hash(img.width, img.height, &img.rgba))
 }

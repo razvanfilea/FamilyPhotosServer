@@ -113,6 +113,10 @@ pub async fn file_to_response(
                     header::CONTENT_DISPOSITION,
                     format!("attachment; filename=\"{}\"", filename),
                 ),
+                (
+                    header::CACHE_CONTROL,
+                    "public, max-age=31536000, immutable".to_string(),
+                ),
             ],
             body,
         )
@@ -126,6 +130,10 @@ pub async fn file_to_response(
                 (
                     header::CONTENT_DISPOSITION,
                     format!("attachment; filename=\"{}\"", filename),
+                ),
+                (
+                    header::CACHE_CONTROL,
+                    "public, max-age=31536000, immutable".to_string(),
                 ),
             ],
             body,
