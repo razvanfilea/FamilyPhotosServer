@@ -14,7 +14,7 @@ pub struct Photo {
     #[serde(with = "timestamp")]
     pub created_at: OffsetDateTime,
     pub file_size: i64,
-    pub folder: Option<String>,
+    pub folder_id: Option<i64>,
     #[serde_as(as = "Option<serde_with::base64::Base64>")]
     pub thumb_hash: Option<Vec<u8>>,
     #[serde(with = "timestamp::option")]
@@ -26,15 +26,15 @@ impl Photo {
         self.id
     }
 
-    pub fn full_name(&self) -> String {
-        Self::construct_full_name(&self.name, self.folder.as_deref())
+    pub fn full_name(&self, folder_name: Option<&str>) -> String {
+        Self::construct_full_name(&self.name, folder_name)
     }
 
-    pub fn partial_path(&self) -> String {
+    pub fn partial_path(&self, folder_name: Option<&str>) -> String {
         format!(
             "{}/{}",
             self.user_id.as_deref().unwrap_or(PUBLIC_USER_FOLDER),
-            self.full_name()
+            self.full_name(folder_name)
         )
     }
 

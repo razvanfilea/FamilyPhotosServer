@@ -74,12 +74,12 @@ pub trait PhotosRepo<'c>: SqliteExecutor<'c> {
     async fn get_photo_ids_in_folder(
         self,
         user_id: Option<&str>,
-        folder_name: &str,
+        folder_id: i64,
     ) -> sqlx::Result<Vec<i64>> {
         query_scalar!(
-            "select id from photos where (($1 is null and user_id is null) or user_id = $1) and folder = $2 order by created_at desc",
+            "select id from photos where (($1 is null and user_id is null) or user_id = $1) and folder_id = $2 order by created_at desc",
             user_id,
-            folder_name,
+            folder_id,
         ).fetch_all(self).await
     }
 
@@ -90,7 +90,7 @@ pub trait PhotosRepo<'c>: SqliteExecutor<'c> {
             where rowid not in (
                 select min(rowid)
                 from photos
-                group by user_id, folder, name)",
+                group by user_id, folder_id, name)",
         )
         .fetch_all(self)
         .await
@@ -125,44 +125,18 @@ pub trait PhotosRepo<'c>: SqliteExecutor<'c> {
     async fn get_photos_in_folder(
         self,
         user_id: Option<&str>,
-        folder_name: &str,
+        folder_id: i64,
     ) -> sqlx::Result<Vec<Photo>> {
         query_as!(
             Photo,
-            "SELECT * FROM photos WHERE (($1 IS NULL AND user_id IS NULL) OR user_id = $1) AND folder = $2 ORDER BY created_at DESC",
+            "select * from photos where (($1 is null and user_id is null) or user_id = $1) and folder_id = $2 order by created_at desc",
             user_id,
-            folder_name
+            folder_id
         )
         .fetch_all(self)
         .await
     }
 
-    /// Get distinct personal folder names for a user
-    async fn get_distinct_personal_folders(self, user_id: &str) -> sqlx::Result<Vec<String>> {
-        query_scalar!(
-            "select distinct folder as 'folder!' from photos
-             where user_id = $1
-               and folder is not null and folder != ''
-               and trashed_on is null
-             order by folder",
-            user_id
-        )
-        .fetch_all(self)
-        .await
-    }
-
-    /// Get distinct family (public) folder names
-    async fn get_distinct_family_folders(self) -> sqlx::Result<Vec<String>> {
-        query_scalar!(
-            "select distinct folder as 'folder!' from photos
-             where user_id is null
-               and folder is not null and folder != ''
-               and trashed_on is null
-             order by folder"
-        )
-        .fetch_all(self)
-        .await
-    }
 
     async fn get_photos_paginated(
         self,
@@ -246,9 +220,7 @@ pub trait PhotosRepo<'c>: SqliteExecutor<'c> {
 
     async fn get_folder_photos_paginated(
         self,
-        user_id: &str,
-        folder_name: &str,
-        is_personal: bool,
+        folder_id: i64,
         cursor: Option<&PhotoCursor>,
         limit: u32,
     ) -> sqlx::Result<PaginatedPhotos> {
@@ -257,42 +229,21 @@ pub trait PhotosRepo<'c>: SqliteExecutor<'c> {
         let cursor_created_at = cursor.map(|c| c.created_at);
         let cursor_id = cursor.map(|c| c.id);
 
-        let photos = if is_personal {
-            query_as!(
-                Photo,
-                r#"select * from photos
-                where user_id = $1
-                  and trashed_on is null
-                  and folder = $2
-                  and ($3 is null or created_at < $3 or (created_at = $3 and id < $4))
-                order by created_at desc, id desc
-                limit $5"#,
-                user_id,
-                folder_name,
-                cursor_created_at,
-                cursor_id,
-                fetch_limit
-            )
-            .fetch_all(self)
-            .await?
-        } else {
-            query_as!(
-                Photo,
-                r#"select * from photos
-                where user_id is null
-                  and trashed_on is null
-                  and folder = $1
-                  and ($2 is null or created_at < $2 or (created_at = $2 and id < $3))
-                order by created_at desc, id desc
-                limit $4"#,
-                folder_name,
-                cursor_created_at,
-                cursor_id,
-                fetch_limit
-            )
-            .fetch_all(self)
-            .await?
-        };
+        let photos = query_as!(
+            Photo,
+            r#"select * from photos
+            where folder_id = $1
+              and trashed_on is null
+              and ($2 is null or created_at < $2 or (created_at = $2 and id < $3))
+            order by created_at desc, id desc
+            limit $4"#,
+            folder_id,
+            cursor_created_at,
+            cursor_id,
+            fetch_limit
+        )
+        .fetch_all(self)
+        .await?;
 
         build_paginated_result(photos, limit)
     }
@@ -346,25 +297,25 @@ pub trait PhotosRepo<'c>: SqliteExecutor<'c> {
         user_id: &str,
         category: PhotoCategory,
     ) -> sqlx::Result<Vec<FolderInfo>> {
-        // Split queries by category and use window functions to avoid correlated subqueries
         match category {
             PhotoCategory::Personal => {
                 query_as!(
                     FolderInfo,
                     r#"select
-                        folder as "name!",
+                        f.name as "name!",
                         count(*) as "photo_count!: i64",
-                        max(case when rn = 1 then id end) as "cover_photo_id!: i64"
+                        max(case when rn = 1 then p.id end) as "cover_photo_id!: i64"
                     from (
-                        select folder, id,
-                               row_number() over (partition by folder order by created_at desc) as rn
+                        select folder_id, id,
+                               row_number() over (partition by folder_id order by created_at desc) as rn
                         from photos
                         where user_id = $1
                           and trashed_on is null
-                          and folder is not null and folder != ''
-                    )
-                    group by folder
-                    order by folder"#,
+                          and folder_id is not null
+                    ) p
+                    inner join folders f on f.id = p.folder_id
+                    group by p.folder_id
+                    order by f.name"#,
                     user_id
                 )
                 .fetch_all(self)
@@ -374,19 +325,20 @@ pub trait PhotosRepo<'c>: SqliteExecutor<'c> {
                 query_as!(
                     FolderInfo,
                     r#"select
-                        folder as "name!",
+                        f.name as "name!",
                         count(*) as "photo_count!: i64",
-                        max(case when rn = 1 then id end) as "cover_photo_id!: i64"
+                        max(case when rn = 1 then p.id end) as "cover_photo_id!: i64"
                     from (
-                        select folder, id,
-                               row_number() over (partition by folder order by created_at desc) as rn
+                        select folder_id, id,
+                               row_number() over (partition by folder_id order by created_at desc) as rn
                         from photos
                         where user_id is null
                           and trashed_on is null
-                          and folder is not null and folder != ''
-                    )
-                    group by folder
-                    order by folder"#
+                          and folder_id is not null
+                    ) p
+                    inner join folders f on f.id = p.folder_id
+                    group by p.folder_id
+                    order by f.name"#
                 )
                 .fetch_all(self)
                 .await
@@ -395,19 +347,20 @@ pub trait PhotosRepo<'c>: SqliteExecutor<'c> {
                 query_as!(
                     FolderInfo,
                     r#"select
-                        folder as "name!",
+                        f.name as "name!",
                         count(*) as "photo_count!: i64",
-                        max(case when rn = 1 then id end) as "cover_photo_id!: i64"
+                        max(case when rn = 1 then p.id end) as "cover_photo_id!: i64"
                     from (
-                        select folder, id,
-                               row_number() over (partition by folder order by created_at desc) as rn
+                        select folder_id, id,
+                               row_number() over (partition by folder_id order by created_at desc) as rn
                         from photos
                         where (user_id is null or user_id = $1)
                           and trashed_on is null
-                          and folder is not null and folder != ''
-                    )
-                    group by folder
-                    order by folder"#,
+                          and folder_id is not null
+                    ) p
+                    inner join folders f on f.id = p.folder_id
+                    group by p.folder_id
+                    order by f.name"#,
                     user_id
                 )
                 .fetch_all(self)
