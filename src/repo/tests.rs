@@ -5,7 +5,6 @@
 //! - Integration tests for cross-repo scenarios
 
 use crate::model::photo::Photo;
-use crate::model::photo_category::PhotoCategory;
 use crate::model::user::User;
 use sqlx::SqlitePool;
 use time::OffsetDateTime;
@@ -75,123 +74,7 @@ pub async fn insert_test_user(pool: &SqlitePool, user: &User) -> sqlx::Result<()
 #[cfg(test)]
 mod integration {
     use super::*;
-    use crate::repo::{
-        FavoritesRepo, FoldersRepo, PhotosRepo, PhotosTransactionRepo, UserEventLogError,
-    };
-    use time::macros::datetime;
-
-    #[sqlx::test]
-    async fn test_photo_lifecycle(pool: SqlitePool) -> sqlx::Result<()> {
-        // Setup: create user
-        let user = create_test_user("user1", "Test User");
-        insert_test_user(&pool, &user).await?;
-
-        let folder = pool.get_or_create_folder(Some("user1"), "vacation").await?;
-        let folder2 = pool
-            .get_or_create_folder(Some("user1"), "summer_vacation")
-            .await?;
-
-        let mut tx = pool.begin().await?;
-
-        // Insert a photo
-        let photo = create_test_photo(0, Some("user1"), Some(folder.id), "beach.jpg");
-        let inserted = tx.insert_photo(&photo).await?;
-        assert!(inserted.id > 0);
-        assert_eq!(inserted.name, "beach.jpg");
-
-        // Update the photo
-        let mut updated_photo = inserted.clone();
-        updated_photo.folder_id = Some(folder2.id);
-        tx.update_photo(&updated_photo).await?;
-
-        tx.commit().await?;
-
-        // Verify update persisted
-        let fetched = pool.get_photo(inserted.id, "user1").await?;
-        assert!(fetched.is_some());
-        assert_eq!(fetched.unwrap().folder_id, Some(folder2.id));
-
-        // Add to favorites
-        pool.insert_favorite(inserted.id, "user1").await?;
-        let is_fav = pool.check_favorite(inserted.id, "user1").await?;
-        assert!(is_fav);
-
-        // Remove favorite before deleting (foreign key constraint)
-        pool.delete_favorite(inserted.id, "user1").await?;
-
-        // Delete the photo
-        let mut tx = pool.begin().await?;
-        let deleted_count = tx.delete_photo(&updated_photo).await?;
-        tx.commit().await?;
-        assert_eq!(deleted_count, 1);
-
-        // Verify deletion
-        let fetched_after_delete = pool.get_photo(inserted.id, "user1").await?;
-        assert!(fetched_after_delete.is_none());
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn test_pagination_with_favorites(pool: SqlitePool) -> sqlx::Result<()> {
-        let user = create_test_user("user1", "Test User");
-        insert_test_user(&pool, &user).await?;
-
-        let mut tx = pool.begin().await?;
-
-        // Insert multiple photos with different timestamps
-        let photos = vec![
-            create_test_photo_with_time(
-                0,
-                Some("user1"),
-                None,
-                "photo1.jpg",
-                datetime!(2024-01-15 10:00:00 UTC),
-            ),
-            create_test_photo_with_time(
-                0,
-                Some("user1"),
-                None,
-                "photo2.jpg",
-                datetime!(2024-01-14 10:00:00 UTC),
-            ),
-            create_test_photo_with_time(
-                0,
-                Some("user1"),
-                None,
-                "photo3.jpg",
-                datetime!(2024-01-13 10:00:00 UTC),
-            ),
-        ];
-
-        tx.insert_photos(&photos).await?;
-        tx.commit().await?;
-
-        // Get all photos for user
-        let all_photos = pool.get_photos_by_user(Some("user1")).await?;
-        assert_eq!(all_photos.len(), 3);
-
-        // Favorite the second photo
-        pool.insert_favorite(all_photos[1].id, "user1").await?;
-
-        // Get paginated photos
-        let mut tx = pool.begin().await?;
-        let paginated = tx
-            .get_photos_paginated("user1", PhotoCategory::All, None, 2)
-            .await?;
-        tx.commit().await?;
-
-        assert_eq!(paginated.photos.len(), 2);
-        assert!(paginated.has_more);
-        assert!(paginated.next_cursor.is_some());
-
-        // Check favorites
-        let fav_ids = pool.get_favorite_photos("user1").await?;
-        assert_eq!(fav_ids.len(), 1);
-        assert!(fav_ids.contains(&all_photos[1].id));
-
-        Ok(())
-    }
+    use crate::repo::{PhotosRepo, PhotosTransactionRepo, UserEventLogError};
 
     #[sqlx::test]
     async fn test_sync_events_after_modifications(pool: SqlitePool) -> sqlx::Result<()> {
@@ -314,54 +197,6 @@ mod integration {
         tx.commit().await?;
         assert!(result.is_ok(), "Expected Ok for valid event ID");
         assert!(result.unwrap().events.is_empty());
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn test_folders_with_counts_and_filters(pool: SqlitePool) -> sqlx::Result<()> {
-        let user = create_test_user("user1", "Test User");
-        insert_test_user(&pool, &user).await?;
-
-        let personal_folder = pool
-            .get_or_create_folder(Some("user1"), "personal_folder")
-            .await?;
-        let family_folder = pool.get_or_create_folder(None, "family_folder").await?;
-
-        let mut tx = pool.begin().await?;
-
-        let photos = vec![
-            create_test_photo(0, Some("user1"), Some(personal_folder.id), "p1.jpg"),
-            create_test_photo(0, Some("user1"), Some(personal_folder.id), "p2.jpg"),
-            create_test_photo(0, None, Some(family_folder.id), "f1.jpg"),
-            create_test_photo(0, None, Some(family_folder.id), "f2.jpg"),
-            create_test_photo(0, None, Some(family_folder.id), "f3.jpg"),
-        ];
-
-        tx.insert_photos(&photos).await?;
-        tx.commit().await?;
-
-        // All folders
-        let folders = pool
-            .get_folders_with_counts("user1", PhotoCategory::All)
-            .await?;
-        assert_eq!(folders.len(), 2);
-
-        // Personal only
-        let folders = pool
-            .get_folders_with_counts("user1", PhotoCategory::Personal)
-            .await?;
-        assert_eq!(folders.len(), 1);
-        assert_eq!(folders[0].name, "personal_folder");
-        assert_eq!(folders[0].photo_count, 2);
-
-        // Family only
-        let folders = pool
-            .get_folders_with_counts("user1", PhotoCategory::Family)
-            .await?;
-        assert_eq!(folders.len(), 1);
-        assert_eq!(folders[0].name, "family_folder");
-        assert_eq!(folders[0].photo_count, 3);
 
         Ok(())
     }

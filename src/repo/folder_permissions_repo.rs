@@ -111,3 +111,172 @@ impl<'c, E> FolderPermissionsRepo<'c> for E where E: SqliteExecutor<'c> {}
 fn generate_token() -> String {
     uuid::Uuid::new_v4().simple().to_string()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::repo::FoldersRepo;
+    use crate::repo::tests::{create_test_user, insert_test_user};
+    use sqlx::SqlitePool;
+
+    #[sqlx::test]
+    async fn test_create_share_with_grantee(pool: SqlitePool) -> sqlx::Result<()> {
+        let owner = create_test_user("owner", "Owner");
+        let grantee = create_test_user("grantee", "Grantee");
+        insert_test_user(&pool, &owner).await?;
+        insert_test_user(&pool, &grantee).await?;
+
+        let folder = pool.get_or_create_folder(Some("owner"), "shared").await?;
+
+        let share = pool
+            .create_share(folder.id, Some("grantee"), true, false, None)
+            .await?;
+
+        assert_eq!(share.folder_id, folder.id);
+        assert_eq!(share.grantee_id.as_deref(), Some("grantee"));
+        assert!(share.token.is_none());
+        assert!(share.can_upload);
+        assert!(!share.can_delete);
+        assert!(share.expires_at.is_none());
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn test_create_share_generates_token(pool: SqlitePool) -> sqlx::Result<()> {
+        let owner = create_test_user("owner", "Owner");
+        insert_test_user(&pool, &owner).await?;
+
+        let folder = pool.get_or_create_folder(Some("owner"), "public").await?;
+
+        let share = pool
+            .create_share(folder.id, None, false, false, None)
+            .await?;
+
+        assert!(share.grantee_id.is_none());
+        let token = share.token.expect("token should be generated");
+        assert_eq!(token.len(), 32);
+        assert!(token.chars().all(|c| c.is_ascii_hexdigit()));
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn test_get_shares_by_owner(pool: SqlitePool) -> sqlx::Result<()> {
+        let owner = create_test_user("owner", "Owner");
+        let other = create_test_user("other", "Other");
+        insert_test_user(&pool, &owner).await?;
+        insert_test_user(&pool, &other).await?;
+
+        let folder_a = pool.get_or_create_folder(Some("owner"), "a").await?;
+        let folder_b = pool.get_or_create_folder(Some("other"), "b").await?;
+
+        pool.create_share(folder_a.id, Some("other"), false, false, None)
+            .await?;
+        pool.create_share(folder_b.id, Some("owner"), false, false, None)
+            .await?;
+
+        let shares = pool.get_shares_by_owner("owner").await?;
+        assert_eq!(shares.len(), 1);
+        assert_eq!(shares[0].folder_id, folder_a.id);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn test_get_shares_for_grantee(pool: SqlitePool) -> sqlx::Result<()> {
+        let owner = create_test_user("owner", "Owner");
+        let grantee = create_test_user("grantee", "Grantee");
+        insert_test_user(&pool, &owner).await?;
+        insert_test_user(&pool, &grantee).await?;
+
+        let folder = pool.get_or_create_folder(Some("owner"), "shared").await?;
+
+        pool.create_share(folder.id, Some("grantee"), true, true, None)
+            .await?;
+        pool.create_share(folder.id, None, false, false, None)
+            .await?;
+
+        let shares = pool.get_shares_for_grantee("grantee").await?;
+        assert_eq!(shares.len(), 1);
+        assert_eq!(shares[0].grantee_id.as_deref(), Some("grantee"));
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn test_delete_share_validates_ownership(pool: SqlitePool) -> sqlx::Result<()> {
+        let owner = create_test_user("owner", "Owner");
+        let other = create_test_user("other", "Other");
+        insert_test_user(&pool, &owner).await?;
+        insert_test_user(&pool, &other).await?;
+
+        let folder = pool.get_or_create_folder(Some("owner"), "mine").await?;
+
+        let share = pool
+            .create_share(folder.id, Some("other"), false, false, None)
+            .await?;
+
+        let deleted = pool.delete_share(share.id, "other").await?;
+        assert_eq!(deleted, 0);
+
+        let deleted = pool.delete_share(share.id, "owner").await?;
+        assert_eq!(deleted, 1);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn test_get_grantee_permission(pool: SqlitePool) -> sqlx::Result<()> {
+        let owner = create_test_user("owner", "Owner");
+        let grantee = create_test_user("grantee", "Grantee");
+        insert_test_user(&pool, &owner).await?;
+        insert_test_user(&pool, &grantee).await?;
+
+        let folder = pool.get_or_create_folder(Some("owner"), "shared").await?;
+        let other_folder = pool.get_or_create_folder(Some("owner"), "private").await?;
+
+        pool.create_share(folder.id, Some("grantee"), true, false, None)
+            .await?;
+
+        let perm = pool.get_grantee_permission("grantee", folder.id).await?;
+        assert!(perm.is_some());
+        assert!(perm.unwrap().can_upload);
+
+        let perm = pool
+            .get_grantee_permission("grantee", other_folder.id)
+            .await?;
+        assert!(perm.is_none());
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn test_get_permission_by_id_and_token(pool: SqlitePool) -> sqlx::Result<()> {
+        let owner = create_test_user("owner", "Owner");
+        insert_test_user(&pool, &owner).await?;
+
+        let folder = pool.get_or_create_folder(Some("owner"), "public").await?;
+
+        let share = pool
+            .create_share(folder.id, None, false, false, None)
+            .await?;
+        let token = share.token.clone().unwrap();
+
+        let by_id = pool.get_permission_by_id(share.id).await?;
+        assert!(by_id.is_some());
+        assert_eq!(by_id.unwrap().id, share.id);
+
+        let by_token = pool.get_permission_by_token(&token).await?;
+        assert!(by_token.is_some());
+        assert_eq!(by_token.unwrap().id, share.id);
+
+        let missing = pool.get_permission_by_id(99999).await?;
+        assert!(missing.is_none());
+
+        let missing = pool.get_permission_by_token("nonexistent").await?;
+        assert!(missing.is_none());
+
+        Ok(())
+    }
+}

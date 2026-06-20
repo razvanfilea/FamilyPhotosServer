@@ -3,7 +3,8 @@ use crate::http::auth::AuthenticatedUser;
 use crate::http::error::{HttpError, HttpResult};
 use crate::http::pages::gallery::PhotoView;
 use crate::http::template_into_response::TemplateIntoResponse;
-use crate::repo::{FavoritesRepo, FoldersRepo, PhotosRepo, PhotosTransactionRepo};
+use crate::model::photo::PhotoWithFolder;
+use crate::repo::{FavoritesRepo, PhotosRepo, PhotosTransactionRepo};
 use askama::Template;
 use axum::extract::{Path, State};
 use axum::response::{Html, IntoResponse, Response};
@@ -88,12 +89,10 @@ pub async fn permanent_delete(
 ) -> HttpResult<Response> {
     let mut tx = state.write_pool.begin().await?;
 
-    let photo = tx
-        .get_photo(photo_id, &user.id)
+    let PhotoWithFolder { photo, folder_name } = tx
+        .get_photo_with_folder(photo_id, &user.id)
         .await?
         .ok_or(HttpError::NotFound)?;
-
-    let folder_name = state.read_pool.get_folder_name(photo.folder_id).await?;
 
     // First: DB operations in transaction
     tx.delete_photo(&photo).await?;

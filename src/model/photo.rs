@@ -57,8 +57,78 @@ impl Photo {
     }
 }
 
+pub struct PhotoWithFolder {
+    pub photo: Photo,
+    pub folder_name: Option<String>,
+}
+
+impl PhotoWithFolder {
+    pub fn partial_path(&self) -> String {
+        self.photo.partial_path(self.folder_name.as_deref())
+    }
+
+    pub fn partial_preview_path(&self) -> String {
+        self.photo.partial_preview_path()
+    }
+}
+
 #[derive(Serialize)]
 pub struct FullPhotosList {
     pub event_log_id: i64,
     pub photos: Vec<Photo>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_photo(user_id: Option<&str>, name: &str) -> Photo {
+        Photo {
+            id: 42,
+            user_id: user_id.map(String::from),
+            name: name.to_string(),
+            created_at: OffsetDateTime::UNIX_EPOCH,
+            file_size: 1024,
+            folder_id: None,
+            thumb_hash: None,
+            trashed_on: None,
+        }
+    }
+
+    #[test]
+    fn test_construct_full_name() {
+        assert_eq!(
+            Photo::construct_full_name("beach.jpg", Some("vacation")),
+            "vacation/beach.jpg"
+        );
+        assert_eq!(Photo::construct_full_name("beach.jpg", None), "beach.jpg");
+        assert_eq!(
+            Photo::construct_full_name("beach.jpg", Some("")),
+            "beach.jpg"
+        );
+    }
+
+    #[test]
+    fn test_construct_partial_preview_path() {
+        assert_eq!(Photo::construct_partial_preview_path(123), "123.webp");
+        assert_eq!(Photo::construct_partial_preview_path(0), "0.webp");
+    }
+
+    #[test]
+    fn test_partial_path_with_folder() {
+        let photo = test_photo(Some("alice"), "beach.jpg");
+        assert_eq!(
+            photo.partial_path(Some("vacation")),
+            "alice/vacation/beach.jpg"
+        );
+    }
+
+    #[test]
+    fn test_partial_path_without_folder() {
+        let photo = test_photo(Some("alice"), "beach.jpg");
+        assert_eq!(photo.partial_path(None), "alice/beach.jpg");
+
+        let public_photo = test_photo(None, "shared.jpg");
+        assert_eq!(public_photo.partial_path(None), "public/shared.jpg");
+    }
 }

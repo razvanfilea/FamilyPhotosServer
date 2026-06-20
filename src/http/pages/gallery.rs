@@ -4,7 +4,7 @@ use crate::http::auth::AuthenticatedUser;
 use crate::http::error::{HttpError, HttpResult};
 use crate::http::template_into_response::TemplateIntoResponse;
 use crate::model::folder::Folder;
-use crate::model::photo::Photo;
+use crate::model::photo::{Photo, PhotoWithFolder};
 use crate::model::photo_category::PhotoCategory;
 use crate::repo::{FavoritesRepo, FoldersRepo, PaginatedPhotos, PhotoCursor, PhotosRepo};
 use askama::Template;
@@ -473,14 +473,12 @@ pub async fn photo_modal(
 ) -> HttpResult<Response> {
     let mut tx = state.read_pool.begin().await?;
 
-    let photo = tx
-        .get_photo(photo_id, &user.id)
+    let PhotoWithFolder { photo, folder_name } = tx
+        .get_photo_with_folder(photo_id, &user.id)
         .await?
         .ok_or(HttpError::NotFound)?;
 
     let is_favorite = tx.check_favorite(photo_id, &user.id).await?;
-
-    let folder_name = tx.get_folder_name(photo.folder_id).await?;
 
     // Detect if this is a video file using mime_guess
     let mime = mime_guess::from_path(&photo.name).first_or_octet_stream();
@@ -504,14 +502,11 @@ pub async fn photo_info_panel(
     State(state): State<AppStateRef>,
     Path(photo_id): Path<i64>,
 ) -> HttpResult<Response> {
-    let mut tx = state.read_pool.begin().await?;
-
-    let photo = tx
-        .get_photo(photo_id, &user.id)
+    let PhotoWithFolder { photo, folder_name } = state
+        .read_pool
+        .get_photo_with_folder(photo_id, &user.id)
         .await?
         .ok_or(HttpError::NotFound)?;
-
-    let folder_name = tx.get_folder_name(photo.folder_id).await?;
 
     let file_size_formatted = format_file_size(photo.file_size);
 
