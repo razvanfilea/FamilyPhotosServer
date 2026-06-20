@@ -3,7 +3,7 @@ use crate::http::auth::AuthenticatedUser;
 use crate::http::error::{HttpError, HttpResult};
 use crate::http::pages::gallery::PhotoView;
 use crate::http::template_into_response::TemplateIntoResponse;
-use crate::repo::{FavoritesRepo, PhotosRepo, PhotosTransactionRepo};
+use crate::repo::{FavoritesRepo, FoldersRepo, PhotosRepo, PhotosTransactionRepo};
 use askama::Template;
 use axum::extract::{Path, State};
 use axum::response::{Html, IntoResponse, Response};
@@ -93,6 +93,8 @@ pub async fn permanent_delete(
         .await?
         .ok_or(HttpError::NotFound)?;
 
+    let folder_name = state.read_pool.get_folder_name(photo.folder_id).await?;
+
     // First: DB operations in transaction
     tx.delete_photo(&photo).await?;
     tx.commit().await?;
@@ -111,7 +113,9 @@ pub async fn permanent_delete(
     }
 
     // Photo file - ignore "not found" (already deleted), log other errors
-    let photo_path = state.storage.resolve_photo(photo.partial_path());
+    let photo_path = state
+        .storage
+        .resolve_photo(photo.partial_path(folder_name.as_deref()));
     match fs::remove_file(&photo_path).await {
         Ok(()) => info!("Removed file at {}", photo_path.display()),
         Err(e) if e.kind() == ErrorKind::NotFound => {

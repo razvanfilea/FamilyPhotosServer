@@ -17,8 +17,8 @@ pub fn router(app_state: AppStateRef) -> Router {
         .route("/", get(gallery::gallery_page))
         .route("/gallery/grid", get(gallery::photo_grid))
         .route("/gallery/more", get(gallery::load_more_gallery))
-        .route("/folder/{folder_name}", get(gallery::folder_page))
-        .route("/folder/{folder_name}/more", get(gallery::load_more_folder))
+        .route("/folder/{folder_id}", get(gallery::folder_page))
+        .route("/folder/{folder_id}/more", get(gallery::load_more_folder))
         .route("/photo/{photo_id}", get(gallery::photo_modal))
         .route(
             "/photo/{photo_id}/info-panel",

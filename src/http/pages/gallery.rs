@@ -3,9 +3,10 @@ use crate::http::AppStateRef;
 use crate::http::auth::AuthenticatedUser;
 use crate::http::error::{HttpError, HttpResult};
 use crate::http::template_into_response::TemplateIntoResponse;
+use crate::model::folder::Folder;
 use crate::model::photo::Photo;
 use crate::model::photo_category::PhotoCategory;
-use crate::repo::{FavoritesRepo, PaginatedPhotos, PhotoCursor, PhotosRepo};
+use crate::repo::{FavoritesRepo, FoldersRepo, PaginatedPhotos, PhotoCursor, PhotosRepo};
 use askama::Template;
 use axum::extract::{Path, Query, State};
 use axum::response::Response;
@@ -77,6 +78,7 @@ struct PhotoModalTemplate {
     is_favorite: bool,
     is_video: bool,
     mime_type: String,
+    folder_name: Option<String>,
 }
 
 #[derive(Template)]
@@ -84,6 +86,7 @@ struct PhotoModalTemplate {
 struct PhotoInfoPanelTemplate {
     photo: Photo,
     file_size_formatted: String,
+    folder_name: Option<String>,
 }
 
 #[derive(Template)]
@@ -352,21 +355,23 @@ pub async fn photo_grid(
 pub async fn folder_page(
     AuthenticatedUser(user): AuthenticatedUser,
     State(state): State<AppStateRef>,
-    Path(folder_name): Path<String>,
+    Path(folder_id): Path<i64>,
     Query(query): Query<GalleryQuery>,
 ) -> HttpResult<Response> {
-    let category = query.category;
-    let is_personal = matches!(category, PhotoCategory::Personal | PhotoCategory::All);
+    let mut tx = state.read_pool.begin().await?;
 
-    let paginated = state
-        .read_pool
-        .get_folder_photos_paginated(&user.id, &folder_name, is_personal, None, PAGE_SIZE)
+    let folder = tx
+        .get_folder_by_id(folder_id)
+        .await?
+        .ok_or(HttpError::NotFound)?;
+
+    check_folder_access(&folder, &user.id)?;
+
+    let paginated = tx
+        .get_folder_photos_paginated(folder_id, None, PAGE_SIZE)
         .await?;
 
-    let month_summaries = state
-        .read_pool
-        .get_folder_month_summaries(&user.id, &folder_name, is_personal)
-        .await?;
+    let month_summaries = tx.get_folder_month_summaries(folder_id).await?;
 
     let timeline = build_timeline_data(month_summaries);
     let processed =
@@ -375,12 +380,12 @@ pub async fn folder_page(
 
     FolderPageTemplate {
         groups: processed.groups,
-        current_folder: Some(folder_name.clone()),
+        current_folder: Some(folder.name),
         next_cursor: processed.next_cursor,
         has_more: processed.has_more,
         last_month: processed.last_month,
-        load_more_url: format!("/folder/{}/more", folder_name),
-        category: Some(category),
+        load_more_url: format!("/folder/{}/more", folder_id),
+        category: Some(query.category),
         timeline_json: timeline.data_json,
         total_photos: timeline.total_photos,
     }
@@ -423,24 +428,23 @@ pub async fn load_more_gallery(
 pub async fn load_more_folder(
     AuthenticatedUser(user): AuthenticatedUser,
     State(state): State<AppStateRef>,
-    Path(folder_name): Path<String>,
+    Path(folder_id): Path<i64>,
     Query(query): Query<PaginatedQuery>,
 ) -> HttpResult<Response> {
-    let category = query.category;
-    let is_personal = matches!(category, PhotoCategory::Personal | PhotoCategory::All);
+    let folder = state
+        .read_pool
+        .get_folder_by_id(folder_id)
+        .await?
+        .ok_or(HttpError::NotFound)?;
+
+    check_folder_access(&folder, &user.id)?;
 
     let cursor = parse_optional_cursor(query.cursor.as_deref())?;
     let skip_month = query.last_month.as_ref().and_then(|m| parse_month_key(m));
 
     let paginated = state
         .read_pool
-        .get_folder_photos_paginated(
-            &user.id,
-            &folder_name,
-            is_personal,
-            cursor.as_ref(),
-            PAGE_SIZE,
-        )
+        .get_folder_photos_paginated(folder_id, cursor.as_ref(), PAGE_SIZE)
         .await?;
 
     let processed = ProcessedPhotos::from_paginated_with_favorites(
@@ -456,8 +460,8 @@ pub async fn load_more_folder(
         next_cursor: processed.next_cursor,
         has_more: processed.has_more,
         last_month: processed.last_month,
-        load_more_url: format!("/folder/{}/more", folder_name),
-        category: Some(category),
+        load_more_url: format!("/folder/{}/more", folder_id),
+        category: Some(query.category),
     }
     .try_into_response()
 }
@@ -467,13 +471,16 @@ pub async fn photo_modal(
     State(state): State<AppStateRef>,
     Path(photo_id): Path<i64>,
 ) -> HttpResult<Response> {
-    let photo = state
-        .read_pool
+    let mut tx = state.read_pool.begin().await?;
+
+    let photo = tx
         .get_photo(photo_id, &user.id)
         .await?
         .ok_or(HttpError::NotFound)?;
 
-    let is_favorite = state.read_pool.check_favorite(photo_id, &user.id).await?;
+    let is_favorite = tx.check_favorite(photo_id, &user.id).await?;
+
+    let folder_name = tx.get_folder_name(photo.folder_id).await?;
 
     // Detect if this is a video file using mime_guess
     let mime = mime_guess::from_path(&photo.name).first_or_octet_stream();
@@ -487,6 +494,7 @@ pub async fn photo_modal(
         is_favorite,
         is_video,
         mime_type,
+        folder_name,
     }
     .try_into_response()
 }
@@ -496,17 +504,21 @@ pub async fn photo_info_panel(
     State(state): State<AppStateRef>,
     Path(photo_id): Path<i64>,
 ) -> HttpResult<Response> {
-    let photo = state
-        .read_pool
+    let mut tx = state.read_pool.begin().await?;
+
+    let photo = tx
         .get_photo(photo_id, &user.id)
         .await?
         .ok_or(HttpError::NotFound)?;
+
+    let folder_name = tx.get_folder_name(photo.folder_id).await?;
 
     let file_size_formatted = format_file_size(photo.file_size);
 
     PhotoInfoPanelTemplate {
         photo,
         file_size_formatted,
+        folder_name,
     }
     .try_into_response()
 }
@@ -550,6 +562,14 @@ fn format_file_size(bytes: i64) -> String {
         format!("{:.1} KB", bytes as f64 / KB as f64)
     } else {
         format!("{} B", bytes)
+    }
+}
+
+fn check_folder_access(folder: &Folder, user_id: &str) -> HttpResult<()> {
+    match &folder.owner_id {
+        None => Ok(()),
+        Some(owner) if owner == user_id => Ok(()),
+        _ => Err(HttpError::NotFound),
     }
 }
 

@@ -33,8 +33,7 @@ DELETE FROM photos_event_log;
 CREATE TABLE folder_permissions
 (
     id          INTEGER  NOT NULL PRIMARY KEY,
-    owner_id    TEXT     NOT NULL,
-    folder_name TEXT     NOT NULL,
+    folder_id   INTEGER  NOT NULL,
     grantee_id  TEXT,
     token       TEXT UNIQUE,
     can_upload  BOOLEAN  NOT NULL DEFAULT FALSE,
@@ -42,12 +41,14 @@ CREATE TABLE folder_permissions
     created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     expires_at  DATETIME,
 
-    FOREIGN KEY (owner_id) REFERENCES users (id) ON DELETE CASCADE,
+    FOREIGN KEY (folder_id) REFERENCES folders (id) ON DELETE CASCADE,
     FOREIGN KEY (grantee_id) REFERENCES users (id) ON DELETE CASCADE,
 
     CHECK (grantee_id IS NOT NULL OR token IS NOT NULL),
-    CHECK (expires_at > created_at)
+    CHECK (expires_at IS NULL OR expires_at > created_at)
 );
 
+CREATE INDEX idx_folder_permissions_folder ON folder_permissions (folder_id);
+CREATE INDEX idx_folder_permissions_grantee ON folder_permissions (grantee_id) WHERE grantee_id IS NOT NULL;
 CREATE UNIQUE INDEX idx_folder_permissions_unique_grantee
-    ON folder_permissions (owner_id, folder_name, grantee_id) WHERE grantee_id IS NOT NULL;
+    ON folder_permissions (folder_id, grantee_id) WHERE grantee_id IS NOT NULL;

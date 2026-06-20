@@ -1,12 +1,12 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use time::OffsetDateTime;
 use time::serde::timestamp;
 
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct FolderPermission {
     pub id: i64,
-    pub owner_id: String,
-    pub folder_name: String,
+    pub folder_id: i64,
     pub grantee_id: Option<String>,
     pub token: Option<String>,
     pub can_upload: bool,
@@ -38,8 +38,8 @@ pub struct CreateShareRequest {
 #[derive(Debug, Serialize)]
 pub struct ShareResponse {
     pub id: i64,
-    pub owner_id: String,
-    pub folder_name: String,
+    pub folder_id: i64,
+    pub folder_name: Option<String>,
     pub grantee_id: Option<String>,
     pub token: Option<String>,
     pub can_upload: bool,
@@ -50,12 +50,13 @@ pub struct ShareResponse {
     pub expires_at: Option<OffsetDateTime>,
 }
 
-impl From<FolderPermission> for ShareResponse {
-    fn from(p: FolderPermission) -> Self {
+impl ShareResponse {
+    pub fn from_permission(p: FolderPermission, folder_map: &HashMap<i64, String>) -> Self {
+        let folder_name = folder_map.get(&p.folder_id).cloned();
         Self {
             id: p.id,
-            owner_id: p.owner_id,
-            folder_name: p.folder_name,
+            folder_id: p.folder_id,
+            folder_name,
             grantee_id: p.grantee_id,
             token: p.token,
             can_upload: p.can_upload,
@@ -65,4 +66,3 @@ impl From<FolderPermission> for ShareResponse {
         }
     }
 }
-

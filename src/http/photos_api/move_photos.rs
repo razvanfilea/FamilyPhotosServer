@@ -3,7 +3,7 @@ use crate::http::error::{HttpError, HttpResult};
 use crate::http::utils::AuthSession;
 use crate::model::photo::Photo;
 use crate::model::user::PUBLIC_USER_FOLDER;
-use crate::repo::{PhotosRepo, PhotosTransactionRepo};
+use crate::repo::{FoldersRepo, PhotosRepo, PhotosTransactionRepo};
 use axum::extract::{Query, State};
 use axum::response::IntoResponse;
 use axum::routing::post;
@@ -36,30 +36,69 @@ async fn move_folder(
 
     let target_folder_name = query.target_folder_name.filter(|s| !s.is_empty());
 
-    let photos_to_move = state
-        .read_pool
-        .get_photo_ids_in_folder(source_user_name, &query.source_folder_name)
-        .await?;
+    let mut tx = state.write_pool.begin().await?;
+    let Some(folder) = tx
+        .get_folder_by_owner_and_name(source_user_name, &query.source_folder_name)
+        .await?
+    else {
+        return Err(HttpError::NotFound);
+    };
 
     info!(
-        "Moving folder \"{}/{}\" to \"{}/{}\" with {} items",
+        "Renaming folder \"{}/{}\" to \"{}/{}\"",
         source_user_name.unwrap_or(PUBLIC_USER_FOLDER),
         query.source_folder_name,
         target_user_name.unwrap_or(PUBLIC_USER_FOLDER),
         target_folder_name.as_deref().unwrap_or(""),
-        photos_to_move.len(),
     );
 
-    let moved_photos = move_photos_service(
-        &photos_to_move,
-        &user.id,
-        target_user_name.map(ToOwned::to_owned),
-        target_folder_name,
-        state,
-    )
-    .await?;
+    if let Some(new_name) = &target_folder_name {
+        tx.rename_folder(folder.id, new_name).await?;
 
-    Ok(Json(moved_photos))
+        let moved_photos = tx.get_photos_in_folder(folder.id).await?;
+
+        let source_folder = state
+            .storage
+            .resolve_folder(source_user_name, Some(&folder.name));
+        let target_folder = state
+            .storage
+            .resolve_folder(target_user_name, target_folder_name.as_deref());
+
+        tokio::fs::rename(&source_folder, &target_folder)
+            .await
+            .inspect_err(|e| warn!("Failed to rename folder: {e}"))?;
+
+        if let Err(e) = tx.commit().await {
+            // If the database operation failed for some reason, try to rename the folder back
+            error!("Failed to commit transaction: {e}");
+
+            if let Err(e) = tokio::fs::rename(target_folder, source_folder).await {
+                error!("Failed to undo folder rename back: {e}");
+                // I'm not sure there is anything else we can try to do
+            }
+            return Err(e.into());
+        }
+
+        info!("Folder renamed successfuly");
+
+        Ok(Json(moved_photos))
+    } else {
+        let photos_to_move = tx
+            .get_photo_ids_in_folder(source_user_name, folder.id)
+            .await?;
+        tx.commit().await?;
+
+        let moved_photos = move_photos_service(
+            &photos_to_move,
+            &user.id,
+            target_user_name.map(ToOwned::to_owned),
+            target_folder_name,
+            state,
+        )
+        .await?;
+
+        Ok(Json(moved_photos))
+    }
 }
 
 #[derive(serde::Deserialize)]
@@ -108,11 +147,17 @@ async fn move_photos_service(
         let Some(mut photo) = tx.get_photo(*photo_id, user_id).await? else {
             continue;
         };
-        let source_path = photo.partial_path();
+
+        let source_folder_name = tx.get_folder_name(photo.folder_id).await?;
+        let source_path = photo.partial_path(source_folder_name.as_deref());
+
+        let target_folder_id = tx
+            .get_or_create_folder_id(target_user_name.as_deref(), target_folder_name.as_deref())
+            .await?;
 
         photo.user_id = target_user_name.clone();
-        photo.folder = target_folder_name.clone();
-        let destination_path = photo.partial_path();
+        photo.folder_id = target_folder_id;
+        let destination_path = photo.partial_path(target_folder_name.as_deref());
 
         if source_path == destination_path {
             warn!(
@@ -132,7 +177,7 @@ async fn move_photos_service(
             // If the database operation failed for some reason, try to move the image back
             error!("Failed to commit transaction: {e}");
             if let Err(e) = state.storage.move_photo(&destination_path, &source_path) {
-                error!("Failed to move the photo back: {e}");
+                error!("Failed to undo the photo move: {e}");
             }
             continue;
         }

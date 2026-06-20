@@ -38,7 +38,7 @@ pub async fn generate_thumb_hashes(app_state: AppStateRef) -> Result<(), sqlx::E
                         Err(e) => {
                             error!(
                                 "Failed to generate thumb hash for photo {} ({}): {}",
-                                photo.full_name(),
+                                photo.name,
                                 photo.partial_preview_path(),
                                 e
                             );

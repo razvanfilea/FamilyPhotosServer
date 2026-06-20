@@ -1,6 +1,6 @@
 use crate::http::AppStateRef;
 use crate::model::photo_hash::PhotoHash;
-use crate::repo::PhotosHashRepo;
+use crate::repo::{FoldersRepo, PhotosHashRepo};
 use crate::utils::crop_blake_3_hash;
 use rayon::prelude::*;
 use std::path::Path;
@@ -18,6 +18,8 @@ pub async fn compute_photos_hash(app_state: AppStateRef) -> Result<(), sqlx::Err
     }
     info!("Computing hashes for {} photos", photos.len());
 
+    let folder_map = app_state.read_pool.get_folder_name_map().await?;
+
     let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel();
 
     spawn_blocking(move || {
@@ -25,7 +27,12 @@ pub async fn compute_photos_hash(app_state: AppStateRef) -> Result<(), sqlx::Err
             let chunk: Vec<_> = chunk
                 .iter()
                 .filter_map(|photo| {
-                    let path = app_state.storage.resolve_photo(photo.partial_path());
+                    let folder_name = photo
+                        .folder_id
+                        .and_then(|id| folder_map.get(&id).map(|s| s.as_str()));
+                    let path = app_state
+                        .storage
+                        .resolve_photo(photo.partial_path(folder_name));
 
                     compute_hash(&path)
                         .inspect_err(|e| {

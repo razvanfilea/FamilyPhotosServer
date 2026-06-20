@@ -21,7 +21,7 @@
     <div class="flex items-center justify-between">
         <div>
             <h3 class="font-semibold text-lg">{{ photo.name }}</h3>
-            {% if let Some(folder) = photo.folder %}
+            {% if let Some(folder) = folder_name %}
             <p class="text-sm text-base-content/70">
                 <span class="material-symbols-outlined text-sm align-middle">folder</span>
                 {{ folder }}

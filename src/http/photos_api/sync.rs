@@ -1,7 +1,8 @@
 use crate::http::AppStateRef;
 use crate::http::error::{HttpError, HttpResult};
 use crate::http::utils::AuthSession;
-use crate::repo::{PhotosTransactionRepo, UserEventLogError};
+use crate::model::folder::Folder;
+use crate::repo::{FoldersRepo, PhotosTransactionRepo, UserEventLogError};
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
@@ -11,8 +12,23 @@ use serde::Deserialize;
 
 pub fn router() -> Router<AppStateRef> {
     Router::new()
+        .route("/folders", get(folders_list))
         .route("/full", get(full_photos_list))
         .route("/partial", get(partial_photos_list))
+}
+
+async fn folders_list(
+    State(state): State<AppStateRef>,
+    auth: AuthSession,
+) -> HttpResult<impl IntoResponse> {
+    let user = auth.user.ok_or(HttpError::Unauthorized)?;
+
+    let folders: Vec<Folder> = state
+        .read_pool
+        .get_folders_by_user_and_public(user.id.as_str())
+        .await?;
+
+    Ok(Json(folders))
 }
 
 async fn full_photos_list(

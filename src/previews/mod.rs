@@ -6,7 +6,7 @@ pub use generate::*;
 
 use crate::http::AppState;
 use crate::model::photo::Photo;
-use crate::repo::PhotosRepo;
+use crate::repo::{FoldersRepo, PhotosRepo};
 
 mod generate;
 
@@ -36,12 +36,19 @@ pub async fn generate_all_previews(app_state: &AppState) -> sqlx::Result<()> {
         missing_previews.push(photo);
     }
 
+    let folder_map = app_state.read_pool.get_folder_name_map().await?;
+
     info!("Generating previews for {} photos", missing_previews.len());
 
     let previews_generated: usize = missing_previews
         .into_par_iter()
         .map(|photo| {
-            let photo_path = app_state.storage.resolve_photo(photo.partial_path());
+            let folder_name = photo
+                .folder_id
+                .and_then(|id| folder_map.get(&id).map(|s| s.as_str()));
+            let photo_path = app_state
+                .storage
+                .resolve_photo(photo.partial_path(folder_name));
             let preview_path = app_state
                 .storage
                 .resolve_preview(photo.partial_preview_path());

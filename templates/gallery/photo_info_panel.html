@@ -7,7 +7,7 @@
         <label class="text-xs text-base-content/60">Folder</label>
         <p class="flex items-center gap-1">
             <span class="material-symbols-outlined text-sm">folder</span>
-            {% if let Some(folder) = &photo.folder %}{{ folder }}{% else %}Root{% endif %}
+            {% if let Some(folder) = &folder_name %}{{ folder }}{% else %}Root{% endif %}
         </p>
     </div>
     <div>

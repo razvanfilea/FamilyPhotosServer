@@ -2,10 +2,12 @@ use crate::model::event_log::{EventLog, EventLogs};
 use crate::model::photo::{FullPhotosList, Photo};
 use crate::model::photo_category::PhotoCategory;
 use crate::repo::event_log::EventLogRepo;
-use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
+use base64::engine::general_purpose::STANDARD;
 use serde::{Deserialize, Serialize};
-use sqlx::{query, query_as, query_scalar, FromRow, QueryBuilder, Sqlite, SqliteExecutor, SqliteTransaction};
+use sqlx::{
+    FromRow, QueryBuilder, Sqlite, SqliteExecutor, SqliteTransaction, query, query_as, query_scalar,
+};
 use thiserror::Error;
 use time::OffsetDateTime;
 
@@ -19,6 +21,7 @@ pub struct PhotoCursor {
 /// Folder with photo count for display
 #[derive(Serialize)]
 pub struct FolderInfo {
+    pub id: i64,
     pub name: String,
     #[serde(rename = "count")]
     pub photo_count: i64,
@@ -83,6 +86,16 @@ pub trait PhotosRepo<'c>: SqliteExecutor<'c> {
         ).fetch_all(self).await
     }
 
+    async fn get_photos_in_folder(self, folder_id: i64) -> sqlx::Result<Vec<Photo>> {
+        query_as!(
+            Photo,
+            "select * from photos where folder_id = $1 and trashed_on is null order by created_at desc",
+            folder_id
+        )
+        .fetch_all(self)
+        .await
+    }
+
     async fn get_photos_with_same_location(self) -> sqlx::Result<Vec<Photo>> {
         query_as!(
             Photo,
@@ -121,22 +134,6 @@ pub trait PhotosRepo<'c>: SqliteExecutor<'c> {
         .fetch_all(self)
         .await
     }
-
-    async fn get_photos_in_folder(
-        self,
-        user_id: Option<&str>,
-        folder_id: i64,
-    ) -> sqlx::Result<Vec<Photo>> {
-        query_as!(
-            Photo,
-            "select * from photos where (($1 is null and user_id is null) or user_id = $1) and folder_id = $2 order by created_at desc",
-            user_id,
-            folder_id
-        )
-        .fetch_all(self)
-        .await
-    }
-
 
     async fn get_photos_paginated(
         self,
@@ -302,6 +299,7 @@ pub trait PhotosRepo<'c>: SqliteExecutor<'c> {
                 query_as!(
                     FolderInfo,
                     r#"select
+                        f.id as "id!: i64",
                         f.name as "name!",
                         count(*) as "photo_count!: i64",
                         max(case when rn = 1 then p.id end) as "cover_photo_id!: i64"
@@ -325,6 +323,7 @@ pub trait PhotosRepo<'c>: SqliteExecutor<'c> {
                 query_as!(
                     FolderInfo,
                     r#"select
+                        f.id as "id!: i64",
                         f.name as "name!",
                         count(*) as "photo_count!: i64",
                         max(case when rn = 1 then p.id end) as "cover_photo_id!: i64"
@@ -347,6 +346,7 @@ pub trait PhotosRepo<'c>: SqliteExecutor<'c> {
                 query_as!(
                     FolderInfo,
                     r#"select
+                        f.id as "id!: i64",
                         f.name as "name!",
                         count(*) as "photo_count!: i64",
                         max(case when rn = 1 then p.id end) as "cover_photo_id!: i64"
@@ -425,44 +425,21 @@ pub trait PhotosRepo<'c>: SqliteExecutor<'c> {
         }
     }
 
-    async fn get_folder_month_summaries(
-        self,
-        user_id: &str,
-        folder_name: &str,
-        is_personal: bool,
-    ) -> sqlx::Result<Vec<MonthSummary>> {
-        if is_personal {
-            query_as!(
-                MonthSummary,
-                r#"select
-                    max(created_at) as "max_created_at!: String",
-                    count(*) as "count!: i64",
-                    id as "cover_photo_id!: i64"
-                from photos
-                where user_id = $1 and trashed_on is null and folder = $2
-                group by strftime('%Y-%m', created_at)
-                order by 1 desc"#,
-                user_id,
-                folder_name
-            )
-            .fetch_all(self)
-            .await
-        } else {
-            query_as!(
-                MonthSummary,
-                r#"select
-                    max(created_at) as "max_created_at!: String",
-                    count(*) as "count!: i64",
-                    id as "cover_photo_id!: i64"
-                from photos
-                where user_id is null and trashed_on is null and folder = $1
-                group by strftime('%Y-%m', created_at)
-                order by 1 desc"#,
-                folder_name
-            )
-            .fetch_all(self)
-            .await
-        }
+    async fn get_folder_month_summaries(self, folder_id: i64) -> sqlx::Result<Vec<MonthSummary>> {
+        query_as!(
+            MonthSummary,
+            r#"select
+                max(created_at) as "max_created_at!: String",
+                count(*) as "count!: i64",
+                id as "cover_photo_id!: i64"
+            from photos
+            where folder_id = $1 and trashed_on is null
+            group by strftime('%Y-%m', created_at)
+            order by 1 desc"#,
+            folder_id
+        )
+        .fetch_all(self)
+        .await
     }
 
     async fn get_photo_by_id(self, photo_id: i64) -> sqlx::Result<Option<Photo>> {
@@ -475,15 +452,13 @@ pub trait PhotosRepo<'c>: SqliteExecutor<'c> {
     async fn get_photo_in_shared_folder(
         self,
         photo_id: i64,
-        owner_id: &str,
-        folder_name: &str,
+        folder_id: i64,
     ) -> sqlx::Result<Option<Photo>> {
         query_as!(
             Photo,
-            "SELECT * FROM photos WHERE id = $1 AND user_id = $2 AND folder = $3",
+            "select * from photos where id = $1 and folder_id = $2",
             photo_id,
-            owner_id,
-            folder_name
+            folder_id
         )
         .fetch_optional(self)
         .await
@@ -576,12 +551,12 @@ impl<'c> PhotosTransactionRepo<'c> for SqliteTransaction<'c> {
     async fn insert_photo(&mut self, photo: &Photo) -> sqlx::Result<Photo> {
         let photo = query_as!(
             Photo,
-            "insert into photos (user_id, name, created_at, file_size, folder, trashed_on) values ($1, $2, $3, $4, $5, $6) returning *",
+            "insert into photos (user_id, name, created_at, file_size, folder_id, trashed_on) values ($1, $2, $3, $4, $5, $6) returning *",
             photo.user_id,
             photo.name,
             photo.created_at,
             photo.file_size,
-            photo.folder,
+            photo.folder_id,
             photo.trashed_on
         )
             .fetch_one(self.as_mut())
@@ -600,14 +575,14 @@ impl<'c> PhotosTransactionRepo<'c> for SqliteTransaction<'c> {
         }
 
         let photos = QueryBuilder::<Sqlite>::new(
-            "insert into photos (user_id, name, created_at, file_size, folder, trashed_on, thumb_hash) ",
+            "insert into photos (user_id, name, created_at, file_size, folder_id, trashed_on, thumb_hash) ",
         )
             .push_values(photos, |mut b, photo| {
                 b.push_bind(&photo.user_id)
                     .push_bind(&photo.name)
                     .push_bind(photo.created_at)
                     .push_bind(photo.file_size)
-                    .push_bind(&photo.folder)
+                    .push_bind(photo.folder_id)
                     .push_bind(photo.trashed_on)
                     .push_bind(&photo.thumb_hash);
             })
@@ -623,13 +598,13 @@ impl<'c> PhotosTransactionRepo<'c> for SqliteTransaction<'c> {
     /// Thumb hash is purposely left out, as [`Self::update_thumb_hashes`] exists
     async fn update_photo(&mut self, photo: &Photo) -> sqlx::Result<()> {
         query!(
-            "update photos set user_id = $2, name = $3, created_at = $4, file_size = $5, folder = $6, trashed_on = $7 where id = $1",
+            "update photos set user_id = $2, name = $3, created_at = $4, file_size = $5, folder_id = $6, trashed_on = $7 where id = $1",
             photo.id,
             photo.user_id,
             photo.name,
             photo.created_at,
             photo.file_size,
-            photo.folder,
+            photo.folder_id,
             photo.trashed_on
         )
             .execute(self.as_mut())
@@ -889,33 +864,39 @@ mod tests {
 
     #[sqlx::test]
     async fn test_get_photo_ids_in_folder(pool: SqlitePool) -> sqlx::Result<()> {
+        use crate::repo::FoldersRepo;
+
         let user = create_test_user("user1", "Test User");
         insert_test_user(&pool, &user).await?;
 
-        // Non-existent folder → empty vec
-        let ids = pool
-            .get_photo_ids_in_folder(Some("user1"), "nonexistent")
-            .await?;
+        let vacation = pool.get_or_create_folder(Some("user1"), "vacation").await?;
+        let public_vacation = pool.get_or_create_folder(None, "vacation").await?;
+        let other = pool.get_or_create_folder(Some("user1"), "other").await?;
+
+        // Non-existent folder_id → empty vec
+        let ids = pool.get_photo_ids_in_folder(Some("user1"), 99999).await?;
         assert!(ids.is_empty());
 
         let mut tx = pool.begin().await?;
         let photos = vec![
-            create_test_photo(0, Some("user1"), Some("vacation"), "v1.jpg"),
-            create_test_photo(0, Some("user1"), Some("vacation"), "v2.jpg"),
-            create_test_photo(0, None, Some("vacation"), "public_v.jpg"),
-            create_test_photo(0, Some("user1"), Some("other"), "o1.jpg"),
+            create_test_photo(0, Some("user1"), Some(vacation.id), "v1.jpg"),
+            create_test_photo(0, Some("user1"), Some(vacation.id), "v2.jpg"),
+            create_test_photo(0, None, Some(public_vacation.id), "public_v.jpg"),
+            create_test_photo(0, Some("user1"), Some(other.id), "o1.jpg"),
         ];
         tx.insert_photos(&photos).await?;
         tx.commit().await?;
 
         // user_id=Some + folder exists → that user's photos in folder
         let ids = pool
-            .get_photo_ids_in_folder(Some("user1"), "vacation")
+            .get_photo_ids_in_folder(Some("user1"), vacation.id)
             .await?;
         assert_eq!(ids.len(), 2);
 
         // user_id=None + folder exists → public photos in folder
-        let ids = pool.get_photo_ids_in_folder(None, "vacation").await?;
+        let ids = pool
+            .get_photo_ids_in_folder(None, public_vacation.id)
+            .await?;
         assert_eq!(ids.len(), 1);
 
         Ok(())
@@ -923,16 +904,21 @@ mod tests {
 
     #[sqlx::test]
     async fn test_get_photos_with_same_location(pool: SqlitePool) -> sqlx::Result<()> {
+        use crate::repo::FoldersRepo;
+
         let user = create_test_user("user1", "Test User");
         let user2 = create_test_user("user2", "Other User");
         insert_test_user(&pool, &user).await?;
         insert_test_user(&pool, &user2).await?;
 
+        let folder1 = pool.get_or_create_folder(Some("user1"), "folder").await?;
+        let folder2 = pool.get_or_create_folder(Some("user2"), "folder").await?;
+
         // No duplicates → empty vec
         let mut tx = pool.begin().await?;
         let photos = vec![
-            create_test_photo(0, Some("user1"), Some("folder"), "unique1.jpg"),
-            create_test_photo(0, Some("user1"), Some("folder"), "unique2.jpg"),
+            create_test_photo(0, Some("user1"), Some(folder1.id), "unique1.jpg"),
+            create_test_photo(0, Some("user1"), Some(folder1.id), "unique2.jpg"),
         ];
         tx.insert_photos(&photos).await?;
         tx.commit().await?;
@@ -940,9 +926,9 @@ mod tests {
         let dupes = pool.get_photos_with_same_location().await?;
         assert!(dupes.is_empty());
 
-        // Duplicates (same user_id+folder+name) → returns all but first
+        // Duplicates (same user_id+folder_id+name) → returns all but first
         let mut tx = pool.begin().await?;
-        let photo = create_test_photo(0, Some("user1"), Some("folder"), "unique1.jpg");
+        let photo = create_test_photo(0, Some("user1"), Some(folder1.id), "unique1.jpg");
         tx.insert_photo(&photo).await?;
         tx.commit().await?;
 
@@ -952,7 +938,7 @@ mod tests {
 
         // Duplicates across different users → treated separately (not duplicates)
         let mut tx = pool.begin().await?;
-        let photo = create_test_photo(0, Some("user2"), Some("folder"), "unique1.jpg");
+        let photo = create_test_photo(0, Some("user2"), Some(folder2.id), "unique1.jpg");
         tx.insert_photo(&photo).await?;
         tx.commit().await?;
 
@@ -1057,38 +1043,6 @@ mod tests {
         Ok(())
     }
 
-    #[sqlx::test]
-    async fn test_get_distinct_folders(pool: SqlitePool) -> sqlx::Result<()> {
-        let user = create_test_user("user1", "Test User");
-        insert_test_user(&pool, &user).await?;
-
-        let mut tx = pool.begin().await?;
-        let photos = vec![
-            create_test_photo(0, Some("user1"), Some("personal_a"), "p1.jpg"),
-            create_test_photo(0, Some("user1"), Some("personal_b"), "p2.jpg"),
-            create_test_photo(0, Some("user1"), Some("personal_a"), "p3.jpg"), // duplicate folder
-            create_test_photo(0, None, Some("family_a"), "f1.jpg"),
-            create_test_photo(0, None, Some("family_b"), "f2.jpg"),
-            create_test_photo(0, Some("user1"), None, "no_folder.jpg"), // no folder
-        ];
-        tx.insert_photos(&photos).await?;
-        tx.commit().await?;
-
-        // Personal folders
-        let personal = pool.get_distinct_personal_folders("user1").await?;
-        assert_eq!(personal.len(), 2);
-        assert!(personal.contains(&"personal_a".to_string()));
-        assert!(personal.contains(&"personal_b".to_string()));
-
-        // Family folders
-        let family = pool.get_distinct_family_folders().await?;
-        assert_eq!(family.len(), 2);
-        assert!(family.contains(&"family_a".to_string()));
-        assert!(family.contains(&"family_b".to_string()));
-
-        Ok(())
-    }
-
     // ==================== PhotosTransactionRepo tests ====================
 
     #[sqlx::test]
@@ -1183,11 +1137,18 @@ mod tests {
 
     #[sqlx::test]
     async fn test_update_photo(pool: SqlitePool) -> sqlx::Result<()> {
+        use crate::repo::FoldersRepo;
+
         let user = create_test_user("user1", "Test User");
         insert_test_user(&pool, &user).await?;
 
+        let folder1 = pool.get_or_create_folder(Some("user1"), "original").await?;
+        let folder2 = pool
+            .get_or_create_folder(Some("user1"), "new_folder")
+            .await?;
+
         let mut tx = pool.begin().await?;
-        let photo = create_test_photo(0, Some("user1"), Some("original"), "test.jpg");
+        let photo = create_test_photo(0, Some("user1"), Some(folder1.id), "test.jpg");
         let inserted = tx.insert_photo(&photo).await?;
         tx.commit().await?;
 
@@ -1201,14 +1162,14 @@ mod tests {
         let fetched = pool.get_photo(inserted.id, "user1").await?.unwrap();
         assert_eq!(fetched.name, "renamed.jpg");
 
-        // Update folder → persisted, event created
+        // Update folder_id → persisted, event created
         let mut tx = pool.begin().await?;
-        updated.folder = Some("new_folder".to_string());
+        updated.folder_id = Some(folder2.id);
         tx.update_photo(&updated).await?;
         tx.commit().await?;
 
         let fetched = pool.get_photo(inserted.id, "user1").await?.unwrap();
-        assert_eq!(fetched.folder, Some("new_folder".to_string()));
+        assert_eq!(fetched.folder_id, Some(folder2.id));
 
         // Set trashed_on → moves to trash, event created
         let mut tx = pool.begin().await?;
@@ -1413,47 +1374,44 @@ mod tests {
 
     #[sqlx::test]
     async fn test_get_folder_photos_paginated(pool: SqlitePool) -> sqlx::Result<()> {
+        use crate::repo::FoldersRepo;
+
         let user = create_test_user("user1", "Test User");
         insert_test_user(&pool, &user).await?;
 
+        let vacation = pool.get_or_create_folder(Some("user1"), "vacation").await?;
+        let public_vacation = pool.get_or_create_folder(None, "vacation").await?;
+        let other = pool.get_or_create_folder(Some("user1"), "other").await?;
+
         let mut tx = pool.begin().await?;
         let photos = vec![
-            create_test_photo(0, Some("user1"), Some("vacation"), "v1.jpg"),
-            create_test_photo(0, Some("user1"), Some("vacation"), "v2.jpg"),
-            create_test_photo(0, None, Some("vacation"), "public_v.jpg"),
-            create_test_photo(0, Some("user1"), Some("other"), "o1.jpg"),
+            create_test_photo(0, Some("user1"), Some(vacation.id), "v1.jpg"),
+            create_test_photo(0, Some("user1"), Some(vacation.id), "v2.jpg"),
+            create_test_photo(0, None, Some(public_vacation.id), "public_v.jpg"),
+            create_test_photo(0, Some("user1"), Some(other.id), "o1.jpg"),
         ];
         tx.insert_photos(&photos).await?;
         tx.commit().await?;
 
-        // Personal folder → only user's photos in that folder
+        // Personal folder → only photos in that folder
         let mut tx = pool.begin().await?;
         let result = tx
-            .get_folder_photos_paginated("user1", "vacation", true, None, 10)
+            .get_folder_photos_paginated(vacation.id, None, 10)
             .await?;
         tx.commit().await?;
         assert_eq!(result.photos.len(), 2);
-        assert!(
-            result
-                .photos
-                .iter()
-                .all(|p| p.user_id == Some("user1".to_string()))
-        );
 
-        // Family folder → only public photos in that folder
+        // Public folder → only public photos in that folder
         let mut tx = pool.begin().await?;
         let result = tx
-            .get_folder_photos_paginated("user1", "vacation", false, None, 10)
+            .get_folder_photos_paginated(public_vacation.id, None, 10)
             .await?;
         tx.commit().await?;
         assert_eq!(result.photos.len(), 1);
-        assert!(result.photos.iter().all(|p| p.user_id.is_none()));
 
-        // Non-existent folder → empty
+        // Non-existent folder_id → empty
         let mut tx = pool.begin().await?;
-        let result = tx
-            .get_folder_photos_paginated("user1", "nonexistent", true, None, 10)
-            .await?;
+        let result = tx.get_folder_photos_paginated(99999, None, 10).await?;
         tx.commit().await?;
         assert!(result.photos.is_empty());
 
@@ -1498,38 +1456,39 @@ mod tests {
 
     #[sqlx::test]
     async fn test_get_folders_with_counts(pool: SqlitePool) -> sqlx::Result<()> {
+        use crate::repo::FoldersRepo;
+
         let user = create_test_user("user1", "Test User");
         insert_test_user(&pool, &user).await?;
 
         // No folders → empty
-        let mut tx = pool.begin().await?;
-        let folders = tx
+        let folders = pool
             .get_folders_with_counts("user1", PhotoCategory::All)
             .await?;
-        tx.commit().await?;
         assert!(folders.is_empty());
+
+        let folder_a = pool.get_or_create_folder(Some("user1"), "folder_a").await?;
+        let folder_b = pool.get_or_create_folder(Some("user1"), "folder_b").await?;
 
         let mut tx = pool.begin().await?;
         let photos = vec![
-            create_test_photo(0, Some("user1"), Some("folder_a"), "a1.jpg"),
-            create_test_photo(0, Some("user1"), Some("folder_a"), "a2.jpg"),
-            create_test_photo(0, Some("user1"), Some("folder_b"), "b1.jpg"),
-            create_test_photo(0, Some("user1"), Some(""), "no_folder.jpg"), // empty folder excluded
+            create_test_photo(0, Some("user1"), Some(folder_a.id), "a1.jpg"),
+            create_test_photo(0, Some("user1"), Some(folder_a.id), "a2.jpg"),
+            create_test_photo(0, Some("user1"), Some(folder_b.id), "b1.jpg"),
+            create_test_photo(0, Some("user1"), None, "no_folder.jpg"),
         ];
         tx.insert_photos(&photos).await?;
         tx.commit().await?;
 
         // Multiple folders → all returned
-        let mut tx = pool.begin().await?;
-        let folders = tx
+        let folders = pool
             .get_folders_with_counts("user1", PhotoCategory::All)
             .await?;
-        tx.commit().await?;
         assert_eq!(folders.len(), 2);
 
         // photo_count accurate
-        let folder_a = folders.iter().find(|f| f.name == "folder_a").unwrap();
-        assert_eq!(folder_a.photo_count, 2);
+        let folder_a_info = folders.iter().find(|f| f.name == "folder_a").unwrap();
+        assert_eq!(folder_a_info.photo_count, 2);
 
         Ok(())
     }
