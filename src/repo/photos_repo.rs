@@ -1,5 +1,5 @@
 use crate::model::event_log::{EventLog, EventLogs};
-use crate::model::photo::{FullPhotosList, Photo};
+use crate::model::photo::{FullPhotosList, Photo, PhotoWithFolder};
 use crate::model::photo_category::PhotoCategory;
 use crate::repo::event_log::EventLogRepo;
 use base64::Engine;
@@ -40,6 +40,36 @@ pub struct MonthSummary {
     pub max_created_at: String,
     pub count: i64,
     pub cover_photo_id: i64,
+}
+
+struct PhotoWithFolderRow {
+    id: i64,
+    user_id: Option<String>,
+    name: String,
+    created_at: OffsetDateTime,
+    file_size: i64,
+    folder_id: Option<i64>,
+    thumb_hash: Option<Vec<u8>>,
+    trashed_on: Option<OffsetDateTime>,
+    folder_name: Option<String>,
+}
+
+impl PhotoWithFolderRow {
+    fn into_photo_with_folder(self) -> PhotoWithFolder {
+        PhotoWithFolder {
+            photo: Photo {
+                id: self.id,
+                user_id: self.user_id,
+                name: self.name,
+                created_at: self.created_at,
+                file_size: self.file_size,
+                folder_id: self.folder_id,
+                thumb_hash: self.thumb_hash,
+                trashed_on: self.trashed_on,
+            },
+            folder_name: self.folder_name,
+        }
+    }
 }
 
 pub trait PhotosRepo<'c>: SqliteExecutor<'c> {
@@ -442,10 +472,40 @@ pub trait PhotosRepo<'c>: SqliteExecutor<'c> {
         .await
     }
 
-    async fn get_photo_by_id(self, photo_id: i64) -> sqlx::Result<Option<Photo>> {
-        query_as!(Photo, "select * from photos where id = $1", photo_id)
-            .fetch_optional(self)
-            .await
+    async fn get_photo_with_folder(
+        self,
+        id: i64,
+        user_id: &str,
+    ) -> sqlx::Result<Option<PhotoWithFolder>> {
+        query_as!(
+            PhotoWithFolderRow,
+            r#"select p.*, f.name as "folder_name: String"
+            from photos p
+            left join folders f on f.id = p.folder_id
+            where p.id = $1 and (p.user_id is null or p.user_id = $2)"#,
+            id,
+            user_id
+        )
+        .fetch_optional(self)
+        .await
+        .map(|opt| opt.map(PhotoWithFolderRow::into_photo_with_folder))
+    }
+
+    async fn get_photo_by_id_with_folder(
+        self,
+        photo_id: i64,
+    ) -> sqlx::Result<Option<PhotoWithFolder>> {
+        query_as!(
+            PhotoWithFolderRow,
+            r#"select p.*, f.name as "folder_name: String"
+            from photos p
+            left join folders f on f.id = p.folder_id
+            where p.id = $1"#,
+            photo_id
+        )
+        .fetch_optional(self)
+        .await
+        .map(|opt| opt.map(PhotoWithFolderRow::into_photo_with_folder))
     }
 
     #[allow(dead_code)] // TODO: used by future token-based public link access

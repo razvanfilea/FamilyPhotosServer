@@ -231,4 +231,53 @@ mod tests {
         assert_eq!(data.u64_creation_time(), Some(1437327811));
         assert_eq!(data.u64_photo_taken_time(), Some(1435786122));
     }
+
+    #[test]
+    fn test_regex_invalid_dates() {
+        assert_eq!(get_regex_timestamp("IMG_20161322_160430.jpg"), None);
+        assert_eq!(get_regex_timestamp("IMG_20160932_160430.jpg"), None);
+        assert_eq!(get_regex_timestamp("IMG_20160230_120000.jpg"), None);
+    }
+
+    #[test]
+    fn test_regex_millis_boundaries() {
+        assert_eq!(get_regex_timestamp("random-147456027000.jpg"), None);
+
+        assert_eq!(
+            get_regex_timestamp("random-0000000000000.jpg"),
+            Some(datetime!(1970-01-01 00:00:00 UTC))
+        );
+    }
+
+    #[test]
+    fn test_json_priority() {
+        let json = r#"{
+            "creationTime": { "timestamp": "1000000000" },
+            "photoTakenTime": { "timestamp": "2000000000" }
+        }"#;
+
+        let data: GooglePhotoJsonData = serde_json::from_str(json).unwrap();
+        let result = data.u64_photo_taken_time().or(data.u64_creation_time());
+        assert_eq!(result, Some(2000000000));
+    }
+
+    #[test]
+    fn test_json_fallback_to_creation_time() {
+        let json = r#"{
+            "creationTime": { "timestamp": "1000000000" }
+        }"#;
+
+        let data: GooglePhotoJsonData = serde_json::from_str(json).unwrap();
+        let result = data.u64_photo_taken_time().or(data.u64_creation_time());
+        assert_eq!(result, Some(1000000000));
+    }
+
+    #[test]
+    fn test_json_missing_timestamps() {
+        let json = r#"{}"#;
+
+        let data: GooglePhotoJsonData = serde_json::from_str(json).unwrap();
+        let result = data.u64_photo_taken_time().or(data.u64_creation_time());
+        assert_eq!(result, None);
+    }
 }

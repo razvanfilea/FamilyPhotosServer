@@ -144,12 +144,11 @@ async fn move_photos_service(
     for photo_id in photo_ids {
         let mut tx = conn.begin().await?;
 
-        let Some(mut photo) = tx.get_photo(*photo_id, user_id).await? else {
+        let Some(pf) = tx.get_photo_with_folder(*photo_id, user_id).await? else {
             continue;
         };
-
-        let source_folder_name = tx.get_folder_name(photo.folder_id).await?;
-        let source_path = photo.partial_path(source_folder_name.as_deref());
+        let source_path = pf.partial_path();
+        let mut photo = pf.photo;
 
         let target_folder_id = tx
             .get_or_create_folder_id(target_user_name.as_deref(), target_folder_name.as_deref())

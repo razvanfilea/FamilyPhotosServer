@@ -21,7 +21,7 @@ use tracing::{error, info, warn};
 use crate::http::AppStateRef;
 use crate::http::error::{HttpError, HttpResult};
 use crate::http::utils::{AuthSession, file_to_response, write_field_to_file};
-use crate::model::photo::Photo;
+use crate::model::photo::{Photo, PhotoWithFolder};
 use crate::previews;
 use crate::repo::{
     FolderPermissionsRepo, FoldersRepo, PhotosHashRepo, PhotosRepo, PhotosTransactionRepo,
@@ -100,13 +100,13 @@ async fn preview_photo(
     let user = auth.user.ok_or(HttpError::Unauthorized)?;
     let storage = &state.storage;
 
-    let (photo, folder_name) = match get_photo_with_folder(&state, photo_id, &user.id).await? {
+    let pf = match get_photo_with_folder(&state, photo_id, &user.id).await? {
         Some(result) => result,
         None => get_photo_via_permission(&state, photo_id, &user.id).await?,
     };
 
-    let photo_path = storage.resolve_photo(photo.partial_path(folder_name.as_deref()));
-    let preview_path = storage.resolve_preview(photo.partial_preview_path());
+    let photo_path = storage.resolve_photo(pf.partial_path());
+    let preview_path = storage.resolve_preview(pf.partial_preview_path());
 
     let preview_generation_mutex =
         timeout(Duration::from_secs(3), state.preview_generation.lock()).await;
@@ -154,14 +154,12 @@ async fn download_photo(
 ) -> HttpResult<impl IntoResponse> {
     let user = auth.user.ok_or(HttpError::Unauthorized)?;
 
-    let (photo, folder_name) = match get_photo_with_folder(&state, photo_id, &user.id).await? {
+    let pf = match get_photo_with_folder(&state, photo_id, &user.id).await? {
         Some(result) => result,
         None => get_photo_via_permission(&state, photo_id, &user.id).await?,
     };
 
-    let photo_path = state
-        .storage
-        .resolve_photo(photo.partial_path(folder_name.as_deref()));
+    let photo_path = state.storage.resolve_photo(pf.partial_path());
 
     file_to_response(&photo_path, range).await
 }
@@ -173,18 +171,13 @@ async fn get_photo_exif(
 ) -> HttpResult<impl IntoResponse> {
     let user = auth.user.ok_or(HttpError::Unauthorized)?;
 
-    let mut tx = state.read_pool.begin().await?;
-    let photo = tx
-        .as_mut()
-        .get_photo(photo_id, &user.id)
+    let pf = state
+        .read_pool
+        .get_photo_with_folder(photo_id, &user.id)
         .await?
         .ok_or(HttpError::NotFound)?;
-    let folder_name = tx.as_mut().get_folder_name(photo.folder_id).await?;
-    tx.commit().await?;
 
-    let path = state
-        .storage
-        .resolve_photo(photo.partial_path(folder_name.as_deref()));
+    let path = state.storage.resolve_photo(pf.partial_path());
     let exif = task::spawn_blocking(move || read_exif(path))
         .await
         .map_err(|e| HttpError::AnyError(Box::new(e)))?;
@@ -305,23 +298,20 @@ async fn delete_photo(
     let user = auth.user.ok_or(HttpError::Unauthorized)?;
     let mut tx = state.write_pool.begin().await?;
 
-    let photo = tx
-        .get_photo(photo_id, &user.id)
+    let pf = tx
+        .get_photo_with_folder(photo_id, &user.id)
         .await?
         .ok_or(HttpError::NotFound)?;
 
-    if photo.trashed_on.is_none() {
+    if pf.photo.trashed_on.is_none() {
         return Err(HttpError::BadRequest(
             "Only a trashed photo can be permanently deleted".to_string(),
         ));
     }
 
-    let _ = fs::remove_file(state.storage.resolve_preview(photo.partial_preview_path())).await;
+    let _ = fs::remove_file(state.storage.resolve_preview(pf.partial_preview_path())).await;
 
-    let folder_name = tx.as_mut().get_folder_name(photo.folder_id).await?;
-    let photo_path = state
-        .storage
-        .resolve_photo(photo.partial_path(folder_name.as_deref()));
+    let photo_path = state.storage.resolve_photo(pf.partial_path());
     if photo_path.exists() {
         fs::remove_file(&photo_path).await?;
         info!("Removed file at {}", photo_path.display());
@@ -329,7 +319,7 @@ async fn delete_photo(
         warn!("No such file exists at {}", photo_path.display());
     }
 
-    tx.delete_photo(&photo).await?;
+    tx.delete_photo(&pf.photo).await?;
 
     tx.commit().await?;
 
@@ -340,33 +330,28 @@ async fn get_photo_with_folder(
     state: &AppStateRef,
     photo_id: i64,
     user_id: &str,
-) -> HttpResult<Option<(Photo, Option<String>)>> {
-    let mut tx = state.read_pool.begin().await?;
-    let Some(photo) = tx.as_mut().get_photo(photo_id, user_id).await? else {
-        return Ok(None);
-    };
-    let folder_name = tx.as_mut().get_folder_name(photo.folder_id).await?;
-    tx.commit().await?;
-    Ok(Some((photo, folder_name)))
+) -> HttpResult<Option<PhotoWithFolder>> {
+    Ok(state
+        .read_pool
+        .get_photo_with_folder(photo_id, user_id)
+        .await?)
 }
 
 async fn get_photo_via_permission(
     state: &AppStateRef,
     photo_id: i64,
     user_id: &str,
-) -> HttpResult<(Photo, Option<String>)> {
-    let mut tx = state.read_pool.begin().await?;
-
-    let photo = tx
-        .as_mut()
-        .get_photo_by_id(photo_id)
+) -> HttpResult<PhotoWithFolder> {
+    let pf = state
+        .read_pool
+        .get_photo_by_id_with_folder(photo_id)
         .await?
         .ok_or(HttpError::NotFound)?;
 
-    let folder_id = photo.folder_id.ok_or(HttpError::NotFound)?;
+    let folder_id = pf.photo.folder_id.ok_or(HttpError::NotFound)?;
 
-    let permission = tx
-        .as_mut()
+    let permission = state
+        .read_pool
         .get_grantee_permission(user_id, folder_id)
         .await?
         .ok_or(HttpError::NotFound)?;
@@ -375,8 +360,5 @@ async fn get_photo_via_permission(
         return Err(HttpError::NotFound);
     }
 
-    let folder_name = tx.as_mut().get_folder_name(photo.folder_id).await?;
-    tx.commit().await?;
-
-    Ok((photo, folder_name))
+    Ok(pf)
 }

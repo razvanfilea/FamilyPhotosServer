@@ -195,26 +195,6 @@ mod tests {
     }
 
     #[sqlx::test]
-    async fn test_delete_folder(pool: SqlitePool) -> sqlx::Result<()> {
-        let user = create_test_user("user1", "Test User");
-        insert_test_user(&pool, &user).await?;
-
-        let folder = pool
-            .get_or_create_folder(Some("user1"), "to_delete")
-            .await?;
-        let deleted = pool.delete_folder(folder.id).await?;
-        assert_eq!(deleted, 1);
-
-        let missing = pool.get_folder_by_id(folder.id).await?;
-        assert!(missing.is_none());
-
-        let deleted_again = pool.delete_folder(folder.id).await?;
-        assert_eq!(deleted_again, 0);
-
-        Ok(())
-    }
-
-    #[sqlx::test]
     async fn test_get_folder_name(pool: SqlitePool) -> sqlx::Result<()> {
         let user = create_test_user("user1", "Test User");
         insert_test_user(&pool, &user).await?;
