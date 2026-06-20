@@ -87,15 +87,15 @@
                         <span class="text-sm">New folder</span>
                     </button>
                     {% for folder in personal_folders %}
-                    <button class="folder-option folder-personal btn btn-outline h-auto py-4 hidden flex-col items-center gap-2" data-folder="{{ folder }}">
+                    <button class="folder-option folder-personal btn btn-outline h-auto py-4 hidden flex-col items-center gap-2" data-folder="{{ folder.name }}">
                         <span class="material-symbols-outlined">folder</span>
-                        <span class="text-sm truncate max-w-full">{{ folder }}</span>
+                        <span class="text-sm truncate max-w-full">{{ folder.name }}</span>
                     </button>
                     {% endfor %}
                     {% for folder in family_folders %}
-                    <button class="folder-option folder-family btn btn-outline h-auto py-4 hidden flex-col items-center gap-2" data-folder="{{ folder }}">
+                    <button class="folder-option folder-family btn btn-outline h-auto py-4 hidden flex-col items-center gap-2" data-folder="{{ folder.name }}">
                         <span class="material-symbols-outlined">folder</span>
-                        <span class="text-sm truncate max-w-full">{{ folder }}</span>
+                        <span class="text-sm truncate max-w-full">{{ folder.name }}</span>
                     </button>
                     {% endfor %}
                 </div>

@@ -1,3 +1,4 @@
+use crate::model::user::PUBLIC_USER_FOLDER;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -35,6 +36,14 @@ impl StorageResolver {
 
     pub fn resolve_photo<P: AsRef<Path>>(&self, relative: P) -> PathBuf {
         self.storage_folder.join(relative.as_ref())
+    }
+
+    pub fn resolve_folder(&self, user: Option<&str>, folder_name: Option<&str>) -> PathBuf {
+        let mut path = self.storage_folder.join(user.unwrap_or(PUBLIC_USER_FOLDER));
+        if let Some(name) = folder_name {
+            path.push(name);
+        }
+        path
     }
 
     pub fn resolve_preview<P: AsRef<Path>>(&self, relative: P) -> PathBuf {

@@ -12,7 +12,7 @@
 {% else %}
 <div class="folder-grid">
     {% for folder in folders %}
-    <a href="/folder/{{ folder.name|urlencode }}?category={{ category }}" class="folder-card">
+    <a href="/folder/{{ folder.id }}?category={{ category }}" class="folder-card">
         <div class="folder-card-image">
             <img src="/photos/preview/{{ folder.cover_photo_id }}"
                  alt="{{ folder.name }}"

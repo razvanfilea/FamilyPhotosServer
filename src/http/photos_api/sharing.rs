@@ -9,7 +9,7 @@ use crate::http::AppStateRef;
 use crate::http::error::{HttpError, HttpResult};
 use crate::http::utils::AuthSession;
 use crate::model::folder_permission::{CreateShareRequest, ShareResponse};
-use crate::repo::{FolderPermissionsRepo, PhotosRepo};
+use crate::repo::{FolderPermissionsRepo, FoldersRepo, PhotosRepo};
 
 pub fn router() -> Router<AppStateRef> {
     Router::new()
@@ -27,7 +27,11 @@ async fn list_shares(
     let user = auth.user.ok_or(HttpError::Unauthorized)?;
 
     let shares = state.read_pool.get_shares_by_owner(&user.id).await?;
-    let responses: Vec<ShareResponse> = shares.into_iter().map(ShareResponse::from).collect();
+    let folder_map = state.read_pool.get_folder_name_map().await?;
+    let responses: Vec<ShareResponse> = shares
+        .into_iter()
+        .map(|s| ShareResponse::from_permission(s, &folder_map))
+        .collect();
 
     Ok(Json(responses))
 }
@@ -39,11 +43,15 @@ async fn create_share(
 ) -> HttpResult<impl IntoResponse> {
     let user = auth.user.ok_or(HttpError::Unauthorized)?;
 
+    let folder = state
+        .write_pool
+        .get_or_create_folder(Some(&user.id), &request.folder_name)
+        .await?;
+
     let share = state
         .write_pool
         .create_share(
-            &user.id,
-            &request.folder_name,
+            folder.id,
             request.grantee_id.as_deref(),
             request.can_upload,
             request.can_delete,
@@ -51,7 +59,8 @@ async fn create_share(
         )
         .await?;
 
-    Ok(Json(ShareResponse::from(share)))
+    let folder_map = state.read_pool.get_folder_name_map().await?;
+    Ok(Json(ShareResponse::from_permission(share, &folder_map)))
 }
 
 async fn revoke_share(
@@ -93,7 +102,7 @@ async fn shared_folder_photos(
 
     let photos = state
         .read_pool
-        .get_photos_in_folder(Some(&permission.owner_id), &permission.folder_name)
+        .get_photos_in_folder(permission.folder_id)
         .await?;
 
     Ok(Json(photos))
@@ -106,7 +115,11 @@ async fn shared_with_me(
     let user = auth.user.ok_or(HttpError::Unauthorized)?;
 
     let shares = state.read_pool.get_shares_for_grantee(&user.id).await?;
-    let responses: Vec<ShareResponse> = shares.into_iter().map(ShareResponse::from).collect();
+    let folder_map = state.read_pool.get_folder_name_map().await?;
+    let responses: Vec<ShareResponse> = shares
+        .into_iter()
+        .map(|s| ShareResponse::from_permission(s, &folder_map))
+        .collect();
 
     Ok(Json(responses))
 }

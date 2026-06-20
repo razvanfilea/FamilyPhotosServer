@@ -14,7 +14,7 @@ use tracing::{debug, error, info};
 use crate::http::AppStateRef;
 use crate::previews::generate_all_previews;
 use crate::repo::event_log::EventLogRepo;
-use crate::repo::{PhotosRepo, PhotosTransactionRepo};
+use crate::repo::{FoldersRepo, PhotosRepo, PhotosTransactionRepo};
 pub use crate::tasks::hash::compute_photos_hash;
 use crate::tasks::thumb_hash::generate_thumb_hashes;
 use crate::tasks::trash::cleanup_trash;
@@ -86,12 +86,14 @@ async fn resolve_duplicates_db_entry(app_state: AppStateRef) -> Result<(), sqlx:
     debug!("Started resolving duplicates");
 
     let mut tx = app_state.write_pool.begin().await?;
+    let folder_map = tx.as_mut().get_folder_name_map().await?;
     let photos = tx.get_photos_with_same_location().await?;
 
     for photo in photos {
+        let folder_name = photo.folder_id.and_then(|id| folder_map.get(&id).cloned());
         info!(
             "Removing duplicate DB entry with path: {}",
-            photo.partial_path()
+            photo.partial_path(folder_name.as_deref())
         );
         tx.delete_photo(&photo).await?;
     }

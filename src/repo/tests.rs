@@ -14,7 +14,7 @@ use time::OffsetDateTime;
 pub fn create_test_photo(
     id: i64,
     user_id: Option<&str>,
-    folder: Option<&str>,
+    folder_id: Option<i64>,
     name: &str,
 ) -> Photo {
     Photo {
@@ -23,7 +23,7 @@ pub fn create_test_photo(
         name: name.to_string(),
         created_at: OffsetDateTime::now_utc(),
         file_size: 1024,
-        folder: folder.map(String::from),
+        folder_id,
         thumb_hash: None,
         trashed_on: None,
     }
@@ -33,7 +33,7 @@ pub fn create_test_photo(
 pub fn create_test_photo_with_time(
     id: i64,
     user_id: Option<&str>,
-    folder: Option<&str>,
+    folder_id: Option<i64>,
     name: &str,
     created_at: OffsetDateTime,
 ) -> Photo {
@@ -43,7 +43,7 @@ pub fn create_test_photo_with_time(
         name: name.to_string(),
         created_at,
         file_size: 1024,
-        folder: folder.map(String::from),
+        folder_id,
         thumb_hash: None,
         trashed_on: None,
     }
@@ -75,7 +75,9 @@ pub async fn insert_test_user(pool: &SqlitePool, user: &User) -> sqlx::Result<()
 #[cfg(test)]
 mod integration {
     use super::*;
-    use crate::repo::{FavoritesRepo, PhotosRepo, PhotosTransactionRepo, UserEventLogError};
+    use crate::repo::{
+        FavoritesRepo, FoldersRepo, PhotosRepo, PhotosTransactionRepo, UserEventLogError,
+    };
     use time::macros::datetime;
 
     #[sqlx::test]
@@ -84,17 +86,22 @@ mod integration {
         let user = create_test_user("user1", "Test User");
         insert_test_user(&pool, &user).await?;
 
+        let folder = pool.get_or_create_folder(Some("user1"), "vacation").await?;
+        let folder2 = pool
+            .get_or_create_folder(Some("user1"), "summer_vacation")
+            .await?;
+
         let mut tx = pool.begin().await?;
 
         // Insert a photo
-        let photo = create_test_photo(0, Some("user1"), Some("vacation"), "beach.jpg");
+        let photo = create_test_photo(0, Some("user1"), Some(folder.id), "beach.jpg");
         let inserted = tx.insert_photo(&photo).await?;
         assert!(inserted.id > 0);
         assert_eq!(inserted.name, "beach.jpg");
 
         // Update the photo
         let mut updated_photo = inserted.clone();
-        updated_photo.folder = Some("summer_vacation".to_string());
+        updated_photo.folder_id = Some(folder2.id);
         tx.update_photo(&updated_photo).await?;
 
         tx.commit().await?;
@@ -102,7 +109,7 @@ mod integration {
         // Verify update persisted
         let fetched = pool.get_photo(inserted.id, "user1").await?;
         assert!(fetched.is_some());
-        assert_eq!(fetched.unwrap().folder, Some("summer_vacation".to_string()));
+        assert_eq!(fetched.unwrap().folder_id, Some(folder2.id));
 
         // Add to favorites
         pool.insert_favorite(inserted.id, "user1").await?;
@@ -316,20 +323,25 @@ mod integration {
         let user = create_test_user("user1", "Test User");
         insert_test_user(&pool, &user).await?;
 
+        let personal_folder = pool
+            .get_or_create_folder(Some("user1"), "personal_folder")
+            .await?;
+        let family_folder = pool.get_or_create_folder(None, "family_folder").await?;
+
         let mut tx = pool.begin().await?;
 
         let photos = vec![
-            create_test_photo(0, Some("user1"), Some("personal_folder"), "p1.jpg"),
-            create_test_photo(0, Some("user1"), Some("personal_folder"), "p2.jpg"),
-            create_test_photo(0, None, Some("family_folder"), "f1.jpg"),
-            create_test_photo(0, None, Some("family_folder"), "f2.jpg"),
-            create_test_photo(0, None, Some("family_folder"), "f3.jpg"),
+            create_test_photo(0, Some("user1"), Some(personal_folder.id), "p1.jpg"),
+            create_test_photo(0, Some("user1"), Some(personal_folder.id), "p2.jpg"),
+            create_test_photo(0, None, Some(family_folder.id), "f1.jpg"),
+            create_test_photo(0, None, Some(family_folder.id), "f2.jpg"),
+            create_test_photo(0, None, Some(family_folder.id), "f3.jpg"),
         ];
 
         tx.insert_photos(&photos).await?;
         tx.commit().await?;
 
-        // All folders (now using pool directly since get_folders_with_counts is on PhotosRepo)
+        // All folders
         let folders = pool
             .get_folders_with_counts("user1", PhotoCategory::All)
             .await?;
