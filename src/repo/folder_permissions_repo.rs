@@ -115,8 +115,7 @@ fn generate_token() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::repo::FoldersRepo;
-    use crate::repo::tests::{create_test_user, insert_test_user};
+    use crate::repo::tests::{create_test_folder, create_test_user, insert_test_user};
     use sqlx::SqlitePool;
 
     #[sqlx::test]
@@ -126,7 +125,7 @@ mod tests {
         insert_test_user(&pool, &owner).await?;
         insert_test_user(&pool, &grantee).await?;
 
-        let folder = pool.get_or_create_folder(Some("owner"), "shared").await?;
+        let folder = create_test_folder(&pool, Some("owner"), "shared").await;
 
         let share = pool
             .create_share(folder.id, Some("grantee"), true, false, None)
@@ -147,7 +146,7 @@ mod tests {
         let owner = create_test_user("owner", "Owner");
         insert_test_user(&pool, &owner).await?;
 
-        let folder = pool.get_or_create_folder(Some("owner"), "public").await?;
+        let folder = create_test_folder(&pool, Some("owner"), "public").await;
 
         let share = pool
             .create_share(folder.id, None, false, false, None)
@@ -168,8 +167,8 @@ mod tests {
         insert_test_user(&pool, &owner).await?;
         insert_test_user(&pool, &other).await?;
 
-        let folder_a = pool.get_or_create_folder(Some("owner"), "a").await?;
-        let folder_b = pool.get_or_create_folder(Some("other"), "b").await?;
+        let folder_a = create_test_folder(&pool, Some("owner"), "a").await;
+        let folder_b = create_test_folder(&pool, Some("other"), "b").await;
 
         pool.create_share(folder_a.id, Some("other"), false, false, None)
             .await?;
@@ -190,7 +189,7 @@ mod tests {
         insert_test_user(&pool, &owner).await?;
         insert_test_user(&pool, &grantee).await?;
 
-        let folder = pool.get_or_create_folder(Some("owner"), "shared").await?;
+        let folder = create_test_folder(&pool, Some("owner"), "shared").await;
 
         pool.create_share(folder.id, Some("grantee"), true, true, None)
             .await?;
@@ -211,7 +210,7 @@ mod tests {
         insert_test_user(&pool, &owner).await?;
         insert_test_user(&pool, &other).await?;
 
-        let folder = pool.get_or_create_folder(Some("owner"), "mine").await?;
+        let folder = create_test_folder(&pool, Some("owner"), "mine").await;
 
         let share = pool
             .create_share(folder.id, Some("other"), false, false, None)
@@ -233,8 +232,8 @@ mod tests {
         insert_test_user(&pool, &owner).await?;
         insert_test_user(&pool, &grantee).await?;
 
-        let folder = pool.get_or_create_folder(Some("owner"), "shared").await?;
-        let other_folder = pool.get_or_create_folder(Some("owner"), "private").await?;
+        let folder = create_test_folder(&pool, Some("owner"), "shared").await;
+        let other_folder = create_test_folder(&pool, Some("owner"), "private").await;
 
         pool.create_share(folder.id, Some("grantee"), true, false, None)
             .await?;
@@ -256,7 +255,7 @@ mod tests {
         let owner = create_test_user("owner", "Owner");
         insert_test_user(&pool, &owner).await?;
 
-        let folder = pool.get_or_create_folder(Some("owner"), "public").await?;
+        let folder = create_test_folder(&pool, Some("owner"), "public").await;
 
         let share = pool
             .create_share(folder.id, None, false, false, None)

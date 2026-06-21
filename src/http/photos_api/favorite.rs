@@ -36,7 +36,7 @@ async fn add_favorite(
     let user = auth_session.user.ok_or(HttpError::Unauthorized)?;
     let mut tx = state.write_pool.begin().await?;
 
-    tx.get_photo(photo_id, &user.id)
+    tx.get_accessible_photo(photo_id, &user.id)
         .await?
         .ok_or(HttpError::NotFound)?;
 
@@ -55,7 +55,7 @@ async fn delete_favorite(
     let user = auth_session.user.ok_or(HttpError::Unauthorized)?;
     let mut tx = state.write_pool.begin().await?;
 
-    tx.get_photo(photo_id, &user.id)
+    tx.get_accessible_photo(photo_id, &user.id)
         .await?
         .ok_or(HttpError::NotFound)?;
 

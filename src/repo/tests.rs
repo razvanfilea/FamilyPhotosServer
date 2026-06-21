@@ -4,6 +4,7 @@
 //! - Shared helpers for creating test pools and test data
 //! - Integration tests for cross-repo scenarios
 
+use crate::model::folder::Folder;
 use crate::model::photo::Photo;
 use crate::model::user::User;
 use sqlx::SqlitePool;
@@ -70,6 +71,16 @@ pub async fn insert_test_user(pool: &SqlitePool, user: &User) -> sqlx::Result<()
     Ok(())
 }
 
+pub async fn create_test_folder(pool: &SqlitePool, owner_id: Option<&str>, name: &str) -> Folder {
+    use crate::repo::FoldersRepo;
+    let id = pool
+        .upsert_folder(owner_id, Some(name))
+        .await
+        .unwrap()
+        .unwrap();
+    pool.get_folder(id).await.unwrap().unwrap()
+}
+
 /// Integration tests for cross-repo scenarios
 #[cfg(test)]
 mod integration {
@@ -134,7 +145,7 @@ mod integration {
         tx.commit().await?;
 
         // Verify photo is trashed
-        let fetched = pool.get_photo(inserted.id, "user1").await?;
+        let fetched = pool.get_accessible_photo(inserted.id, "user1").await?;
         assert!(fetched.is_some());
         assert!(fetched.as_ref().unwrap().trashed_on.is_some());
 
@@ -146,7 +157,7 @@ mod integration {
         tx.commit().await?;
 
         // Verify photo is restored
-        let fetched = pool.get_photo(inserted.id, "user1").await?;
+        let fetched = pool.get_accessible_photo(inserted.id, "user1").await?;
         assert!(fetched.is_some());
         assert!(fetched.as_ref().unwrap().trashed_on.is_none());
 

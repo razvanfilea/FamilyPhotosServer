@@ -73,7 +73,7 @@ impl PhotoWithFolderRow {
 }
 
 pub trait PhotosRepo<'c>: SqliteExecutor<'c> {
-    async fn get_photo(self, id: i64, user_id: &str) -> sqlx::Result<Option<Photo>> {
+    async fn get_accessible_photo(self, id: i64, user_id: &str) -> sqlx::Result<Option<Photo>> {
         query_as!(
             Photo,
             "select * from photos where id = $1 and (user_id is null or user_id = $2)",
@@ -84,7 +84,7 @@ pub trait PhotosRepo<'c>: SqliteExecutor<'c> {
         .await
     }
 
-    async fn get_photo_without_check(self, id: i64) -> sqlx::Result<Option<Photo>> {
+    async fn get_photo(self, id: i64) -> sqlx::Result<Option<Photo>> {
         query_as!(Photo, "select * from photos where id = $1", id)
             .fetch_optional(self)
             .await
@@ -472,7 +472,7 @@ pub trait PhotosRepo<'c>: SqliteExecutor<'c> {
         .await
     }
 
-    async fn get_photo_with_folder(
+    async fn get_accessible_photo_with_folder(
         self,
         id: i64,
         user_id: &str,
@@ -491,10 +491,7 @@ pub trait PhotosRepo<'c>: SqliteExecutor<'c> {
         .map(|opt| opt.map(PhotoWithFolderRow::into_photo_with_folder))
     }
 
-    async fn get_photo_by_id_with_folder(
-        self,
-        photo_id: i64,
-    ) -> sqlx::Result<Option<PhotoWithFolder>> {
+    async fn get_photo_with_folder(self, photo_id: i64) -> sqlx::Result<Option<PhotoWithFolder>> {
         query_as!(
             PhotoWithFolderRow,
             r#"select p.*, f.name as "folder_name: String"
@@ -784,7 +781,8 @@ pub enum UserEventLogError {
 mod tests {
     use super::*;
     use crate::repo::tests::{
-        create_test_photo, create_test_photo_with_time, create_test_user, insert_test_user,
+        create_test_folder, create_test_photo, create_test_photo_with_time, create_test_user,
+        insert_test_user,
     };
     use sqlx::SqlitePool;
     use time::macros::datetime;
@@ -792,14 +790,14 @@ mod tests {
     // ==================== PhotosRepo trait tests ====================
 
     #[sqlx::test]
-    async fn test_get_photo(pool: SqlitePool) -> sqlx::Result<()> {
+    async fn test_get_accessible_photo(pool: SqlitePool) -> sqlx::Result<()> {
         let user = create_test_user("user1", "Test User");
         let user2 = create_test_user("user2", "Other User");
         insert_test_user(&pool, &user).await?;
         insert_test_user(&pool, &user2).await?;
 
         // Non-existent ID → None
-        let result = pool.get_photo(999, "user1").await?;
+        let result = pool.get_accessible_photo(999, "user1").await?;
         assert!(result.is_none());
 
         let mut tx = pool.begin().await?;
@@ -813,29 +811,29 @@ mod tests {
         tx.commit().await?;
 
         // Photo owned by requesting user → Some(photo)
-        let result = pool.get_photo(private.id, "user1").await?;
+        let result = pool.get_accessible_photo(private.id, "user1").await?;
         assert!(result.is_some());
         assert_eq!(result.unwrap().name, "private.jpg");
 
         // Public photo (user_id=NULL) → accessible by any user
-        let result = pool.get_photo(public.id, "user1").await?;
+        let result = pool.get_accessible_photo(public.id, "user1").await?;
         assert!(result.is_some());
         assert_eq!(result.unwrap().name, "public.jpg");
 
-        let result = pool.get_photo(public.id, "user2").await?;
+        let result = pool.get_accessible_photo(public.id, "user2").await?;
         assert!(result.is_some());
 
         // Private photo owned by different user → None (denied)
-        let result = pool.get_photo(other.id, "user1").await?;
+        let result = pool.get_accessible_photo(other.id, "user1").await?;
         assert!(result.is_none());
 
-        // Test get_photo_without_check: bypasses user ownership check
+        // Test get_photo: bypasses user ownership check
         // Non-existent → None
-        let result = pool.get_photo_without_check(999).await?;
+        let result = pool.get_photo(999).await?;
         assert!(result.is_none());
 
         // Any existing photo → Some(photo) regardless of ownership
-        let result = pool.get_photo_without_check(other.id).await?;
+        let result = pool.get_photo(other.id).await?;
         assert!(result.is_some());
         assert_eq!(result.unwrap().name, "other_private.jpg");
 
@@ -924,14 +922,12 @@ mod tests {
 
     #[sqlx::test]
     async fn test_get_photo_ids_in_folder(pool: SqlitePool) -> sqlx::Result<()> {
-        use crate::repo::FoldersRepo;
-
         let user = create_test_user("user1", "Test User");
         insert_test_user(&pool, &user).await?;
 
-        let vacation = pool.get_or_create_folder(Some("user1"), "vacation").await?;
-        let public_vacation = pool.get_or_create_folder(None, "vacation").await?;
-        let other = pool.get_or_create_folder(Some("user1"), "other").await?;
+        let vacation = create_test_folder(&pool, Some("user1"), "vacation").await;
+        let public_vacation = create_test_folder(&pool, None, "vacation").await;
+        let other = create_test_folder(&pool, Some("user1"), "other").await;
 
         // Non-existent folder_id → empty vec
         let ids = pool.get_photo_ids_in_folder(Some("user1"), 99999).await?;
@@ -964,15 +960,13 @@ mod tests {
 
     #[sqlx::test]
     async fn test_get_photos_with_same_location(pool: SqlitePool) -> sqlx::Result<()> {
-        use crate::repo::FoldersRepo;
-
         let user = create_test_user("user1", "Test User");
         let user2 = create_test_user("user2", "Other User");
         insert_test_user(&pool, &user).await?;
         insert_test_user(&pool, &user2).await?;
 
-        let folder1 = pool.get_or_create_folder(Some("user1"), "folder").await?;
-        let folder2 = pool.get_or_create_folder(Some("user2"), "folder").await?;
+        let folder1 = create_test_folder(&pool, Some("user1"), "folder").await;
+        let folder2 = create_test_folder(&pool, Some("user2"), "folder").await;
 
         // No duplicates → empty vec
         let mut tx = pool.begin().await?;
@@ -1197,15 +1191,11 @@ mod tests {
 
     #[sqlx::test]
     async fn test_update_photo(pool: SqlitePool) -> sqlx::Result<()> {
-        use crate::repo::FoldersRepo;
-
         let user = create_test_user("user1", "Test User");
         insert_test_user(&pool, &user).await?;
 
-        let folder1 = pool.get_or_create_folder(Some("user1"), "original").await?;
-        let folder2 = pool
-            .get_or_create_folder(Some("user1"), "new_folder")
-            .await?;
+        let folder1 = create_test_folder(&pool, Some("user1"), "original").await;
+        let folder2 = create_test_folder(&pool, Some("user1"), "new_folder").await;
 
         let mut tx = pool.begin().await?;
         let photo = create_test_photo(0, Some("user1"), Some(folder1.id), "test.jpg");
@@ -1219,7 +1209,10 @@ mod tests {
         tx.update_photo(&updated).await?;
         tx.commit().await?;
 
-        let fetched = pool.get_photo(inserted.id, "user1").await?.unwrap();
+        let fetched = pool
+            .get_accessible_photo(inserted.id, "user1")
+            .await?
+            .unwrap();
         assert_eq!(fetched.name, "renamed.jpg");
 
         // Update folder_id → persisted, event created
@@ -1228,7 +1221,10 @@ mod tests {
         tx.update_photo(&updated).await?;
         tx.commit().await?;
 
-        let fetched = pool.get_photo(inserted.id, "user1").await?.unwrap();
+        let fetched = pool
+            .get_accessible_photo(inserted.id, "user1")
+            .await?
+            .unwrap();
         assert_eq!(fetched.folder_id, Some(folder2.id));
 
         // Set trashed_on → moves to trash, event created
@@ -1237,7 +1233,10 @@ mod tests {
         tx.update_photo(&updated).await?;
         tx.commit().await?;
 
-        let fetched = pool.get_photo(inserted.id, "user1").await?.unwrap();
+        let fetched = pool
+            .get_accessible_photo(inserted.id, "user1")
+            .await?
+            .unwrap();
         assert!(fetched.trashed_on.is_some());
 
         Ok(())
@@ -1270,8 +1269,8 @@ mod tests {
         tx.commit().await?;
 
         // Verify thumb_hash actually changed
-        let p1 = pool.get_photo_without_check(ids[0]).await?.unwrap();
-        let p2 = pool.get_photo_without_check(ids[1]).await?.unwrap();
+        let p1 = pool.get_photo(ids[0]).await?.unwrap();
+        let p2 = pool.get_photo(ids[1]).await?.unwrap();
         assert_eq!(p1.thumb_hash, Some(vec![1, 2, 3, 4]));
         assert_eq!(p2.thumb_hash, Some(vec![5, 6, 7, 8]));
 
@@ -1295,7 +1294,7 @@ mod tests {
         assert_eq!(deleted, 1);
 
         // Verify deleted
-        let fetched = pool.get_photo_without_check(inserted.id).await?;
+        let fetched = pool.get_photo(inserted.id).await?;
         assert!(fetched.is_none());
 
         Ok(())
@@ -1434,14 +1433,12 @@ mod tests {
 
     #[sqlx::test]
     async fn test_get_folder_photos_paginated(pool: SqlitePool) -> sqlx::Result<()> {
-        use crate::repo::FoldersRepo;
-
         let user = create_test_user("user1", "Test User");
         insert_test_user(&pool, &user).await?;
 
-        let vacation = pool.get_or_create_folder(Some("user1"), "vacation").await?;
-        let public_vacation = pool.get_or_create_folder(None, "vacation").await?;
-        let other = pool.get_or_create_folder(Some("user1"), "other").await?;
+        let vacation = create_test_folder(&pool, Some("user1"), "vacation").await;
+        let public_vacation = create_test_folder(&pool, None, "vacation").await;
+        let other = create_test_folder(&pool, Some("user1"), "other").await;
 
         let mut tx = pool.begin().await?;
         let photos = vec![
@@ -1516,8 +1513,6 @@ mod tests {
 
     #[sqlx::test]
     async fn test_get_folders_with_counts(pool: SqlitePool) -> sqlx::Result<()> {
-        use crate::repo::FoldersRepo;
-
         let user = create_test_user("user1", "Test User");
         insert_test_user(&pool, &user).await?;
 
@@ -1527,8 +1522,8 @@ mod tests {
             .await?;
         assert!(folders.is_empty());
 
-        let folder_a = pool.get_or_create_folder(Some("user1"), "folder_a").await?;
-        let folder_b = pool.get_or_create_folder(Some("user1"), "folder_b").await?;
+        let folder_a = create_test_folder(&pool, Some("user1"), "folder_a").await;
+        let folder_b = create_test_folder(&pool, Some("user1"), "folder_b").await;
 
         let mut tx = pool.begin().await?;
         let photos = vec![

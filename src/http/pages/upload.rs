@@ -19,10 +19,7 @@ pub async fn upload_page(
     AuthenticatedUser(user): AuthenticatedUser,
     State(state): State<AppStateRef>,
 ) -> HttpResult<Response> {
-    let personal_folders = state
-        .read_pool
-        .get_folders_by_user_and_public(&user.id)
-        .await?;
+    let personal_folders = state.read_pool.get_accessible_folders(&user.id).await?;
 
     let (personal_folders, family_folders): (Vec<Folder>, Vec<Folder>) = personal_folders
         .into_iter()

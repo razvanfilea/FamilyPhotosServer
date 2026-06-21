@@ -25,7 +25,7 @@ async fn folders_list(
 
     let folders: Vec<Folder> = state
         .read_pool
-        .get_folders_by_user_and_public(user.id.as_str())
+        .get_accessible_folders(user.id.as_str())
         .await?;
 
     Ok(Json(folders))

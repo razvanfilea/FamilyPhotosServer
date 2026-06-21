@@ -43,13 +43,16 @@ async fn create_share(
 ) -> HttpResult<impl IntoResponse> {
     let user = auth.user.ok_or(HttpError::Unauthorized)?;
 
-    let folder = state
-        .write_pool
-        .get_or_create_folder(Some(&user.id), &request.folder_name)
-        .await?;
+    let mut tx = state.write_pool.begin().await?;
 
-    let share = state
-        .write_pool
+    let Some(folder) = tx
+        .get_accessible_folder(&user.id, request.folder_id)
+        .await?
+    else {
+        return Err(HttpError::NotFound);
+    };
+
+    let share = tx
         .create_share(
             folder.id,
             request.grantee_id.as_deref(),

@@ -97,7 +97,7 @@ pub async fn toggle_favorite(
     method: Method,
 ) -> HttpResult<Response> {
     let mut tx = state.write_pool.begin().await?;
-    tx.get_photo(photo_id, &user.id)
+    tx.get_accessible_photo(photo_id, &user.id)
         .await?
         .ok_or(HttpError::NotFound)?;
 

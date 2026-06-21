@@ -360,10 +360,7 @@ pub async fn folder_page(
 ) -> HttpResult<Response> {
     let mut tx = state.read_pool.begin().await?;
 
-    let folder = tx
-        .get_folder_by_id(folder_id)
-        .await?
-        .ok_or(HttpError::NotFound)?;
+    let folder = tx.get_folder(folder_id).await?.ok_or(HttpError::NotFound)?;
 
     check_folder_access(&folder, &user.id)?;
 
@@ -433,7 +430,7 @@ pub async fn load_more_folder(
 ) -> HttpResult<Response> {
     let folder = state
         .read_pool
-        .get_folder_by_id(folder_id)
+        .get_folder(folder_id)
         .await?
         .ok_or(HttpError::NotFound)?;
 
@@ -474,7 +471,7 @@ pub async fn photo_modal(
     let mut tx = state.read_pool.begin().await?;
 
     let PhotoWithFolder { photo, folder_name } = tx
-        .get_photo_with_folder(photo_id, &user.id)
+        .get_accessible_photo_with_folder(photo_id, &user.id)
         .await?
         .ok_or(HttpError::NotFound)?;
 
@@ -504,7 +501,7 @@ pub async fn photo_info_panel(
 ) -> HttpResult<Response> {
     let PhotoWithFolder { photo, folder_name } = state
         .read_pool
-        .get_photo_with_folder(photo_id, &user.id)
+        .get_accessible_photo_with_folder(photo_id, &user.id)
         .await?
         .ok_or(HttpError::NotFound)?;
 
@@ -525,7 +522,7 @@ pub async fn photo_viewer_media(
 ) -> HttpResult<Response> {
     let photo = state
         .read_pool
-        .get_photo(photo_id, &user.id)
+        .get_accessible_photo(photo_id, &user.id)
         .await?
         .ok_or(HttpError::NotFound)?;
 
