@@ -1,4 +1,4 @@
-use crate::repo::MonthSummary;
+use crate::repo::photos_page_repo::MonthSummary;
 use serde::Serialize;
 
 /// Timeline entry for JSON serialization (used by timeline scrollbar)

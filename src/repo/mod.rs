@@ -3,6 +3,7 @@ mod favorites_repo;
 mod folder_permissions_repo;
 mod folders_repo;
 mod photos_hash_repo;
+pub mod photos_page_repo;
 mod photos_repo;
 pub mod users_repo;
 

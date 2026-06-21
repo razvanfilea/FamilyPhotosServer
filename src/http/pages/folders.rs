@@ -4,7 +4,7 @@ use crate::http::error::HttpResult;
 use crate::http::pages::gallery::GalleryQuery;
 use crate::http::template_into_response::TemplateIntoResponse;
 use crate::model::photo_category::PhotoCategory;
-use crate::repo::{FolderInfo, PhotosRepo};
+use crate::repo::photos_page_repo::{FolderInfo, PhotosPageRepo};
 use askama::Template;
 use axum::Json;
 use axum::extract::{Query, State};

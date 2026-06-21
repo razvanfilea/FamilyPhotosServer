@@ -6,7 +6,8 @@ use crate::http::template_into_response::TemplateIntoResponse;
 use crate::model::folder::Folder;
 use crate::model::photo::{Photo, PhotoWithFolder};
 use crate::model::photo_category::PhotoCategory;
-use crate::repo::{FavoritesRepo, FoldersRepo, PaginatedPhotos, PhotoCursor, PhotosRepo};
+use crate::repo::photos_page_repo::{PaginatedPhotos, PhotoCursor, PhotosPageRepo};
+use crate::repo::{FavoritesRepo, FoldersRepo, PhotosRepo};
 use askama::Template;
 use axum::extract::{Path, Query, State};
 use axum::response::Response;
@@ -568,7 +569,6 @@ fn check_folder_access(folder: &Folder, user_id: &str) -> HttpResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::repo::PhotoCursor;
     use time::macros::datetime;
 
     #[test]
