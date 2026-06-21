@@ -28,7 +28,7 @@ async fn trash_photos(
 
     for photo_id in photo_ids {
         let mut photo = tx
-            .get_photo(photo_id, &user.id)
+            .get_accessible_photo(photo_id, &user.id)
             .await?
             .ok_or(HttpError::NotFound)?;
 
@@ -54,7 +54,7 @@ async fn restore_photos(
 
     for photo_id in photo_ids {
         let mut photo = tx
-            .get_photo(photo_id, &user.id)
+            .get_accessible_photo(photo_id, &user.id)
             .await?
             .ok_or(HttpError::NotFound)?;
 

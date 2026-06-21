@@ -64,7 +64,7 @@ async fn update_timestamp(
     let mut tx = state.write_pool.begin().await?;
 
     let mut photo = tx
-        .get_photo(photo_id, &user.id)
+        .get_accessible_photo(photo_id, &user.id)
         .await?
         .ok_or(HttpError::NotFound)?;
 
@@ -100,7 +100,7 @@ async fn preview_photo(
     let user = auth.user.ok_or(HttpError::Unauthorized)?;
     let storage = &state.storage;
 
-    let pf = match get_photo_with_folder(&state, photo_id, &user.id).await? {
+    let pf = match get_accessible_photo_with_folder(&state, photo_id, &user.id).await? {
         Some(result) => result,
         None => get_photo_via_permission(&state, photo_id, &user.id).await?,
     };
@@ -154,7 +154,7 @@ async fn download_photo(
 ) -> HttpResult<impl IntoResponse> {
     let user = auth.user.ok_or(HttpError::Unauthorized)?;
 
-    let pf = match get_photo_with_folder(&state, photo_id, &user.id).await? {
+    let pf = match get_accessible_photo_with_folder(&state, photo_id, &user.id).await? {
         Some(result) => result,
         None => get_photo_via_permission(&state, photo_id, &user.id).await?,
     };
@@ -173,7 +173,7 @@ async fn get_photo_exif(
 
     let pf = state
         .read_pool
-        .get_photo_with_folder(photo_id, &user.id)
+        .get_accessible_photo_with_folder(photo_id, &user.id)
         .await?
         .ok_or(HttpError::NotFound)?;
 
@@ -236,7 +236,7 @@ async fn upload_photo(
 
     let folder_name = query.folder_name.filter(|s| !s.is_empty());
     let folder_id = tx
-        .get_or_create_folder_id(photo_user_id.as_deref(), folder_name.as_deref())
+        .upsert_folder(photo_user_id.as_deref(), folder_name.as_deref())
         .await?;
 
     let mut photo = Photo {
@@ -299,7 +299,7 @@ async fn delete_photo(
     let mut tx = state.write_pool.begin().await?;
 
     let pf = tx
-        .get_photo_with_folder(photo_id, &user.id)
+        .get_accessible_photo_with_folder(photo_id, &user.id)
         .await?
         .ok_or(HttpError::NotFound)?;
 
@@ -326,14 +326,14 @@ async fn delete_photo(
     Ok(())
 }
 
-async fn get_photo_with_folder(
+async fn get_accessible_photo_with_folder(
     state: &AppStateRef,
     photo_id: i64,
     user_id: &str,
 ) -> HttpResult<Option<PhotoWithFolder>> {
     Ok(state
         .read_pool
-        .get_photo_with_folder(photo_id, user_id)
+        .get_accessible_photo_with_folder(photo_id, user_id)
         .await?)
 }
 
@@ -344,7 +344,7 @@ async fn get_photo_via_permission(
 ) -> HttpResult<PhotoWithFolder> {
     let pf = state
         .read_pool
-        .get_photo_by_id_with_folder(photo_id)
+        .get_photo_with_folder(photo_id)
         .await?
         .ok_or(HttpError::NotFound)?;
 

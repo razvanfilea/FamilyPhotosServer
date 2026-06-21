@@ -25,7 +25,7 @@ impl FolderPermission {
 
 #[derive(Debug, Deserialize)]
 pub struct CreateShareRequest {
-    pub folder_name: String,
+    pub folder_id: i64,
     pub grantee_id: Option<String>,
     #[serde(default)]
     pub can_upload: bool,

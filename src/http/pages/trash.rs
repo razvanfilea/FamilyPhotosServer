@@ -50,7 +50,7 @@ pub async fn trash_photo(
     let mut tx = state.write_pool.begin().await?;
 
     let mut photo = tx
-        .get_photo(photo_id, &user.id)
+        .get_accessible_photo(photo_id, &user.id)
         .await?
         .ok_or(HttpError::NotFound)?;
 
@@ -70,7 +70,7 @@ pub async fn restore_photo(
     let mut tx = state.write_pool.begin().await?;
 
     let mut photo = tx
-        .get_photo(photo_id, &user.id)
+        .get_accessible_photo(photo_id, &user.id)
         .await?
         .ok_or(HttpError::NotFound)?;
 
@@ -90,7 +90,7 @@ pub async fn permanent_delete(
     let mut tx = state.write_pool.begin().await?;
 
     let PhotoWithFolder { photo, folder_name } = tx
-        .get_photo_with_folder(photo_id, &user.id)
+        .get_accessible_photo_with_folder(photo_id, &user.id)
         .await?
         .ok_or(HttpError::NotFound)?;
 

@@ -58,7 +58,7 @@ pub async fn scan_new_files(app_state: AppStateRef) -> sqlx::Result<()> {
                     && !name_to_id.contains_key(name)
                     && let Some(id) = tx
                         .as_mut()
-                        .get_or_create_folder_id(user_id.as_deref(), Some(name))
+                        .upsert_folder(user_id.as_deref(), Some(name))
                         .await?
                 {
                     name_to_id.insert(name.to_string(), id);

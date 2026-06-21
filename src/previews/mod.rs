@@ -30,7 +30,7 @@ pub async fn generate_all_previews(app_state: &AppState) -> sqlx::Result<()> {
 
     let mut missing_previews = Vec::with_capacity(128);
     for id in missing_previews_ids {
-        let Some(photo) = tx.get_photo_without_check(id).await? else {
+        let Some(photo) = tx.get_photo(id).await? else {
             continue;
         };
         missing_previews.push(photo);

@@ -18,8 +18,7 @@ pub fn router() -> Router<AppStateRef> {
 }
 #[derive(serde::Deserialize)]
 struct RenameFolderQuery {
-    source_is_public: bool,
-    source_folder_name: String,
+    source_folder_id: i64,
     target_make_public: bool,
     target_folder_name: Option<String>,
 }
@@ -31,23 +30,22 @@ async fn move_folder(
 ) -> HttpResult<impl IntoResponse> {
     let user = auth.user.ok_or(HttpError::Unauthorized)?;
 
-    let source_user_name = (!query.source_is_public).then_some(user.id.as_str());
-    let target_user_name = (!query.target_make_public).then_some(user.id.as_str());
-
-    let target_folder_name = query.target_folder_name.filter(|s| !s.is_empty());
-
     let mut tx = state.write_pool.begin().await?;
     let Some(folder) = tx
-        .get_folder_by_owner_and_name(source_user_name, &query.source_folder_name)
+        .get_accessible_folder(&user.id, query.source_folder_id)
         .await?
     else {
         return Err(HttpError::NotFound);
     };
 
+    let source_user_name = folder.owner_id.as_deref();
+    let target_user_name = (!query.target_make_public).then_some(user.id.as_str());
+    let target_folder_name = query.target_folder_name.filter(|s| !s.is_empty());
+
     info!(
         "Renaming folder \"{}/{}\" to \"{}/{}\"",
         source_user_name.unwrap_or(PUBLIC_USER_FOLDER),
-        query.source_folder_name,
+        folder.name,
         target_user_name.unwrap_or(PUBLIC_USER_FOLDER),
         target_folder_name.as_deref().unwrap_or(""),
     );
@@ -144,14 +142,17 @@ async fn move_photos_service(
     for photo_id in photo_ids {
         let mut tx = conn.begin().await?;
 
-        let Some(pf) = tx.get_photo_with_folder(*photo_id, user_id).await? else {
+        let Some(pf) = tx
+            .get_accessible_photo_with_folder(*photo_id, user_id)
+            .await?
+        else {
             continue;
         };
         let source_path = pf.partial_path();
         let mut photo = pf.photo;
 
         let target_folder_id = tx
-            .get_or_create_folder_id(target_user_name.as_deref(), target_folder_name.as_deref())
+            .upsert_folder(target_user_name.as_deref(), target_folder_name.as_deref())
             .await?;
 
         photo.user_id = target_user_name.clone();
