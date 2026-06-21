@@ -4,6 +4,7 @@ use crate::http::error::{HttpError, HttpResult};
 use crate::http::pages::gallery::PhotoView;
 use crate::http::template_into_response::TemplateIntoResponse;
 use crate::model::photo::PhotoWithFolder;
+use crate::repo::photos_page_repo::PhotosPageRepo;
 use crate::repo::{FavoritesRepo, PhotosRepo, PhotosTransactionRepo};
 use askama::Template;
 use axum::extract::{Path, State};

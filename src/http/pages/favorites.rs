@@ -7,6 +7,7 @@ use crate::http::pages::gallery::{
 };
 use crate::http::template_into_response::TemplateIntoResponse;
 use crate::model::photo_category::PhotoCategory;
+use crate::repo::photos_page_repo::PhotosPageRepo;
 use crate::repo::{FavoritesRepo, PhotosRepo};
 use askama::Template;
 use axum::extract::{Path, Query, State};
