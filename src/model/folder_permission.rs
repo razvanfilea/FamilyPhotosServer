@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use time::OffsetDateTime;
 use time::serde::timestamp;
 
-#[derive(Debug, Clone, sqlx::FromRow)]
+#[derive(Debug, Clone)]
 pub struct FolderPermission {
     pub id: i64,
     pub folder_id: i64,
@@ -35,11 +35,19 @@ pub struct CreateShareRequest {
     pub expires_at: Option<OffsetDateTime>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct UpdateShareRequest {
+    #[serde(default)]
+    pub can_upload: bool,
+    #[serde(default)]
+    pub can_delete: bool,
+}
+
 #[derive(Debug, Serialize)]
 pub struct ShareResponse {
     pub id: i64,
     pub folder_id: i64,
-    pub folder_name: Option<String>,
+    pub folder_name: String,
     pub grantee_id: Option<String>,
     pub token: Option<String>,
     pub can_upload: bool,
@@ -52,7 +60,10 @@ pub struct ShareResponse {
 
 impl ShareResponse {
     pub fn from_permission(p: FolderPermission, folder_map: &HashMap<i64, String>) -> Self {
-        let folder_name = folder_map.get(&p.folder_id).cloned();
+        let folder_name = folder_map
+            .get(&p.folder_id)
+            .cloned()
+            .unwrap_or_else(|| p.folder_id.to_string());
         Self {
             id: p.id,
             folder_id: p.folder_id,

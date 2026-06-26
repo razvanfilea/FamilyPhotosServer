@@ -14,7 +14,7 @@ use tracing::{debug, error, info};
 use crate::http::AppStateRef;
 use crate::previews::generate_all_previews;
 use crate::repo::event_log::EventLogRepo;
-use crate::repo::{FoldersRepo, PhotosRepo, PhotosTransactionRepo};
+use crate::repo::{FolderEventLogRepo, FoldersRepo, PhotosRepo, PhotosTransactionRepo};
 pub use crate::tasks::hash::compute_photos_hash;
 use crate::tasks::thumb_hash::generate_thumb_hashes;
 use crate::tasks::trash::cleanup_trash;
@@ -156,10 +156,16 @@ async fn delete_invalid_photo_previews(app_state: AppStateRef) -> Result<(), sql
 }
 
 async fn delete_old_event_logs(app_state: AppStateRef) -> Result<(), sqlx::Error> {
-    const MAX_EVENT_LONG_ROWS_TO_KEEP: u32 = 512;
+    const MAX_EVENT_LOG_ROWS_TO_KEEP: u32 = 512;
+    const MAX_FOLDER_EVENT_ROWS_PER_FOLDER: u32 = 500;
 
     app_state
         .write_pool
-        .delete_old_events(MAX_EVENT_LONG_ROWS_TO_KEEP)
+        .delete_old_events(MAX_EVENT_LOG_ROWS_TO_KEEP)
+        .await?;
+
+    app_state
+        .write_pool
+        .delete_old_folder_events(MAX_FOLDER_EVENT_ROWS_PER_FOLDER)
         .await
 }

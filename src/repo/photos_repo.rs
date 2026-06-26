@@ -1,6 +1,7 @@
 use crate::model::event_log::{EventLog, EventLogs};
 use crate::model::photo::{FullPhotosList, Photo, PhotoWithFolder};
 use crate::repo::event_log::EventLogRepo;
+use crate::repo::folder_event_log::FolderEventLogRepo;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use sqlx::{
@@ -268,6 +269,12 @@ impl<'c> PhotosTransactionRepo<'c> for SqliteTransaction<'c> {
         self.insert_event_log(photo.id, photo.user_id.as_deref(), Some(&photo))
             .await?;
 
+        if let Some(folder_id) = photo.folder_id {
+            self.as_mut()
+                .insert_folder_event(folder_id, photo.id, Some(&photo))
+                .await?;
+        }
+
         Ok(photo)
     }
 
@@ -295,7 +302,10 @@ impl<'c> PhotosTransactionRepo<'c> for SqliteTransaction<'c> {
             .fetch_all(self.as_mut())
             .await?;
 
-        self.insert_creation_event_logs(&photos).await
+        self.insert_creation_event_logs(&photos).await?;
+        self.as_mut()
+            .insert_folder_creation_event_logs(&photos)
+            .await
     }
 
     /// Thumb hash is purposely left out, as [`Self::update_thumb_hashes`] exists
@@ -314,7 +324,15 @@ impl<'c> PhotosTransactionRepo<'c> for SqliteTransaction<'c> {
             .await?;
 
         self.insert_event_log(photo.id, photo.user_id.as_deref(), Some(photo))
-            .await
+            .await?;
+
+        if let Some(folder_id) = photo.folder_id {
+            self.as_mut()
+                .insert_folder_event(folder_id, photo.id, Some(photo))
+                .await?;
+        }
+
+        Ok(())
     }
 
     async fn update_thumb_hashes(&mut self, photos: &[(i64, Vec<u8>)]) -> sqlx::Result<()> {
@@ -349,7 +367,10 @@ impl<'c> PhotosTransactionRepo<'c> for SqliteTransaction<'c> {
         sep.push_unseparated(")");
         let updated_photos: Vec<Photo> = qb.build_query_as().fetch_all(self.as_mut()).await?;
 
-        self.insert_creation_event_logs(&updated_photos).await
+        self.insert_creation_event_logs(&updated_photos).await?;
+        self.as_mut()
+            .insert_folder_creation_event_logs(&updated_photos)
+            .await
     }
 
     async fn delete_photo(&mut self, photo: &Photo) -> sqlx::Result<u64> {
@@ -361,14 +382,37 @@ impl<'c> PhotosTransactionRepo<'c> for SqliteTransaction<'c> {
         self.insert_event_log(photo.id, photo.user_id.as_deref(), None)
             .await?;
 
+        if let Some(folder_id) = photo.folder_id {
+            self.as_mut()
+                .insert_folder_event(folder_id, photo.id, None)
+                .await?;
+        }
+
         Ok(rows_deleted)
     }
 
     async fn delete_photos(&mut self, photo_ids: &[i64]) -> sqlx::Result<u64> {
         if photo_ids.is_empty() {
-            // But an empty vector would cause a SQL syntax error
             return Ok(0);
         }
+
+        // Fetch folder_ids before deletion for folder_event_log
+        let mut qb: QueryBuilder<Sqlite> = QueryBuilder::new(
+            "select id, folder_id from photos where folder_id is not null and id in (",
+        );
+        let mut sep = qb.separated(", ");
+        for id in photo_ids {
+            sep.push_bind(*id);
+        }
+        sep.push_unseparated(")");
+        let folder_entries: Vec<(i64, i64)> = qb
+            .build()
+            .try_map(|row: sqlx::sqlite::SqliteRow| {
+                use sqlx::Row;
+                Ok((row.get::<i64, _>("folder_id"), row.get::<i64, _>("id")))
+            })
+            .fetch_all(self.as_mut())
+            .await?;
 
         let mut query_builder: QueryBuilder<Sqlite> =
             QueryBuilder::new("delete from photos where id in (");
@@ -386,6 +430,12 @@ impl<'c> PhotosTransactionRepo<'c> for SqliteTransaction<'c> {
             .rows_affected();
 
         self.insert_deletion_event_logs(photo_ids).await?;
+
+        if !folder_entries.is_empty() {
+            self.as_mut()
+                .insert_folder_deletion_event_logs(&folder_entries)
+                .await?;
+        }
 
         Ok(rows_deleted)
     }

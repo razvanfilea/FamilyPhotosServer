@@ -1,6 +1,6 @@
 use crate::http::AppStateRef;
+use crate::http::auth::AuthenticatedUser;
 use crate::http::error::{HttpError, HttpResult};
-use crate::http::utils::AuthSession;
 use crate::model::photo::Photo;
 use crate::model::user::PUBLIC_USER_FOLDER;
 use crate::repo::{FoldersRepo, PhotosRepo, PhotosTransactionRepo};
@@ -26,10 +26,8 @@ struct RenameFolderQuery {
 async fn move_folder(
     State(state): State<AppStateRef>,
     Query(query): Query<RenameFolderQuery>,
-    auth: AuthSession,
+    AuthenticatedUser(user): AuthenticatedUser,
 ) -> HttpResult<impl IntoResponse> {
-    let user = auth.user.ok_or(HttpError::Unauthorized)?;
-
     let mut tx = state.write_pool.begin().await?;
     let Some(folder) = tx
         .get_accessible_folder(&user.id, query.source_folder_id)
@@ -108,11 +106,9 @@ struct MovePhotosQuery {
 async fn move_photos(
     State(state): State<AppStateRef>,
     Query(query): Query<MovePhotosQuery>,
-    auth: AuthSession,
+    AuthenticatedUser(user): AuthenticatedUser,
     Json(photos): Json<Vec<i64>>,
 ) -> HttpResult<impl IntoResponse> {
-    let user = auth.user.ok_or(HttpError::Unauthorized)?;
-
     let target_user_name = (!query.make_public).then_some(user.id.clone());
     let target_folder_name = query.target_folder_name.filter(|s| !s.is_empty());
 

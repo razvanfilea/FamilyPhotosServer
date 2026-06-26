@@ -1,6 +1,6 @@
 use crate::http::AppStateRef;
+use crate::http::auth::AuthenticatedUser;
 use crate::http::error::{HttpError, HttpResult};
-use crate::http::utils::AuthSession;
 use crate::repo::{FavoritesRepo, PhotosRepo};
 use axum::extract::{Path, State};
 use axum::response::IntoResponse;
@@ -16,10 +16,8 @@ pub fn router() -> Router<AppStateRef> {
 
 async fn get_favorites(
     State(state): State<AppStateRef>,
-    auth_session: AuthSession,
+    AuthenticatedUser(user): AuthenticatedUser,
 ) -> HttpResult<impl IntoResponse> {
-    let user = auth_session.user.ok_or(HttpError::Unauthorized)?;
-
     Ok(Json(
         state
             .read_pool
@@ -31,9 +29,8 @@ async fn get_favorites(
 async fn add_favorite(
     State(state): State<AppStateRef>,
     Path(photo_id): Path<i64>,
-    auth_session: AuthSession,
+    AuthenticatedUser(user): AuthenticatedUser,
 ) -> HttpResult<impl IntoResponse> {
-    let user = auth_session.user.ok_or(HttpError::Unauthorized)?;
     let mut tx = state.write_pool.begin().await?;
 
     tx.get_accessible_photo(photo_id, &user.id)
@@ -50,9 +47,8 @@ async fn add_favorite(
 async fn delete_favorite(
     State(state): State<AppStateRef>,
     Path(photo_id): Path<i64>,
-    auth_session: AuthSession,
+    AuthenticatedUser(user): AuthenticatedUser,
 ) -> HttpResult<impl IntoResponse> {
-    let user = auth_session.user.ok_or(HttpError::Unauthorized)?;
     let mut tx = state.write_pool.begin().await?;
 
     tx.get_accessible_photo(photo_id, &user.id)

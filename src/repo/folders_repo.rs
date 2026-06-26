@@ -1,4 +1,4 @@
-use crate::model::folder::Folder;
+use crate::model::folder::{AccessibleFolder, Folder};
 use sqlx::{SqliteExecutor, query, query_as, query_scalar};
 use std::collections::HashMap;
 
@@ -30,26 +30,36 @@ pub trait FoldersRepo<'c>: SqliteExecutor<'c> {
             .await
     }
 
-    async fn get_accessible_folder(self, user_id: &str, id: i64) -> sqlx::Result<Option<Folder>> {
+    async fn get_accessible_folder(
+        self,
+        user_id: &str,
+        id: i64,
+    ) -> sqlx::Result<Option<AccessibleFolder>> {
         query_as!(
-            Folder,
-            "select * from folders where id = $1 and (owner_id is null or owner_id = $2)",
-            id,
-            user_id
+            AccessibleFolder,
+            r#"select f.id, f.owner_id, f.name,
+                (f.owner_id = $1 or f.owner_id is null or coalesce(fp.can_upload, false)) as "can_upload!: bool",
+                (f.owner_id = $1 or f.owner_id is null or coalesce(fp.can_delete, false)) as "can_delete!: bool"
+            from folders f
+            left join folder_permissions fp on f.id = fp.folder_id and fp.grantee_id = $1
+            where f.id = $2 and (f.owner_id = $1 or f.owner_id is null or fp.grantee_id is not null)"#,
+            user_id,
+            id
         )
         .fetch_optional(self)
         .await
     }
 
-    async fn get_accessible_folders(self, user_id: &str) -> sqlx::Result<Vec<Folder>> {
+    async fn get_accessible_folders(self, user_id: &str) -> sqlx::Result<Vec<AccessibleFolder>> {
         query_as!(
-            Folder,
-            r#"select id, owner_id, name, created_at from folders
-            where owner_id = $1
-            union all
-            select id, owner_id, name, created_at from folders
-            where owner_id is null
-            order by name"#,
+            AccessibleFolder,
+            r#"select distinct f.id, f.owner_id, f.name,
+                (f.owner_id = $1 or f.owner_id is null or coalesce(fp.can_upload, false)) as "can_upload!: bool",
+                (f.owner_id = $1 or f.owner_id is null or coalesce(fp.can_delete, false)) as "can_delete!: bool"
+            from folders f
+            left join folder_permissions fp on f.id = fp.folder_id and fp.grantee_id = $1
+            where f.owner_id = $1 or f.owner_id is null or fp.grantee_id is not null
+            order by f.name"#,
             user_id
         )
         .fetch_all(self)

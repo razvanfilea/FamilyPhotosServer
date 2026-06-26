@@ -12,15 +12,14 @@ use axum::{
     response::IntoResponse,
     routing::{delete, get, post},
 };
-use sqlx::__rt::timeout;
 use std::time::Duration;
 use time::OffsetDateTime;
 use tokio::{fs, task};
 use tracing::{error, info, warn};
 
-use crate::http::AppStateRef;
 use crate::http::error::{HttpError, HttpResult};
-use crate::http::utils::{AuthSession, file_to_response, write_field_to_file};
+use crate::http::utils::{file_to_response, write_field_to_file};
+use crate::http::{AppStateRef, auth::AuthenticatedUser};
 use crate::model::photo::{Photo, PhotoWithFolder};
 use crate::previews;
 use crate::repo::{
@@ -58,9 +57,8 @@ async fn update_timestamp(
     State(state): State<AppStateRef>,
     Path(photo_id): Path<i64>,
     Query(query): Query<UpdateTimeQuery>,
-    auth: AuthSession,
+    AuthenticatedUser(user): AuthenticatedUser,
 ) -> HttpResult<impl IntoResponse> {
-    let user = auth.user.ok_or(HttpError::Unauthorized)?;
     let mut tx = state.write_pool.begin().await?;
 
     let mut photo = tx
@@ -79,10 +77,8 @@ async fn update_timestamp(
 
 async fn get_duplicates(
     State(state): State<AppStateRef>,
-    auth: AuthSession,
+    AuthenticatedUser(user): AuthenticatedUser,
 ) -> HttpResult<impl IntoResponse> {
-    let user = auth.user.ok_or(HttpError::Unauthorized)?;
-
     let photos = state
         .read_pool
         .get_duplicates_for_user(user.id.as_str())
@@ -95,9 +91,8 @@ async fn preview_photo(
     State(state): State<AppStateRef>,
     Path(photo_id): Path<i64>,
     range: Option<TypedHeader<Range>>,
-    auth: AuthSession,
+    AuthenticatedUser(user): AuthenticatedUser,
 ) -> HttpResult<impl IntoResponse> {
-    let user = auth.user.ok_or(HttpError::Unauthorized)?;
     let storage = &state.storage;
 
     let pf = match get_accessible_photo_with_folder(&state, photo_id, &user.id).await? {
@@ -109,7 +104,7 @@ async fn preview_photo(
     let preview_path = storage.resolve_preview(pf.partial_preview_path());
 
     let preview_generation_mutex =
-        timeout(Duration::from_secs(3), state.preview_generation.lock()).await;
+        tokio::time::timeout(Duration::from_secs(3), state.preview_generation.lock()).await;
     if preview_generation_mutex.is_err() {
         return file_to_response(&photo_path, range).await;
     }
@@ -150,10 +145,8 @@ async fn download_photo(
     State(state): State<AppStateRef>,
     Path(photo_id): Path<i64>,
     range: Option<TypedHeader<Range>>,
-    auth: AuthSession,
+    AuthenticatedUser(user): AuthenticatedUser,
 ) -> HttpResult<impl IntoResponse> {
-    let user = auth.user.ok_or(HttpError::Unauthorized)?;
-
     let pf = match get_accessible_photo_with_folder(&state, photo_id, &user.id).await? {
         Some(result) => result,
         None => get_photo_via_permission(&state, photo_id, &user.id).await?,
@@ -167,10 +160,8 @@ async fn download_photo(
 async fn get_photo_exif(
     State(state): State<AppStateRef>,
     Path(photo_id): Path<i64>,
-    auth: AuthSession,
+    AuthenticatedUser(user): AuthenticatedUser,
 ) -> HttpResult<impl IntoResponse> {
-    let user = auth.user.ok_or(HttpError::Unauthorized)?;
-
     let pf = state
         .read_pool
         .get_accessible_photo_with_folder(photo_id, &user.id)
@@ -200,11 +191,9 @@ struct UploadDataQuery {
 async fn upload_photo(
     State(state): State<AppStateRef>,
     Query(query): Query<UploadDataQuery>,
-    auth: AuthSession,
+    AuthenticatedUser(user): AuthenticatedUser,
     mut payload: Multipart,
 ) -> HttpResult<impl IntoResponse> {
-    let user = auth.user.ok_or(HttpError::Unauthorized)?;
-
     let field = payload
         .next_field()
         .await
@@ -293,9 +282,8 @@ async fn upload_photo(
 async fn delete_photo(
     State(state): State<AppStateRef>,
     Path(photo_id): Path<i64>,
-    auth: AuthSession,
+    AuthenticatedUser(user): AuthenticatedUser,
 ) -> HttpResult<impl IntoResponse> {
-    let user = auth.user.ok_or(HttpError::Unauthorized)?;
     let mut tx = state.write_pool.begin().await?;
 
     let pf = tx

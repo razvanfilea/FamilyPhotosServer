@@ -55,7 +55,7 @@ pub fn router(
 
     Router::new()
         .merge(pages::router(app_state))
-        .merge(users_api::router())
+        .merge(users_api::router(app_state))
         .merge(authenticated_router)
         .nest_service("/assets", ServeDir::new("assets"))
         .layer(SetResponseHeaderLayer::overriding(

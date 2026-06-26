@@ -1,12 +1,19 @@
-use serde::Serialize;
 use time::OffsetDateTime;
-use time::serde::timestamp;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone)]
 pub struct Folder {
     pub id: i64,
     pub owner_id: Option<String>,
     pub name: String,
-    #[serde(with = "timestamp")]
+    #[allow(dead_code)]
     pub created_at: OffsetDateTime,
+}
+
+#[derive(Debug, Clone)]
+pub struct AccessibleFolder {
+    pub id: i64,
+    pub owner_id: Option<String>,
+    pub name: String,
+    pub can_upload: bool,
+    pub can_delete: bool,
 }
