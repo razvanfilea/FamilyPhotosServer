@@ -1,6 +1,6 @@
 use crate::http::AppStateRef;
+use crate::http::auth::AuthenticatedUser;
 use crate::http::error::{HttpError, HttpResult};
-use crate::http::utils::AuthSession;
 use crate::model::photo::Photo;
 use crate::repo::{PhotosRepo, PhotosTransactionRepo};
 use axum::extract::State;
@@ -17,10 +17,9 @@ pub fn router() -> Router<AppStateRef> {
 
 async fn trash_photos(
     State(state): State<AppStateRef>,
-    auth_session: AuthSession,
+    AuthenticatedUser(user): AuthenticatedUser,
     Json(photo_ids): Json<Vec<i64>>,
 ) -> HttpResult<impl IntoResponse> {
-    let user = auth_session.user.ok_or(HttpError::Unauthorized)?;
     let mut tx = state.write_pool.begin().await?;
     let now = OffsetDateTime::now_utc();
 
@@ -44,10 +43,9 @@ async fn trash_photos(
 
 async fn restore_photos(
     State(state): State<AppStateRef>,
-    auth_session: AuthSession,
+    AuthenticatedUser(user): AuthenticatedUser,
     Json(photo_ids): Json<Vec<i64>>,
 ) -> HttpResult<impl IntoResponse> {
-    let user = auth_session.user.ok_or(HttpError::Unauthorized)?;
     let mut tx = state.write_pool.begin().await?;
 
     let mut photos: Vec<Photo> = Vec::with_capacity(photo_ids.len());

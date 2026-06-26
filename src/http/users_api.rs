@@ -1,19 +1,24 @@
-use crate::http::error::HttpError;
+use crate::http::AppStateRef;
+use crate::http::auth::AuthenticatedUser;
+use crate::http::error::{HttpError, HttpResult};
 use crate::http::template_into_response::TemplateIntoResponse;
 use crate::http::utils::{AuthSession, WantsHtml};
 use crate::model::user::{SimpleUser, UserCredentials};
 use askama::Template;
+use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use axum::{Form, Json, Router};
 use tracing::{debug, error, warn};
 
-pub fn router() -> Router {
+pub fn router(app_state: AppStateRef) -> Router {
     Router::new()
         .route("/login", post(login_handler))
         .route("/logout", post(logout))
         .route("/profile", get(profile))
+        .route("/members", get(members_list))
+        .with_state(app_state)
 }
 
 async fn login_handler(
@@ -116,4 +121,13 @@ pub async fn logout(mut auth: AuthSession, WantsHtml(wants_html): WantsHtml) -> 
     } else {
         Json(serde_json::json!({"message": "Logged out"})).into_response()
     }
+}
+
+async fn members_list(
+    State(state): State<AppStateRef>,
+    AuthenticatedUser(_user): AuthenticatedUser,
+) -> HttpResult<impl IntoResponse> {
+    let users = state.users_repo.get_users().await?;
+    let members: Vec<SimpleUser> = users.into_iter().map(SimpleUser::from).collect();
+    Ok(Json(members))
 }

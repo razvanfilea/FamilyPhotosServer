@@ -1,4 +1,4 @@
-use crate::model::folder_permission::FolderPermission;
+use crate::model::{folder::Folder, folder_permission::FolderPermission};
 use sqlx::{SqliteExecutor, query_as};
 use time::OffsetDateTime;
 
@@ -29,9 +29,31 @@ pub trait FolderPermissionsRepo<'c>: SqliteExecutor<'c> {
             FolderPermission,
             r#"select fp.* from folder_permissions fp
             inner join folders f on f.id = fp.folder_id
-            where f.owner_id = $1
+            where f.owner_id = $1 or f.owner_id is null
             order by fp.created_at desc"#,
             owner_id
+        )
+        .fetch_all(self)
+        .await
+    }
+
+    async fn get_folder_by_share_id(self, share_id: i64) -> sqlx::Result<Option<Folder>> {
+        query_as!(
+            Folder,
+            "select f.* from folders f 
+            inner join folder_permissions fp on f.id = fp.folder_id 
+            where fp.id = $1",
+            share_id
+        )
+        .fetch_optional(self)
+        .await
+    }
+
+    async fn get_shares_for_folder(self, folder_id: i64) -> sqlx::Result<Vec<FolderPermission>> {
+        query_as!(
+            FolderPermission,
+            "select * from folder_permissions where folder_id = $1 order by created_at desc",
+            folder_id
         )
         .fetch_all(self)
         .await
@@ -75,6 +97,24 @@ pub trait FolderPermissionsRepo<'c>: SqliteExecutor<'c> {
             expires_at
         )
         .fetch_one(self)
+        .await
+    }
+
+    async fn update_share(
+        self,
+        share_id: i64,
+        owner_id: &str,
+        can_upload: bool,
+        can_delete: bool,
+    ) -> sqlx::Result<Option<FolderPermission>> {
+        query_as!(
+            FolderPermission,
+            r#"update folder_permissions set can_upload = $3, can_delete = $4
+            where id = $1 and folder_id in (select id from folders where owner_id = $2 or owner_id is null)
+            returning *"#,
+            share_id, owner_id, can_upload, can_delete
+        )
+        .fetch_optional(self)
         .await
     }
 
