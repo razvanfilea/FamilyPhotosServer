@@ -6,7 +6,7 @@
 
 {% block content %}
 <div class="flex w-full justify-center items-center min-h-[70vh]">
-    <form class="flex flex-col gap-6 w-full max-w-sm" hx-post="/login" hx-target="#error" hx-swap="outerHTML">
+    <form class="flex flex-col gap-6 w-full max-w-sm" hx-post="/api/login" hx-target="#error" hx-swap="outerHTML">
         <h1 class="text-3xl font-bold text-center mb-2">Login</h1>
 
         <label class="input input-bordered w-full flex items-center gap-2">

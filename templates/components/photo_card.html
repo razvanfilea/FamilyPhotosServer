@@ -1,7 +1,7 @@
 <div id="photo-card-{{ photo.id }}" class="photo-card"
      data-photo-id="{{ photo.id }}"
      onclick="photoViewer.open({{ photo.id }}, this)">
-    <img data-src="/photos/preview/{{ photo.id }}"
+    <img data-src="/api/preview/{{ photo.id }}"
          alt=""
          {% if let Some(thumb_hash) = photo.thumb_hash %}data-thumbhash="{{ thumb_hash }}"{% endif %}
          class="w-full h-full object-cover"/>

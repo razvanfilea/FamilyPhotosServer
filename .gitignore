@@ -4,7 +4,6 @@ node_modules/
 storage/
 assets/css/main.css
 playwright/playwright-report/
-playwright/test-results/
 package-lock.json
 
 .env

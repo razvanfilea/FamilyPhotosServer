@@ -3,8 +3,8 @@ use crate::utils::storage_resolver::StorageResolver;
 use axum::Router;
 use axum::extract::DefaultBodyLimit;
 use axum::http::{HeaderValue, header};
+use axum_login::AuthManagerLayerBuilder;
 use axum_login::tower_sessions::{Expiry, SessionManagerLayer};
-use axum_login::{AuthManagerLayerBuilder, login_required};
 use sqlx::SqlitePool;
 use time::Duration;
 use tokio::signal;
@@ -17,13 +17,12 @@ use tower_http::{cors, trace};
 use tower_sessions_sqlx_store::SqliteStore;
 use tracing::{Level, info, warn};
 
+mod api;
 mod auth;
 mod error;
 mod extractors;
 mod pages;
-mod photos_api;
 mod template_into_response;
-mod users_api;
 mod utils;
 
 pub fn router(
@@ -36,10 +35,6 @@ pub fn router(
 
     let auth_layer =
         AuthManagerLayerBuilder::new(app_state.users_repo.clone(), session_layer).build();
-
-    let authenticated_router = Router::new()
-        .nest("/photos", photos_api::router(app_state))
-        .route_layer(login_required!(UsersRepository));
 
     let cors_layer = if allowed_origins.is_empty() {
         info!("CORS: Allowing any origin");
@@ -55,8 +50,7 @@ pub fn router(
 
     Router::new()
         .merge(pages::router(app_state))
-        .merge(users_api::router(app_state))
-        .merge(authenticated_router)
+        .nest("/api", api::router(app_state))
         .nest_service("/assets", ServeDir::new("assets"))
         .layer(SetResponseHeaderLayer::overriding(
             header::X_FRAME_OPTIONS,
