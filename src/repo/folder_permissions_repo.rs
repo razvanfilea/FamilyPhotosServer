@@ -14,16 +14,6 @@ pub trait FolderPermissionsRepo<'c>: SqliteExecutor<'c> {
         .await
     }
 
-    async fn get_permission_by_id(self, id: i64) -> sqlx::Result<Option<FolderPermission>> {
-        query_as!(
-            FolderPermission,
-            "select * from folder_permissions where id = $1",
-            id
-        )
-        .fetch_optional(self)
-        .await
-    }
-
     async fn get_shares_by_owner(self, owner_id: &str) -> sqlx::Result<Vec<FolderPermission>> {
         query_as!(
             FolderPermission,
@@ -54,16 +44,6 @@ pub trait FolderPermissionsRepo<'c>: SqliteExecutor<'c> {
             FolderPermission,
             "select * from folder_permissions where folder_id = $1 order by created_at desc",
             folder_id
-        )
-        .fetch_all(self)
-        .await
-    }
-
-    async fn get_shares_for_grantee(self, grantee_id: &str) -> sqlx::Result<Vec<FolderPermission>> {
-        query_as!(
-            FolderPermission,
-            "select * from folder_permissions where grantee_id = $1 order by created_at desc",
-            grantee_id
         )
         .fetch_all(self)
         .await

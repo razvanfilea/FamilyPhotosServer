@@ -14,7 +14,7 @@
     {% for folder in folders %}
     <a href="/folder/{{ folder.id }}?category={{ category }}" class="folder-card">
         <div class="folder-card-image">
-            <img src="/photos/preview/{{ folder.cover_photo_id }}"
+            <img src="/api/preview/{{ folder.cover_photo_id }}"
                  alt="{{ folder.name }}"
                  loading="lazy"/>
         </div>

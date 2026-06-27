@@ -151,7 +151,7 @@ test.describe('Photo Viewer', () => {
     }
 
     const downloadLink = page.locator(selectors.PHOTO_VIEWER_DOWNLOAD);
-    await expect(downloadLink).toHaveAttribute('href', /\/photos\/download\//);
+    await expect(downloadLink).toHaveAttribute('href', /\/api\/download\//);
     await expect(downloadLink).toHaveAttribute('download', '');
   });
 

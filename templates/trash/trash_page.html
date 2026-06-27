@@ -20,7 +20,7 @@
 <div class="photo-grid">
     {% for photo in photos %}
     <div class="photo-card group relative">
-        <img src="/photos/preview/{{ photo.id }}"
+        <img src="/api/preview/{{ photo.id }}"
              alt="{{ photo.name }}"
              loading="lazy"
              {% if let Some(thumb_hash) = photo.thumb_hash %}data-thumbhash="{{ thumb_hash }}"{% endif %}

@@ -12,13 +12,16 @@ use axum::routing::{get, post};
 use axum::{Form, Json, Router};
 use tracing::{debug, error, warn};
 
-pub fn router(app_state: AppStateRef) -> Router {
+pub fn public_router() -> Router<AppStateRef> {
     Router::new()
         .route("/login", post(login_handler))
         .route("/logout", post(logout))
+}
+
+pub fn protected_router() -> Router<AppStateRef> {
+    Router::new()
         .route("/profile", get(profile))
         .route("/members", get(members_list))
-        .with_state(app_state)
 }
 
 async fn login_handler(

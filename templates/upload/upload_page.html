@@ -511,7 +511,7 @@
         const folder = getSelectedFolder();
         if (folder) params.set('folder_name', folder);
 
-        const response = await fetch(`/photos/upload?${params}`, { method: 'POST', body: formData, signal });
+        const response = await fetch(`/api/upload?${params}`, { method: 'POST', body: formData, signal });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         return response.json();
     }

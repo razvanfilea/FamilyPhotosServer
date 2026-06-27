@@ -1,14 +1,14 @@
 <div class="relative" data-is-video="{{ is_video }}" data-mime-type="{{ mime_type }}">
     {% if is_video %}
     <video controls autoplay playsinline class="w-full max-h-[80vh] bg-black">
-        <source src="/photos/download/{{ photo.id }}" type="{{ mime_type }}">
+        <source src="/api/download/{{ photo.id }}" type="{{ mime_type }}">
         Your browser does not support video playback.
     </video>
     {% else %}
-    <img src="/photos/download/{{ photo.id }}"
+    <img src="/api/download/{{ photo.id }}"
          alt="{{ photo.name }}"
          class="w-full max-h-[80vh] object-contain bg-black"
-         style='background-image: url("/photos/preview/{{ photo.id }}"); background-size: cover'/>
+         style='background-image: url("/api/preview/{{ photo.id }}"); background-size: cover'/>
     {% endif %}
 
     <button class="btn btn-circle btn-ghost absolute top-2 right-2"
@@ -45,7 +45,7 @@
                 </span>
             </button>
 
-            <a href="/photos/download/{{ photo.id }}" download class="btn btn-ghost btn-circle" title="Download">
+            <a href="/api/download/{{ photo.id }}" download class="btn btn-ghost btn-circle" title="Download">
                 <span class="material-symbols-outlined">download</span>
             </a>
 
