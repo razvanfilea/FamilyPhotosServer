@@ -51,6 +51,10 @@ async fn move_folder(
     if let Some(new_name) = &target_folder_name {
         tx.rename_folder(folder.id, new_name).await?;
 
+        if source_user_name != target_user_name {
+            tx.update_folder_owner(folder.id, target_user_name).await?;
+        }
+
         let moved_photos = tx.get_photos_in_folder(folder.id).await?;
 
         let source_folder = state
