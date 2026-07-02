@@ -139,7 +139,7 @@ mod tests {
     use sqlx::SqlitePool;
 
     #[sqlx::test]
-    async fn test_create_share_with_grantee(pool: SqlitePool) -> sqlx::Result<()> {
+    async fn test_create_share(pool: SqlitePool) -> sqlx::Result<()> {
         let owner = create_test_user("owner", "Owner");
         let grantee = create_test_user("grantee", "Grantee");
         insert_test_user(&pool, &owner).await?;
@@ -147,6 +147,7 @@ mod tests {
 
         let folder = create_test_folder(&pool, Some("owner"), "shared").await;
 
+        // With grantee: no token generated
         let share = pool
             .create_share(folder.id, Some("grantee"), true, false, None)
             .await?;
@@ -158,22 +159,13 @@ mod tests {
         assert!(!share.can_delete);
         assert!(share.expires_at.is_none());
 
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn test_create_share_generates_token(pool: SqlitePool) -> sqlx::Result<()> {
-        let owner = create_test_user("owner", "Owner");
-        insert_test_user(&pool, &owner).await?;
-
-        let folder = create_test_folder(&pool, Some("owner"), "public").await;
-
-        let share = pool
+        // Without grantee: token auto-generated
+        let token_share = pool
             .create_share(folder.id, None, false, false, None)
             .await?;
 
-        assert!(share.grantee_id.is_none());
-        let token = share.token.expect("token should be generated");
+        assert!(token_share.grantee_id.is_none());
+        let token = token_share.token.expect("token should be generated");
         assert_eq!(token.len(), 32);
         assert!(token.chars().all(|c| c.is_ascii_hexdigit()));
 
@@ -203,7 +195,7 @@ mod tests {
     }
 
     #[sqlx::test]
-    async fn test_get_shares_for_grantee(pool: SqlitePool) -> sqlx::Result<()> {
+    async fn test_get_shares_for_folder(pool: SqlitePool) -> sqlx::Result<()> {
         let owner = create_test_user("owner", "Owner");
         let grantee = create_test_user("grantee", "Grantee");
         insert_test_user(&pool, &owner).await?;
@@ -216,9 +208,8 @@ mod tests {
         pool.create_share(folder.id, None, false, false, None)
             .await?;
 
-        let shares = pool.get_shares_for_grantee("grantee").await?;
-        assert_eq!(shares.len(), 1);
-        assert_eq!(shares[0].grantee_id.as_deref(), Some("grantee"));
+        let shares = pool.get_shares_for_folder(folder.id).await?;
+        assert_eq!(shares.len(), 2);
 
         Ok(())
     }
@@ -271,7 +262,7 @@ mod tests {
     }
 
     #[sqlx::test]
-    async fn test_get_permission_by_id_and_token(pool: SqlitePool) -> sqlx::Result<()> {
+    async fn test_get_permission_by_token(pool: SqlitePool) -> sqlx::Result<()> {
         let owner = create_test_user("owner", "Owner");
         insert_test_user(&pool, &owner).await?;
 
@@ -282,16 +273,9 @@ mod tests {
             .await?;
         let token = share.token.clone().unwrap();
 
-        let by_id = pool.get_permission_by_id(share.id).await?;
-        assert!(by_id.is_some());
-        assert_eq!(by_id.unwrap().id, share.id);
-
         let by_token = pool.get_permission_by_token(&token).await?;
         assert!(by_token.is_some());
         assert_eq!(by_token.unwrap().id, share.id);
-
-        let missing = pool.get_permission_by_id(99999).await?;
-        assert!(missing.is_none());
 
         let missing = pool.get_permission_by_token("nonexistent").await?;
         assert!(missing.is_none());

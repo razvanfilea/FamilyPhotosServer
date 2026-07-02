@@ -82,6 +82,17 @@ pub trait FoldersRepo<'c>: SqliteExecutor<'c> {
             .await
     }
 
+    async fn update_folder_owner(self, id: i64, new_owner_id: Option<&str>) -> sqlx::Result<()> {
+        query!(
+            "update folders set owner_id = $2 where id = $1",
+            id,
+            new_owner_id
+        )
+        .execute(self)
+        .await
+        .map(|_| ())
+    }
+
     async fn get_folder_name_map(self) -> sqlx::Result<HashMap<i64, String>> {
         query_as!(Folder, "select id, owner_id, name, created_at from folders")
             .fetch_all(self)
