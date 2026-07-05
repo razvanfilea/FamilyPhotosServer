@@ -1,25 +1,15 @@
+use super::{EventLogRepo, FolderEventLogRepo};
 use crate::model::event_log::{EventLog, EventLogs};
 use crate::model::photo::{FullPhotosList, Photo, PhotoWithFolder};
-use crate::repo::event_log::EventLogRepo;
-use crate::repo::folder_event_log::FolderEventLogRepo;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use sqlx::{
     FromRow, QueryBuilder, Sqlite, SqliteExecutor, SqliteTransaction, query, query_as, query_scalar,
 };
 use thiserror::Error;
-
-/// Controls which photos are accessible based on folder permission level.
-#[derive(Debug, Clone, Copy)]
-pub enum PhotoAccess {
-    /// Own + public photos only (no shared folder access)
-    Own = 0,
-    /// Own + public + shared folders with any non-expired permission
-    Read = 1,
-    /// Own + public + shared folders with non-expired can_delete=true
-    Delete = 2,
-}
 use time::OffsetDateTime;
+
+pub use crate::model::photo_access::PhotoAccess;
 
 struct PhotoWithFolderRow {
     id: i64,
@@ -179,7 +169,6 @@ pub trait PhotosRepo<'c>: SqliteExecutor<'c> {
         .await
         .map(|opt| opt.map(PhotoWithFolderRow::into_photo_with_folder))
     }
-
 }
 
 impl<'c, E> PhotosRepo<'c> for E where E: SqliteExecutor<'c> {}
@@ -484,7 +473,9 @@ mod tests {
         insert_test_user(&pool, &user2).await?;
 
         // Non-existent ID → None
-        let result = pool.get_accessible_photo(999, "user1", PhotoAccess::Own).await?;
+        let result = pool
+            .get_accessible_photo(999, "user1", PhotoAccess::Own)
+            .await?;
         assert!(result.is_none());
 
         let mut tx = pool.begin().await?;
@@ -498,20 +489,28 @@ mod tests {
         tx.commit().await?;
 
         // Photo owned by requesting user → Some(photo)
-        let result = pool.get_accessible_photo(private.id, "user1", PhotoAccess::Own).await?;
+        let result = pool
+            .get_accessible_photo(private.id, "user1", PhotoAccess::Own)
+            .await?;
         assert!(result.is_some());
         assert_eq!(result.unwrap().name, "private.jpg");
 
         // Public photo (user_id=NULL) → accessible by any user
-        let result = pool.get_accessible_photo(public.id, "user1", PhotoAccess::Own).await?;
+        let result = pool
+            .get_accessible_photo(public.id, "user1", PhotoAccess::Own)
+            .await?;
         assert!(result.is_some());
         assert_eq!(result.unwrap().name, "public.jpg");
 
-        let result = pool.get_accessible_photo(public.id, "user2", PhotoAccess::Own).await?;
+        let result = pool
+            .get_accessible_photo(public.id, "user2", PhotoAccess::Own)
+            .await?;
         assert!(result.is_some());
 
         // Private photo owned by different user → None (denied)
-        let result = pool.get_accessible_photo(other.id, "user1", PhotoAccess::Own).await?;
+        let result = pool
+            .get_accessible_photo(other.id, "user1", PhotoAccess::Own)
+            .await?;
         assert!(result.is_none());
 
         // Test get_photo: bypasses user ownership check

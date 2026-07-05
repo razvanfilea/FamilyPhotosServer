@@ -21,7 +21,7 @@ pub async fn init_pools(database_url: &str) -> (SqlitePool, SqlitePool) {
         .journal_mode(SqliteJournalMode::Wal)
         .foreign_keys(true)
         .synchronous(SqliteSynchronous::Normal)
-        .busy_timeout(Duration::from_secs(30))
+        .busy_timeout(Duration::from_secs(60))
         .pragma("temp_store", "memory")
         .pragma("cache_size", "-20000");
 

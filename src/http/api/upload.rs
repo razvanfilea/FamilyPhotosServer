@@ -13,6 +13,7 @@ use crate::http::utils::write_field_to_file;
 use crate::http::{AppStateRef, auth::AuthenticatedUser};
 use crate::model::photo::Photo;
 use crate::repo::{FolderPermissionsRepo, FoldersRepo, PhotosHashRepo, PhotosTransactionRepo};
+use sqlx::{Sqlite, Transaction};
 use time::serde::timestamp;
 
 pub fn router() -> Router<AppStateRef> {
@@ -36,7 +37,7 @@ struct UploadTarget {
 }
 
 async fn resolve_upload_target(
-    state: &AppStateRef,
+    tx: &mut Transaction<'_, Sqlite>,
     user_id: &str,
     query: &UploadDataQuery,
 ) -> HttpResult<UploadTarget> {
@@ -48,8 +49,8 @@ async fn resolve_upload_target(
         });
     };
 
-    let folder = state
-        .read_pool
+    let folder = tx
+        .as_mut()
         .get_folder(target_folder_id)
         .await?
         .ok_or(HttpError::NotFound)?;
@@ -58,8 +59,8 @@ async fn resolve_upload_target(
     let is_public = folder.owner_id.is_none();
 
     if !is_owner && !is_public {
-        let permission = state
-            .read_pool
+        let permission = tx
+            .as_mut()
             .get_grantee_permission(user_id, target_folder_id)
             .await?
             .ok_or(HttpError::NotFound)?;
@@ -96,7 +97,7 @@ async fn upload_photo(
 
     let mut tx = state.write_pool.begin().await?;
 
-    let target = resolve_upload_target(&state, &user.id, &query).await?;
+    let target = resolve_upload_target(&mut tx, &user.id, &query).await?;
 
     let written_file = write_field_to_file(field).await?;
 
