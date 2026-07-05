@@ -7,6 +7,7 @@
 use crate::model::folder::Folder;
 use crate::model::photo::Photo;
 use crate::model::user::User;
+use crate::repo::PhotoAccess;
 use sqlx::SqlitePool;
 use time::OffsetDateTime;
 
@@ -145,7 +146,9 @@ mod integration {
         tx.commit().await?;
 
         // Verify photo is trashed
-        let fetched = pool.get_accessible_photo(inserted.id, "user1").await?;
+        let fetched = pool
+            .get_accessible_photo(inserted.id, "user1", PhotoAccess::Own)
+            .await?;
         assert!(fetched.is_some());
         assert!(fetched.as_ref().unwrap().trashed_on.is_some());
 
@@ -157,7 +160,9 @@ mod integration {
         tx.commit().await?;
 
         // Verify photo is restored
-        let fetched = pool.get_accessible_photo(inserted.id, "user1").await?;
+        let fetched = pool
+            .get_accessible_photo(inserted.id, "user1", PhotoAccess::Own)
+            .await?;
         assert!(fetched.is_some());
         assert!(fetched.as_ref().unwrap().trashed_on.is_none());
 

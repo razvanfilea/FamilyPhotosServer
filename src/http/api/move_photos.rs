@@ -3,7 +3,7 @@ use crate::http::auth::AuthenticatedUser;
 use crate::http::error::{HttpError, HttpResult};
 use crate::model::photo::Photo;
 use crate::model::user::PUBLIC_USER_FOLDER;
-use crate::repo::{FoldersRepo, PhotosRepo, PhotosTransactionRepo};
+use crate::repo::{FoldersRepo, PhotoAccess, PhotosRepo, PhotosTransactionRepo};
 use axum::extract::{Query, State};
 use axum::response::IntoResponse;
 use axum::routing::post;
@@ -35,6 +35,10 @@ async fn move_folder(
     else {
         return Err(HttpError::NotFound);
     };
+
+    if folder.owner_id.as_deref().is_some_and(|owner| owner != user.id) {
+        return Err(HttpError::NotFound);
+    }
 
     let source_user_name = folder.owner_id.as_deref();
     let target_user_name = (!query.target_make_public).then_some(user.id.as_str());
@@ -143,7 +147,7 @@ async fn move_photos_service(
         let mut tx = conn.begin().await?;
 
         let Some(pf) = tx
-            .get_accessible_photo_with_folder(*photo_id, user_id)
+            .get_accessible_photo_with_folder(*photo_id, user_id, PhotoAccess::Delete)
             .await?
         else {
             continue;

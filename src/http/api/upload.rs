@@ -12,7 +12,7 @@ use crate::http::error::{HttpError, HttpResult};
 use crate::http::utils::write_field_to_file;
 use crate::http::{AppStateRef, auth::AuthenticatedUser};
 use crate::model::photo::Photo;
-use crate::repo::{FoldersRepo, PhotosHashRepo, PhotosTransactionRepo};
+use crate::repo::{FolderPermissionsRepo, FoldersRepo, PhotosHashRepo, PhotosTransactionRepo};
 use time::serde::timestamp;
 
 pub fn router() -> Router<AppStateRef> {
@@ -26,6 +26,54 @@ struct UploadDataQuery {
     folder_name: Option<String>,
     #[serde(default)]
     make_public: bool,
+    folder_id: Option<i64>,
+}
+
+struct UploadTarget {
+    photo_user_id: Option<String>,
+    folder_id: Option<i64>,
+    folder_name: Option<String>,
+}
+
+async fn resolve_upload_target(
+    state: &AppStateRef,
+    user_id: &str,
+    query: &UploadDataQuery,
+) -> HttpResult<UploadTarget> {
+    let Some(target_folder_id) = query.folder_id else {
+        return Ok(UploadTarget {
+            photo_user_id: (!query.make_public).then_some(user_id.to_owned()),
+            folder_id: None,
+            folder_name: query.folder_name.clone().filter(|s| !s.is_empty()),
+        });
+    };
+
+    let folder = state
+        .read_pool
+        .get_folder(target_folder_id)
+        .await?
+        .ok_or(HttpError::NotFound)?;
+
+    let is_owner = folder.owner_id.as_deref() == Some(user_id);
+    let is_public = folder.owner_id.is_none();
+
+    if !is_owner && !is_public {
+        let permission = state
+            .read_pool
+            .get_grantee_permission(user_id, target_folder_id)
+            .await?
+            .ok_or(HttpError::NotFound)?;
+
+        if permission.is_expired() || !permission.can_upload {
+            return Err(HttpError::NotFound);
+        }
+    }
+
+    Ok(UploadTarget {
+        photo_user_id: folder.owner_id,
+        folder_id: Some(target_folder_id),
+        folder_name: Some(folder.name),
+    })
 }
 
 async fn upload_photo(
@@ -45,16 +93,18 @@ async fn upload_photo(
         .or(field.name())
         .ok_or_else(|| HttpError::BadRequest("Multipart has no name".to_string()))?
         .to_owned();
-    let photo_user_id = (!query.make_public).then_some(user.id);
+
+    let mut tx = state.write_pool.begin().await?;
+
+    let target = resolve_upload_target(&state, &user.id, &query).await?;
 
     let written_file = write_field_to_file(field).await?;
 
-    let mut tx = state.write_pool.begin().await?;
-    let photo = tx
-        .get_photo_with_hash(&written_file.hash, photo_user_id.as_deref())
+    let existing = tx
+        .get_photo_with_hash(&written_file.hash, target.photo_user_id.as_deref())
         .await?;
 
-    if let Some(photo) = photo {
+    if let Some(photo) = existing {
         let folder_name = tx.as_mut().get_folder_name(photo.folder_id).await?;
         info!(
             "Photo with same hash already exists with path: {}",
@@ -63,14 +113,20 @@ async fn upload_photo(
         return Ok(Json(photo));
     }
 
-    let folder_name = query.folder_name.filter(|s| !s.is_empty());
-    let folder_id = tx
-        .upsert_folder(photo_user_id.as_deref(), folder_name.as_deref())
-        .await?;
+    let folder_id = match target.folder_id {
+        Some(id) => Some(id),
+        None => {
+            tx.upsert_folder(
+                target.photo_user_id.as_deref(),
+                target.folder_name.as_deref(),
+            )
+            .await?
+        }
+    };
 
     let mut photo = Photo {
         id: 0,
-        user_id: photo_user_id,
+        user_id: target.photo_user_id,
         name: file_name,
         created_at: query.time_created,
         file_size: written_file.size as i64,
@@ -81,7 +137,7 @@ async fn upload_photo(
 
     let mut photo_path = state
         .storage
-        .resolve_photo(photo.partial_path(folder_name.as_deref()));
+        .resolve_photo(photo.partial_path(target.folder_name.as_deref()));
     if let Some(parent) = photo_path.parent()
         && !parent.exists()
     {
@@ -100,7 +156,7 @@ async fn upload_photo(
         );
         photo_path = state
             .storage
-            .resolve_photo(photo.partial_path(folder_name.as_deref()));
+            .resolve_photo(photo.partial_path(target.folder_name.as_deref()));
     }
 
     info!("Uploading file to {}", photo_path.display());

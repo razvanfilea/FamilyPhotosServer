@@ -8,6 +8,17 @@ use sqlx::{
     FromRow, QueryBuilder, Sqlite, SqliteExecutor, SqliteTransaction, query, query_as, query_scalar,
 };
 use thiserror::Error;
+
+/// Controls which photos are accessible based on folder permission level.
+#[derive(Debug, Clone, Copy)]
+pub enum PhotoAccess {
+    /// Own + public photos only (no shared folder access)
+    Own = 0,
+    /// Own + public + shared folders with any non-expired permission
+    Read = 1,
+    /// Own + public + shared folders with non-expired can_delete=true
+    Delete = 2,
+}
 use time::OffsetDateTime;
 
 struct PhotoWithFolderRow {
@@ -41,12 +52,30 @@ impl PhotoWithFolderRow {
 }
 
 pub trait PhotosRepo<'c>: SqliteExecutor<'c> {
-    async fn get_accessible_photo(self, id: i64, user_id: &str) -> sqlx::Result<Option<Photo>> {
+    async fn get_accessible_photo(
+        self,
+        id: i64,
+        user_id: &str,
+        access: PhotoAccess,
+    ) -> sqlx::Result<Option<Photo>> {
+        let access_level = access as i32;
         query_as!(
             Photo,
-            "select * from photos where id = $1 and (user_id is null or user_id = $2)",
+            r#"select p.* from photos p
+            left join folder_permissions fp
+                on fp.folder_id = p.folder_id and fp.grantee_id = $2
+            where p.id = $1 and (
+                p.user_id is null
+                or p.user_id = $2
+                or (
+                    fp.grantee_id is not null
+                    and (fp.expires_at is null or fp.expires_at > datetime('now'))
+                    and ($3 = 1 or ($3 = 2 and fp.can_delete = true))
+                )
+            )"#,
             id,
-            user_id
+            user_id,
+            access_level,
         )
         .fetch_optional(self)
         .await
@@ -123,50 +152,34 @@ pub trait PhotosRepo<'c>: SqliteExecutor<'c> {
         self,
         id: i64,
         user_id: &str,
+        access: PhotoAccess,
     ) -> sqlx::Result<Option<PhotoWithFolder>> {
+        let access_level = access as i32;
         query_as!(
             PhotoWithFolderRow,
             r#"select p.*, f.name as "folder_name: String"
             from photos p
             left join folders f on f.id = p.folder_id
-            where p.id = $1 and (p.user_id is null or p.user_id = $2)"#,
+            left join folder_permissions fp
+                on fp.folder_id = p.folder_id and fp.grantee_id = $2
+            where p.id = $1 and (
+                p.user_id is null
+                or p.user_id = $2
+                or (
+                    fp.grantee_id is not null
+                    and (fp.expires_at is null or fp.expires_at > datetime('now'))
+                    and ($3 = 1 or ($3 = 2 and fp.can_delete = true))
+                )
+            )"#,
             id,
-            user_id
+            user_id,
+            access_level,
         )
         .fetch_optional(self)
         .await
         .map(|opt| opt.map(PhotoWithFolderRow::into_photo_with_folder))
     }
 
-    async fn get_photo_with_folder(self, photo_id: i64) -> sqlx::Result<Option<PhotoWithFolder>> {
-        query_as!(
-            PhotoWithFolderRow,
-            r#"select p.*, f.name as "folder_name: String"
-            from photos p
-            left join folders f on f.id = p.folder_id
-            where p.id = $1"#,
-            photo_id
-        )
-        .fetch_optional(self)
-        .await
-        .map(|opt| opt.map(PhotoWithFolderRow::into_photo_with_folder))
-    }
-
-    #[allow(dead_code)] // TODO: used by future token-based public link access
-    async fn get_photo_in_shared_folder(
-        self,
-        photo_id: i64,
-        folder_id: i64,
-    ) -> sqlx::Result<Option<Photo>> {
-        query_as!(
-            Photo,
-            "select * from photos where id = $1 and folder_id = $2",
-            photo_id,
-            folder_id
-        )
-        .fetch_optional(self)
-        .await
-    }
 }
 
 impl<'c, E> PhotosRepo<'c> for E where E: SqliteExecutor<'c> {}
@@ -471,7 +484,7 @@ mod tests {
         insert_test_user(&pool, &user2).await?;
 
         // Non-existent ID → None
-        let result = pool.get_accessible_photo(999, "user1").await?;
+        let result = pool.get_accessible_photo(999, "user1", PhotoAccess::Own).await?;
         assert!(result.is_none());
 
         let mut tx = pool.begin().await?;
@@ -485,20 +498,20 @@ mod tests {
         tx.commit().await?;
 
         // Photo owned by requesting user → Some(photo)
-        let result = pool.get_accessible_photo(private.id, "user1").await?;
+        let result = pool.get_accessible_photo(private.id, "user1", PhotoAccess::Own).await?;
         assert!(result.is_some());
         assert_eq!(result.unwrap().name, "private.jpg");
 
         // Public photo (user_id=NULL) → accessible by any user
-        let result = pool.get_accessible_photo(public.id, "user1").await?;
+        let result = pool.get_accessible_photo(public.id, "user1", PhotoAccess::Own).await?;
         assert!(result.is_some());
         assert_eq!(result.unwrap().name, "public.jpg");
 
-        let result = pool.get_accessible_photo(public.id, "user2").await?;
+        let result = pool.get_accessible_photo(public.id, "user2", PhotoAccess::Own).await?;
         assert!(result.is_some());
 
         // Private photo owned by different user → None (denied)
-        let result = pool.get_accessible_photo(other.id, "user1").await?;
+        let result = pool.get_accessible_photo(other.id, "user1", PhotoAccess::Own).await?;
         assert!(result.is_none());
 
         // Test get_photo: bypasses user ownership check
@@ -848,7 +861,7 @@ mod tests {
         tx.commit().await?;
 
         let fetched = pool
-            .get_accessible_photo(inserted.id, "user1")
+            .get_accessible_photo(inserted.id, "user1", PhotoAccess::Own)
             .await?
             .unwrap();
         assert_eq!(fetched.name, "renamed.jpg");
@@ -860,7 +873,7 @@ mod tests {
         tx.commit().await?;
 
         let fetched = pool
-            .get_accessible_photo(inserted.id, "user1")
+            .get_accessible_photo(inserted.id, "user1", PhotoAccess::Own)
             .await?
             .unwrap();
         assert_eq!(fetched.folder_id, Some(folder2.id));
@@ -872,7 +885,7 @@ mod tests {
         tx.commit().await?;
 
         let fetched = pool
-            .get_accessible_photo(inserted.id, "user1")
+            .get_accessible_photo(inserted.id, "user1", PhotoAccess::Own)
             .await?
             .unwrap();
         assert!(fetched.trashed_on.is_some());

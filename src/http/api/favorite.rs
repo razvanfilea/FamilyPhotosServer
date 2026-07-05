@@ -1,7 +1,7 @@
 use crate::http::AppStateRef;
 use crate::http::auth::AuthenticatedUser;
 use crate::http::error::{HttpError, HttpResult};
-use crate::repo::{FavoritesRepo, PhotosRepo};
+use crate::repo::{FavoritesRepo, PhotoAccess, PhotosRepo};
 use axum::extract::{Path, State};
 use axum::response::IntoResponse;
 use axum::routing::{delete, get, post};
@@ -33,7 +33,7 @@ async fn add_favorite(
 ) -> HttpResult<impl IntoResponse> {
     let mut tx = state.write_pool.begin().await?;
 
-    tx.get_accessible_photo(photo_id, &user.id)
+    tx.get_accessible_photo(photo_id, &user.id, PhotoAccess::Read)
         .await?
         .ok_or(HttpError::NotFound)?;
 
@@ -51,7 +51,7 @@ async fn delete_favorite(
 ) -> HttpResult<impl IntoResponse> {
     let mut tx = state.write_pool.begin().await?;
 
-    tx.get_accessible_photo(photo_id, &user.id)
+    tx.get_accessible_photo(photo_id, &user.id, PhotoAccess::Read)
         .await?
         .ok_or(HttpError::NotFound)?;
 

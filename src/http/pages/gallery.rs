@@ -7,7 +7,7 @@ use crate::model::folder::Folder;
 use crate::model::photo::{Photo, PhotoWithFolder};
 use crate::model::photo_category::PhotoCategory;
 use crate::repo::photos_page_repo::{PaginatedPhotos, PhotoCursor, PhotosPageRepo};
-use crate::repo::{FavoritesRepo, FoldersRepo, PhotosRepo};
+use crate::repo::{FavoritesRepo, FoldersRepo, PhotoAccess, PhotosRepo};
 use askama::Template;
 use axum::extract::{Path, Query, State};
 use axum::response::Response;
@@ -472,7 +472,7 @@ pub async fn photo_modal(
     let mut tx = state.read_pool.begin().await?;
 
     let PhotoWithFolder { photo, folder_name } = tx
-        .get_accessible_photo_with_folder(photo_id, &user.id)
+        .get_accessible_photo_with_folder(photo_id, &user.id, PhotoAccess::Read)
         .await?
         .ok_or(HttpError::NotFound)?;
 
@@ -502,7 +502,7 @@ pub async fn photo_info_panel(
 ) -> HttpResult<Response> {
     let PhotoWithFolder { photo, folder_name } = state
         .read_pool
-        .get_accessible_photo_with_folder(photo_id, &user.id)
+        .get_accessible_photo_with_folder(photo_id, &user.id, PhotoAccess::Read)
         .await?
         .ok_or(HttpError::NotFound)?;
 
@@ -523,7 +523,7 @@ pub async fn photo_viewer_media(
 ) -> HttpResult<Response> {
     let photo = state
         .read_pool
-        .get_accessible_photo(photo_id, &user.id)
+        .get_accessible_photo(photo_id, &user.id, PhotoAccess::Read)
         .await?
         .ok_or(HttpError::NotFound)?;
 

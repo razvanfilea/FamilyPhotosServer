@@ -2,7 +2,7 @@ use crate::http::AppStateRef;
 use crate::http::auth::AuthenticatedUser;
 use crate::http::error::{HttpError, HttpResult};
 use crate::model::photo::Photo;
-use crate::repo::{PhotosRepo, PhotosTransactionRepo};
+use crate::repo::{PhotoAccess, PhotosRepo, PhotosTransactionRepo};
 use axum::extract::State;
 use axum::response::IntoResponse;
 use axum::routing::post;
@@ -27,7 +27,7 @@ async fn trash_photos(
 
     for photo_id in photo_ids {
         let mut photo = tx
-            .get_accessible_photo(photo_id, &user.id)
+            .get_accessible_photo(photo_id, &user.id, PhotoAccess::Delete)
             .await?
             .ok_or(HttpError::NotFound)?;
 
@@ -52,7 +52,7 @@ async fn restore_photos(
 
     for photo_id in photo_ids {
         let mut photo = tx
-            .get_accessible_photo(photo_id, &user.id)
+            .get_accessible_photo(photo_id, &user.id, PhotoAccess::Delete)
             .await?
             .ok_or(HttpError::NotFound)?;
 

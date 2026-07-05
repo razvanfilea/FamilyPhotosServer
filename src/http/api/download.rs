@@ -12,9 +12,8 @@ use tracing::error;
 use crate::http::error::{HttpError, HttpResult};
 use crate::http::utils::file_to_response;
 use crate::http::{AppStateRef, auth::AuthenticatedUser};
-use crate::model::photo::PhotoWithFolder;
 use crate::previews;
-use crate::repo::{FolderPermissionsRepo, PhotosRepo};
+use crate::repo::{PhotoAccess, PhotosRepo};
 use crate::utils::exif::read_exif;
 use axum_extra::TypedHeader;
 use axum_extra::headers::Range;
@@ -34,10 +33,11 @@ async fn preview_photo(
 ) -> HttpResult<impl IntoResponse> {
     let storage = &state.storage;
 
-    let pf = match get_accessible_photo_with_folder(&state, photo_id, &user.id).await? {
-        Some(result) => result,
-        None => get_photo_via_permission(&state, photo_id, &user.id).await?,
-    };
+    let pf = state
+        .read_pool
+        .get_accessible_photo_with_folder(photo_id, &user.id, PhotoAccess::Read)
+        .await?
+        .ok_or(HttpError::NotFound)?;
 
     let photo_path = storage.resolve_photo(pf.partial_path());
     let preview_path = storage.resolve_preview(pf.partial_preview_path());
@@ -86,10 +86,11 @@ async fn download_photo(
     range: Option<TypedHeader<Range>>,
     AuthenticatedUser(user): AuthenticatedUser,
 ) -> HttpResult<impl IntoResponse> {
-    let pf = match get_accessible_photo_with_folder(&state, photo_id, &user.id).await? {
-        Some(result) => result,
-        None => get_photo_via_permission(&state, photo_id, &user.id).await?,
-    };
+    let pf = state
+        .read_pool
+        .get_accessible_photo_with_folder(photo_id, &user.id, PhotoAccess::Read)
+        .await?
+        .ok_or(HttpError::NotFound)?;
 
     let photo_path = state.storage.resolve_photo(pf.partial_path());
 
@@ -103,7 +104,7 @@ async fn get_photo_exif(
 ) -> HttpResult<impl IntoResponse> {
     let pf = state
         .read_pool
-        .get_accessible_photo_with_folder(photo_id, &user.id)
+        .get_accessible_photo_with_folder(photo_id, &user.id, PhotoAccess::Read)
         .await?
         .ok_or(HttpError::NotFound)?;
 
@@ -116,41 +117,4 @@ async fn get_photo_exif(
         Some(exif) => Ok(Json(exif).into_response()),
         None => Ok((StatusCode::NOT_FOUND, "Exif data not found").into_response()),
     }
-}
-
-pub async fn get_accessible_photo_with_folder(
-    state: &AppStateRef,
-    photo_id: i64,
-    user_id: &str,
-) -> HttpResult<Option<PhotoWithFolder>> {
-    Ok(state
-        .read_pool
-        .get_accessible_photo_with_folder(photo_id, user_id)
-        .await?)
-}
-
-pub async fn get_photo_via_permission(
-    state: &AppStateRef,
-    photo_id: i64,
-    user_id: &str,
-) -> HttpResult<PhotoWithFolder> {
-    let pf = state
-        .read_pool
-        .get_photo_with_folder(photo_id)
-        .await?
-        .ok_or(HttpError::NotFound)?;
-
-    let folder_id = pf.photo.folder_id.ok_or(HttpError::NotFound)?;
-
-    let permission = state
-        .read_pool
-        .get_grantee_permission(user_id, folder_id)
-        .await?
-        .ok_or(HttpError::NotFound)?;
-
-    if permission.is_expired() {
-        return Err(HttpError::NotFound);
-    }
-
-    Ok(pf)
 }
