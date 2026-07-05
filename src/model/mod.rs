@@ -2,6 +2,7 @@ pub mod event_log;
 pub mod folder;
 pub mod folder_permission;
 pub mod photo;
+pub mod photo_access;
 pub mod photo_category;
 pub mod photo_hash;
 pub mod user;

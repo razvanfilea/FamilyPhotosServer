@@ -23,30 +23,6 @@ pub trait FavoritesRepo<'c>: SqliteExecutor<'c> {
         .map(|exists| exists != 0)
     }
 
-    async fn insert_favorite(self, photo_id: i64, user_id: &str) -> sqlx::Result<()> {
-        query!(
-            "insert into favorite_photos (photo_id, user_id) values ($1, $2)",
-            photo_id,
-            user_id
-        )
-        .execute(self)
-        .await
-        .map(|_| ())
-    }
-
-    async fn delete_favorite(self, photo_id: i64, user_id: &str) -> sqlx::Result<()> {
-        query!(
-            "delete from favorite_photos where photo_id = $1 and user_id = $2",
-            photo_id,
-            user_id
-        )
-        .execute(self)
-        .await
-        .map(|_| ())
-    }
-
-    /// Check which of the given photo IDs are favorites for a user
-    /// More efficient than fetching all favorites when you only need to check specific photos
     async fn check_favorites_for_ids(
         self,
         user_id: &str,
@@ -70,6 +46,28 @@ pub trait FavoritesRepo<'c>: SqliteExecutor<'c> {
 
         let ids: Vec<i64> = qb.build_query_scalar().fetch_all(self).await?;
         Ok(ids.into_iter().collect())
+    }
+
+    async fn insert_favorite(self, photo_id: i64, user_id: &str) -> sqlx::Result<()> {
+        query!(
+            "insert into favorite_photos (photo_id, user_id) values ($1, $2)",
+            photo_id,
+            user_id
+        )
+        .execute(self)
+        .await
+        .map(|_| ())
+    }
+
+    async fn delete_favorite(self, photo_id: i64, user_id: &str) -> sqlx::Result<()> {
+        query!(
+            "delete from favorite_photos where photo_id = $1 and user_id = $2",
+            photo_id,
+            user_id
+        )
+        .execute(self)
+        .await
+        .map(|_| ())
     }
 }
 

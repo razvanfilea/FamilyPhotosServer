@@ -36,7 +36,11 @@ async fn move_folder(
         return Err(HttpError::NotFound);
     };
 
-    if folder.owner_id.as_deref().is_some_and(|owner| owner != user.id) {
+    if folder
+        .owner_id
+        .as_deref()
+        .is_some_and(|owner| owner != user.id)
+    {
         return Err(HttpError::NotFound);
     }
 

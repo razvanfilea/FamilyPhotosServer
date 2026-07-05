@@ -13,8 +13,9 @@ use tracing::{debug, error, info};
 
 use crate::http::AppStateRef;
 use crate::previews::generate_all_previews;
-use crate::repo::event_log::EventLogRepo;
-use crate::repo::{FolderEventLogRepo, FoldersRepo, PhotosRepo, PhotosTransactionRepo};
+use crate::repo::{
+    EventLogRepo, FolderEventLogRepo, FoldersRepo, PhotosRepo, PhotosTransactionRepo,
+};
 pub use crate::tasks::hash::compute_photos_hash;
 use crate::tasks::thumb_hash::generate_thumb_hashes;
 use crate::tasks::trash::cleanup_trash;

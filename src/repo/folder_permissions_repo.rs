@@ -49,6 +49,21 @@ pub trait FolderPermissionsRepo<'c>: SqliteExecutor<'c> {
         .await
     }
 
+    async fn get_grantee_permission(
+        self,
+        grantee_id: &str,
+        folder_id: i64,
+    ) -> sqlx::Result<Option<FolderPermission>> {
+        query_as!(
+            FolderPermission,
+            "select * from folder_permissions where grantee_id = $1 and folder_id = $2",
+            grantee_id,
+            folder_id
+        )
+        .fetch_optional(self)
+        .await
+    }
+
     async fn create_share(
         self,
         folder_id: i64,
@@ -93,21 +108,6 @@ pub trait FolderPermissionsRepo<'c>: SqliteExecutor<'c> {
             where id = $1 and folder_id in (select id from folders where owner_id = $2 or owner_id is null)
             returning *"#,
             share_id, owner_id, can_upload, can_delete
-        )
-        .fetch_optional(self)
-        .await
-    }
-
-    async fn get_grantee_permission(
-        self,
-        grantee_id: &str,
-        folder_id: i64,
-    ) -> sqlx::Result<Option<FolderPermission>> {
-        query_as!(
-            FolderPermission,
-            "select * from folder_permissions where grantee_id = $1 and folder_id = $2",
-            grantee_id,
-            folder_id
         )
         .fetch_optional(self)
         .await

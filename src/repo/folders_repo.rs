@@ -3,27 +3,6 @@ use sqlx::{SqliteExecutor, query, query_as, query_scalar};
 use std::collections::HashMap;
 
 pub trait FoldersRepo<'c>: SqliteExecutor<'c> {
-    async fn upsert_folder(
-        self,
-        owner_id: Option<&str>,
-        name: Option<&str>,
-    ) -> sqlx::Result<Option<i64>> {
-        let Some(name) = name.filter(|s| !s.is_empty()) else {
-            return Ok(None);
-        };
-        query_scalar!(
-            r#"insert into folders (owner_id, name)
-            values ($1, $2)
-            on conflict (COALESCE(owner_id, ''), name) do update set name = excluded.name
-            returning id"#,
-            owner_id,
-            name
-        )
-        .fetch_one(self)
-        .await
-        .map(Some)
-    }
-
     async fn get_folder(self, id: i64) -> sqlx::Result<Option<Folder>> {
         query_as!(Folder, "select * from folders where id = $1", id)
             .fetch_optional(self)
@@ -66,13 +45,6 @@ pub trait FoldersRepo<'c>: SqliteExecutor<'c> {
         .await
     }
 
-    async fn rename_folder(self, id: i64, new_name: &str) -> sqlx::Result<()> {
-        query!("update folders set name = $2 where id = $1", id, new_name)
-            .execute(self)
-            .await
-            .map(|_| ())
-    }
-
     async fn get_folder_name(self, folder_id: Option<i64>) -> sqlx::Result<Option<String>> {
         let Some(id) = folder_id else {
             return Ok(None);
@@ -80,6 +52,41 @@ pub trait FoldersRepo<'c>: SqliteExecutor<'c> {
         query_scalar!("select name from folders where id = $1", id)
             .fetch_optional(self)
             .await
+    }
+
+    async fn get_folder_name_map(self) -> sqlx::Result<HashMap<i64, String>> {
+        query_as!(Folder, "select id, owner_id, name, created_at from folders")
+            .fetch_all(self)
+            .await
+            .map(|folders| folders.into_iter().map(|f| (f.id, f.name)).collect())
+    }
+
+    async fn upsert_folder(
+        self,
+        owner_id: Option<&str>,
+        name: Option<&str>,
+    ) -> sqlx::Result<Option<i64>> {
+        let Some(name) = name.filter(|s| !s.is_empty()) else {
+            return Ok(None);
+        };
+        query_scalar!(
+            r#"insert into folders (owner_id, name)
+            values ($1, $2)
+            on conflict (COALESCE(owner_id, ''), name) do update set name = excluded.name
+            returning id"#,
+            owner_id,
+            name
+        )
+        .fetch_one(self)
+        .await
+        .map(Some)
+    }
+
+    async fn rename_folder(self, id: i64, new_name: &str) -> sqlx::Result<()> {
+        query!("update folders set name = $2 where id = $1", id, new_name)
+            .execute(self)
+            .await
+            .map(|_| ())
     }
 
     async fn update_folder_owner(self, id: i64, new_owner_id: Option<&str>) -> sqlx::Result<()> {
@@ -91,13 +98,6 @@ pub trait FoldersRepo<'c>: SqliteExecutor<'c> {
         .execute(self)
         .await
         .map(|_| ())
-    }
-
-    async fn get_folder_name_map(self) -> sqlx::Result<HashMap<i64, String>> {
-        query_as!(Folder, "select id, owner_id, name, created_at from folders")
-            .fetch_all(self)
-            .await
-            .map(|folders| folders.into_iter().map(|f| (f.id, f.name)).collect())
     }
 }
 
