@@ -8,7 +8,7 @@ use crate::http::pages::gallery::{
 use crate::http::template_into_response::TemplateIntoResponse;
 use crate::model::photo_category::PhotoCategory;
 use crate::repo::photos_page_repo::PhotosPageRepo;
-use crate::repo::{FavoritesRepo, PhotosRepo};
+use crate::repo::{FavoritesRepo, PhotoAccess, PhotosRepo};
 use askama::Template;
 use axum::extract::{Path, Query, State};
 use axum::http::Method;
@@ -98,7 +98,7 @@ pub async fn toggle_favorite(
     method: Method,
 ) -> HttpResult<Response> {
     let mut tx = state.write_pool.begin().await?;
-    tx.get_accessible_photo(photo_id, &user.id)
+    tx.get_accessible_photo(photo_id, &user.id, PhotoAccess::Read)
         .await?
         .ok_or(HttpError::NotFound)?;
 

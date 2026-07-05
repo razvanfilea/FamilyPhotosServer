@@ -10,7 +10,7 @@ use tracing::{info, warn};
 
 use crate::http::error::{HttpError, HttpResult};
 use crate::http::{AppStateRef, auth::AuthenticatedUser};
-use crate::repo::{PhotosHashRepo, PhotosRepo, PhotosTransactionRepo};
+use crate::repo::{PhotoAccess, PhotosHashRepo, PhotosRepo, PhotosTransactionRepo};
 use time::serde::timestamp;
 
 pub fn router() -> Router<AppStateRef> {
@@ -35,7 +35,7 @@ async fn update_timestamp(
     let mut tx = state.write_pool.begin().await?;
 
     let mut photo = tx
-        .get_accessible_photo(photo_id, &user.id)
+        .get_accessible_photo(photo_id, &user.id, PhotoAccess::Own)
         .await?
         .ok_or(HttpError::NotFound)?;
 
@@ -68,7 +68,7 @@ async fn delete_photo(
     let mut tx = state.write_pool.begin().await?;
 
     let pf = tx
-        .get_accessible_photo_with_folder(photo_id, &user.id)
+        .get_accessible_photo_with_folder(photo_id, &user.id, PhotoAccess::Own)
         .await?
         .ok_or(HttpError::NotFound)?;
 

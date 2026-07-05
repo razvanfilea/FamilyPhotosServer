@@ -5,7 +5,7 @@ use crate::http::pages::gallery::PhotoView;
 use crate::http::template_into_response::TemplateIntoResponse;
 use crate::model::photo::PhotoWithFolder;
 use crate::repo::photos_page_repo::PhotosPageRepo;
-use crate::repo::{FavoritesRepo, PhotosRepo, PhotosTransactionRepo};
+use crate::repo::{FavoritesRepo, PhotoAccess, PhotosRepo, PhotosTransactionRepo};
 use askama::Template;
 use axum::extract::{Path, State};
 use axum::response::{Html, IntoResponse, Response};
@@ -51,7 +51,7 @@ pub async fn trash_photo(
     let mut tx = state.write_pool.begin().await?;
 
     let mut photo = tx
-        .get_accessible_photo(photo_id, &user.id)
+        .get_accessible_photo(photo_id, &user.id, PhotoAccess::Delete)
         .await?
         .ok_or(HttpError::NotFound)?;
 
@@ -71,7 +71,7 @@ pub async fn restore_photo(
     let mut tx = state.write_pool.begin().await?;
 
     let mut photo = tx
-        .get_accessible_photo(photo_id, &user.id)
+        .get_accessible_photo(photo_id, &user.id, PhotoAccess::Delete)
         .await?
         .ok_or(HttpError::NotFound)?;
 
@@ -91,7 +91,7 @@ pub async fn permanent_delete(
     let mut tx = state.write_pool.begin().await?;
 
     let PhotoWithFolder { photo, folder_name } = tx
-        .get_accessible_photo_with_folder(photo_id, &user.id)
+        .get_accessible_photo_with_folder(photo_id, &user.id, PhotoAccess::Own)
         .await?
         .ok_or(HttpError::NotFound)?;
 
