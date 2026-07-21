@@ -1,7 +1,8 @@
 mod download;
 mod favorite;
+mod folders;
 mod move_photos;
-mod photos;
+mod photos_misc;
 mod sharing;
 mod sync;
 mod trash;
@@ -21,8 +22,9 @@ pub fn router(app_state: AppStateRef) -> Router {
         .nest("/trash", trash::router())
         .nest("/sharing", sharing::router())
         .nest("/favorite", favorite::router())
-        .merge(photos::router())
-        .merge(upload::router())
+        .nest("/folders", folders::router())
+        .nest("/upload", upload::router())
+        .merge(photos_misc::router())
         .merge(download::router())
         .merge(users::protected_router())
         .route_layer(login_required!(UsersRepository));

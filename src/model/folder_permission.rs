@@ -15,14 +15,6 @@ pub struct FolderPermission {
     pub expires_at: Option<OffsetDateTime>,
 }
 
-impl FolderPermission {
-    pub fn is_expired(&self) -> bool {
-        self.expires_at
-            .map(|expires| expires < OffsetDateTime::now_utc())
-            .unwrap_or(false)
-    }
-}
-
 #[derive(Debug, Deserialize)]
 pub struct CreateShareRequest {
     pub folder_id: i64,
@@ -75,42 +67,5 @@ impl ShareResponse {
             created_at: p.created_at,
             expires_at: p.expires_at,
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use time::macros::datetime;
-
-    fn test_permission(expires_at: Option<OffsetDateTime>) -> FolderPermission {
-        FolderPermission {
-            id: 1,
-            folder_id: 10,
-            grantee_id: Some("user1".to_string()),
-            token: None,
-            can_upload: false,
-            can_delete: false,
-            created_at: OffsetDateTime::UNIX_EPOCH,
-            expires_at,
-        }
-    }
-
-    #[test]
-    fn test_is_expired_none() {
-        let perm = test_permission(None);
-        assert!(!perm.is_expired());
-    }
-
-    #[test]
-    fn test_is_expired_future() {
-        let perm = test_permission(Some(datetime!(2099-12-31 23:59:59 UTC)));
-        assert!(!perm.is_expired());
-    }
-
-    #[test]
-    fn test_is_expired_past() {
-        let perm = test_permission(Some(datetime!(2020-01-01 0:00:00 UTC)));
-        assert!(perm.is_expired());
     }
 }

@@ -1,14 +1,11 @@
 use axum::{
-    Json, Router,
-    extract::{Path, Query, State},
-    response::IntoResponse,
-    routing::{delete, get, post},
+    Json, Router, extract::{Path, Query, State}, http::StatusCode, response::IntoResponse, routing::{delete, get, post}
 };
 use time::OffsetDateTime;
-use tokio::fs;
+use tokio::{fs, task};
 use tracing::{info, warn};
 
-use crate::http::error::{HttpError, HttpResult};
+use crate::{http::error::{HttpError, HttpResult}, utils::exif::read_exif};
 use crate::http::{AppStateRef, auth::AuthenticatedUser};
 use crate::repo::{PhotoAccess, PhotosHashRepo, PhotosRepo, PhotosTransactionRepo};
 use time::serde::timestamp;
@@ -18,6 +15,7 @@ pub fn router() -> Router<AppStateRef> {
         .route("/timestamp/{photo_id}", post(update_timestamp))
         .route("/duplicates", get(get_duplicates))
         .route("/delete/{photo_id}", delete(delete_photo))
+        .route("/exif/{photo_id}", get(get_photo_exif))
 }
 
 #[derive(serde::Deserialize)]
@@ -93,4 +91,26 @@ async fn delete_photo(
     tx.commit().await?;
 
     Ok(())
+}
+
+async fn get_photo_exif(
+    State(state): State<AppStateRef>,
+    Path(photo_id): Path<i64>,
+    AuthenticatedUser(user): AuthenticatedUser,
+) -> HttpResult<impl IntoResponse> {
+    let pf = state
+        .read_pool
+        .get_accessible_photo_with_folder(photo_id, &user.id, PhotoAccess::Read)
+        .await?
+        .ok_or(HttpError::NotFound)?;
+
+    let path = state.storage.resolve_photo(pf.partial_path());
+    let exif = task::spawn_blocking(move || read_exif(path))
+        .await
+        .map_err(|e| HttpError::AnyError(Box::new(e)))?;
+
+    match exif {
+        Some(exif) => Ok(Json(exif).into_response()),
+        None => Ok((StatusCode::NOT_FOUND, "Exif data not found").into_response()),
+    }
 }
