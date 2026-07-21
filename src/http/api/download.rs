@@ -1,7 +1,6 @@
 use axum::{
-    Json, Router,
+    Router,
     extract::{Path, State},
-    http::StatusCode,
     response::IntoResponse,
     routing::get,
 };
@@ -14,7 +13,6 @@ use crate::http::utils::file_to_response;
 use crate::http::{AppStateRef, auth::AuthenticatedUser};
 use crate::previews;
 use crate::repo::{PhotoAccess, PhotosRepo};
-use crate::utils::exif::read_exif;
 use axum_extra::TypedHeader;
 use axum_extra::headers::Range;
 
@@ -22,7 +20,6 @@ pub fn router() -> Router<AppStateRef> {
     Router::new()
         .route("/download/{photo_id}", get(download_photo))
         .route("/preview/{photo_id}", get(preview_photo))
-        .route("/exif/{photo_id}", get(get_photo_exif))
 }
 
 async fn preview_photo(
@@ -95,26 +92,4 @@ async fn download_photo(
     let photo_path = state.storage.resolve_photo(pf.partial_path());
 
     file_to_response(&photo_path, range).await
-}
-
-async fn get_photo_exif(
-    State(state): State<AppStateRef>,
-    Path(photo_id): Path<i64>,
-    AuthenticatedUser(user): AuthenticatedUser,
-) -> HttpResult<impl IntoResponse> {
-    let pf = state
-        .read_pool
-        .get_accessible_photo_with_folder(photo_id, &user.id, PhotoAccess::Read)
-        .await?
-        .ok_or(HttpError::NotFound)?;
-
-    let path = state.storage.resolve_photo(pf.partial_path());
-    let exif = task::spawn_blocking(move || read_exif(path))
-        .await
-        .map_err(|e| HttpError::AnyError(Box::new(e)))?;
-
-    match exif {
-        Some(exif) => Ok(Json(exif).into_response()),
-        None => Ok((StatusCode::NOT_FOUND, "Exif data not found").into_response()),
-    }
 }

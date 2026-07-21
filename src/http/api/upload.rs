@@ -8,32 +8,34 @@ use time::OffsetDateTime;
 use tokio::fs;
 use tracing::{error, info};
 
-use crate::http::error::{HttpError, HttpResult};
-use crate::http::utils::write_field_to_file;
+use crate::{http::utils::write_field_to_file, model::photo_hash::PhotoHash, utils::crop_blake_3_hash};
 use crate::http::{AppStateRef, auth::AuthenticatedUser};
 use crate::model::photo::Photo;
-use crate::repo::{FolderPermissionsRepo, FoldersRepo, PhotosHashRepo, PhotosTransactionRepo};
+use crate::repo::{FoldersRepo, PhotosHashRepo, PhotosTransactionRepo};
+use crate::{
+    http::error::{HttpError, HttpResult},
+    model::folder::AccessibleFolder,
+};
 use sqlx::{Sqlite, Transaction};
 use time::serde::timestamp;
 
 pub fn router() -> Router<AppStateRef> {
-    Router::new().route("/upload", post(upload_photo))
+    Router::new().route("/", post(upload_photo))
 }
 
 #[derive(Debug, serde::Deserialize)]
 struct UploadDataQuery {
     #[serde(with = "timestamp")]
     time_created: OffsetDateTime,
-    folder_name: Option<String>,
+    folder_id: Option<i64>,
     #[serde(default)]
     make_public: bool,
-    folder_id: Option<i64>,
+    hash: Option<String>,
 }
 
 struct UploadTarget {
     photo_user_id: Option<String>,
-    folder_id: Option<i64>,
-    folder_name: Option<String>,
+    folder: Option<AccessibleFolder>,
 }
 
 async fn resolve_upload_target(
@@ -44,36 +46,23 @@ async fn resolve_upload_target(
     let Some(target_folder_id) = query.folder_id else {
         return Ok(UploadTarget {
             photo_user_id: (!query.make_public).then_some(user_id.to_owned()),
-            folder_id: None,
-            folder_name: query.folder_name.clone().filter(|s| !s.is_empty()),
+            folder: None,
         });
     };
 
     let folder = tx
         .as_mut()
-        .get_folder(target_folder_id)
+        .get_accessible_folder(user_id, target_folder_id)
         .await?
-        .ok_or(HttpError::NotFound)?;
+        .ok_or(HttpError::Unauthorized)?;
 
-    let is_owner = folder.owner_id.as_deref() == Some(user_id);
-    let is_public = folder.owner_id.is_none();
-
-    if !is_owner && !is_public {
-        let permission = tx
-            .as_mut()
-            .get_grantee_permission(user_id, target_folder_id)
-            .await?
-            .ok_or(HttpError::NotFound)?;
-
-        if permission.is_expired() || !permission.can_upload {
-            return Err(HttpError::NotFound);
-        }
+    if !folder.can_upload {
+        return Err(HttpError::Unauthorized);
     }
 
     Ok(UploadTarget {
-        photo_user_id: folder.owner_id,
-        folder_id: Some(target_folder_id),
-        folder_name: Some(folder.name),
+        photo_user_id: folder.owner_id.clone(),
+        folder: Some(folder),
     })
 }
 
@@ -99,31 +88,23 @@ async fn upload_photo(
 
     let target = resolve_upload_target(&mut tx, &user.id, &query).await?;
 
+    // Check the hash before writing the file
+    if let Ok(client_hash) = blake3::Hash::from_hex(query.hash.as_deref().unwrap_or("")) {
+        let hash = crop_blake_3_hash(client_hash.as_bytes());
+        if let Some(photo) = check_existing_photo_with_hash(&mut tx, &target, &hash).await? {
+            return Ok(Json(photo));
+        }
+    }
+
     let written_file = write_field_to_file(field).await?;
 
-    let existing = tx
-        .get_photo_with_hash(&written_file.hash, target.photo_user_id.as_deref())
-        .await?;
-
-    if let Some(photo) = existing {
-        let folder_name = tx.as_mut().get_folder_name(photo.folder_id).await?;
-        info!(
-            "Photo with same hash already exists with path: {}",
-            photo.partial_path(folder_name.as_deref())
-        );
+    if let Some(photo) =
+        check_existing_photo_with_hash(&mut tx, &target, &written_file.hash).await?
+    {
         return Ok(Json(photo));
     }
 
-    let folder_id = match target.folder_id {
-        Some(id) => Some(id),
-        None => {
-            tx.upsert_folder(
-                target.photo_user_id.as_deref(),
-                target.folder_name.as_deref(),
-            )
-            .await?
-        }
-    };
+    let folder_name = target.folder.as_ref().map(|f| f.name.as_str());
 
     let mut photo = Photo {
         id: 0,
@@ -131,21 +112,18 @@ async fn upload_photo(
         name: file_name,
         created_at: query.time_created,
         file_size: written_file.size as i64,
-        folder_id,
+        folder_id: target.folder.as_ref().map(|f| f.id),
         thumb_hash: None,
         trashed_on: None,
     };
 
-    let mut photo_path = state
-        .storage
-        .resolve_photo(photo.partial_path(target.folder_name.as_deref()));
+    let mut photo_path = state.storage.resolve_photo(photo.partial_path(folder_name));
     if let Some(parent) = photo_path.parent()
         && !parent.exists()
     {
         fs::create_dir_all(parent).await?;
     }
 
-    // If the file exists, generate a random name
     if photo_path.exists() {
         photo.name = format!(
             "{}.{}",
@@ -155,14 +133,13 @@ async fn upload_photo(
                 .map(|str| str.to_string_lossy().to_string())
                 .unwrap_or_default()
         );
-        photo_path = state
-            .storage
-            .resolve_photo(photo.partial_path(target.folder_name.as_deref()));
+        photo_path = state.storage.resolve_photo(photo.partial_path(folder_name));
     }
 
     info!("Uploading file to {}", photo_path.display());
 
     let photo = tx.insert_photo(&photo).await?;
+    tx.insert_hash(PhotoHash{id: photo.id, hash: written_file.hash.clone()}).await?;
 
     written_file.persist_to(&photo_path).await?;
 
@@ -174,4 +151,25 @@ async fn upload_photo(
     })?;
 
     Ok(Json(photo))
+}
+
+async fn check_existing_photo_with_hash(
+    tx: &mut Transaction<'_, Sqlite>,
+    target: &UploadTarget,
+    hash: &[u8],
+) -> Result<Option<Photo>, HttpError> {
+    let existing = tx
+        .get_photo_with_hash(hash, target.photo_user_id.as_deref())
+        .await?;
+
+    if let Some(photo) = existing {
+        let folder_name = tx.as_mut().get_folder_name(photo.folder_id).await?;
+        info!(
+            "Photo with same hash already exists with path: {}",
+            photo.partial_path(folder_name.as_deref())
+        );
+        return Ok(Some(photo));
+    }
+
+    Ok(None)
 }

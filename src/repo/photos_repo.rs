@@ -91,18 +91,6 @@ pub trait PhotosRepo<'c>: SqliteExecutor<'c> {
             .await
     }
 
-    async fn get_photo_ids_in_folder(
-        self,
-        user_id: Option<&str>,
-        folder_id: i64,
-    ) -> sqlx::Result<Vec<i64>> {
-        query_scalar!(
-            "select id from photos where (($1 is null and user_id is null) or user_id = $1) and folder_id = $2 order by created_at desc",
-            user_id,
-            folder_id,
-        ).fetch_all(self).await
-    }
-
     async fn get_photos_in_folder(self, folder_id: i64) -> sqlx::Result<Vec<Photo>> {
         query_as!(
             Photo,
@@ -312,6 +300,10 @@ impl<'c> PhotosTransactionRepo<'c> for SqliteTransaction<'c> {
 
     /// Thumb hash is purposely left out, as [`Self::update_thumb_hashes`] exists
     async fn update_photo(&mut self, photo: &Photo) -> sqlx::Result<()> {
+        let old = query_as!(Photo, "select * from photos where id = $1", photo.id)
+            .fetch_one(self.as_mut())
+            .await?;
+
         query!(
             "update photos set user_id = $2, name = $3, created_at = $4, file_size = $5, folder_id = $6, trashed_on = $7 where id = $1",
             photo.id,
@@ -328,7 +320,26 @@ impl<'c> PhotosTransactionRepo<'c> for SqliteTransaction<'c> {
         self.insert_event_log(photo.id, photo.user_id.as_deref(), Some(photo))
             .await?;
 
-        if let Some(folder_id) = photo.folder_id {
+        let left_old_folder = old.folder_id.is_some()
+            && (old.folder_id != photo.folder_id
+                || (old.trashed_on.is_none() && photo.trashed_on.is_some()));
+
+        let entered_new_folder = photo.folder_id.is_some()
+            && photo.trashed_on.is_none()
+            && (old.folder_id != photo.folder_id
+                || (old.trashed_on.is_some() && photo.trashed_on.is_none()));
+
+        if left_old_folder && let Some(old_folder_id) = old.folder_id {
+            self.as_mut()
+                .insert_folder_event(old_folder_id, photo.id, None)
+                .await?;
+        }
+
+        if entered_new_folder && let Some(new_folder_id) = photo.folder_id {
+            self.as_mut()
+                .insert_folder_event(new_folder_id, photo.id, Some(photo))
+                .await?;
+        } else if !left_old_folder && let Some(folder_id) = photo.folder_id {
             self.as_mut()
                 .insert_folder_event(folder_id, photo.id, Some(photo))
                 .await?;
@@ -376,6 +387,10 @@ impl<'c> PhotosTransactionRepo<'c> for SqliteTransaction<'c> {
     }
 
     async fn delete_photo(&mut self, photo: &Photo) -> sqlx::Result<u64> {
+        query!("delete from favorite_photos where photo_id = $1", photo.id)
+            .execute(self.as_mut())
+            .await?;
+
         let rows_deleted = query!("delete from photos where id = $1", photo.id)
             .execute(self.as_mut())
             .await
@@ -415,6 +430,15 @@ impl<'c> PhotosTransactionRepo<'c> for SqliteTransaction<'c> {
             })
             .fetch_all(self.as_mut())
             .await?;
+
+        let mut fav_qb: QueryBuilder<Sqlite> =
+            QueryBuilder::new("delete from favorite_photos where photo_id in (");
+        let mut sep2 = fav_qb.separated(", ");
+        for photo_id in photo_ids.iter() {
+            sep2.push_bind(photo_id);
+        }
+        sep2.push_unseparated(")");
+        fav_qb.build().execute(self.as_mut()).await?;
 
         let mut query_builder: QueryBuilder<Sqlite> =
             QueryBuilder::new("delete from photos where id in (");
@@ -602,44 +626,6 @@ mod tests {
         let photos = pool.get_photos_by_user(None).await?;
         assert_eq!(photos.len(), 1);
         assert_eq!(photos[0].name, "public.jpg");
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn test_get_photo_ids_in_folder(pool: SqlitePool) -> sqlx::Result<()> {
-        let user = create_test_user("user1", "Test User");
-        insert_test_user(&pool, &user).await?;
-
-        let vacation = create_test_folder(&pool, Some("user1"), "vacation").await;
-        let public_vacation = create_test_folder(&pool, None, "vacation").await;
-        let other = create_test_folder(&pool, Some("user1"), "other").await;
-
-        // Non-existent folder_id → empty vec
-        let ids = pool.get_photo_ids_in_folder(Some("user1"), 99999).await?;
-        assert!(ids.is_empty());
-
-        let mut tx = pool.begin().await?;
-        let photos = vec![
-            create_test_photo(0, Some("user1"), Some(vacation.id), "v1.jpg"),
-            create_test_photo(0, Some("user1"), Some(vacation.id), "v2.jpg"),
-            create_test_photo(0, None, Some(public_vacation.id), "public_v.jpg"),
-            create_test_photo(0, Some("user1"), Some(other.id), "o1.jpg"),
-        ];
-        tx.insert_photos(&photos).await?;
-        tx.commit().await?;
-
-        // user_id=Some + folder exists → that user's photos in folder
-        let ids = pool
-            .get_photo_ids_in_folder(Some("user1"), vacation.id)
-            .await?;
-        assert_eq!(ids.len(), 2);
-
-        // user_id=None + folder exists → public photos in folder
-        let ids = pool
-            .get_photo_ids_in_folder(None, public_vacation.id)
-            .await?;
-        assert_eq!(ids.len(), 1);
 
         Ok(())
     }

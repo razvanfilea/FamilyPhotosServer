@@ -21,6 +21,7 @@ pub trait FoldersRepo<'c>: SqliteExecutor<'c> {
                 (f.owner_id = $1 or f.owner_id is null or coalesce(fp.can_delete, false)) as "can_delete!: bool"
             from folders f
             left join folder_permissions fp on f.id = fp.folder_id and fp.grantee_id = $1
+                and (fp.expires_at is null or fp.expires_at > datetime('now'))
             where f.id = $2 and (f.owner_id = $1 or f.owner_id is null or fp.grantee_id is not null)"#,
             user_id,
             id
@@ -37,6 +38,7 @@ pub trait FoldersRepo<'c>: SqliteExecutor<'c> {
                 (f.owner_id = $1 or f.owner_id is null or coalesce(fp.can_delete, false)) as "can_delete!: bool"
             from folders f
             left join folder_permissions fp on f.id = fp.folder_id and fp.grantee_id = $1
+                and (fp.expires_at is null or fp.expires_at > datetime('now'))
             where f.owner_id = $1 or f.owner_id is null or fp.grantee_id is not null
             order by f.name"#,
             user_id

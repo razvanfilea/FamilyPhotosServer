@@ -49,21 +49,6 @@ pub trait FolderPermissionsRepo<'c>: SqliteExecutor<'c> {
         .await
     }
 
-    async fn get_grantee_permission(
-        self,
-        grantee_id: &str,
-        folder_id: i64,
-    ) -> sqlx::Result<Option<FolderPermission>> {
-        query_as!(
-            FolderPermission,
-            "select * from folder_permissions where grantee_id = $1 and folder_id = $2",
-            grantee_id,
-            folder_id
-        )
-        .fetch_optional(self)
-        .await
-    }
-
     async fn create_share(
         self,
         folder_id: i64,
@@ -116,7 +101,7 @@ pub trait FolderPermissionsRepo<'c>: SqliteExecutor<'c> {
     async fn delete_share(self, share_id: i64, owner_id: &str) -> sqlx::Result<u64> {
         sqlx::query!(
             r#"delete from folder_permissions
-            where id = $1 and folder_id in (select id from folders where owner_id = $2)"#,
+            where id = $1 and folder_id in (select id from folders where owner_id = $2 or owner_id is null)"#,
             share_id,
             owner_id
         )
@@ -232,31 +217,6 @@ mod tests {
 
         let deleted = pool.delete_share(share.id, "owner").await?;
         assert_eq!(deleted, 1);
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn test_get_grantee_permission(pool: SqlitePool) -> sqlx::Result<()> {
-        let owner = create_test_user("owner", "Owner");
-        let grantee = create_test_user("grantee", "Grantee");
-        insert_test_user(&pool, &owner).await?;
-        insert_test_user(&pool, &grantee).await?;
-
-        let folder = create_test_folder(&pool, Some("owner"), "shared").await;
-        let other_folder = create_test_folder(&pool, Some("owner"), "private").await;
-
-        pool.create_share(folder.id, Some("grantee"), true, false, None)
-            .await?;
-
-        let perm = pool.get_grantee_permission("grantee", folder.id).await?;
-        assert!(perm.is_some());
-        assert!(perm.unwrap().can_upload);
-
-        let perm = pool
-            .get_grantee_permission("grantee", other_folder.id)
-            .await?;
-        assert!(perm.is_none());
 
         Ok(())
     }
