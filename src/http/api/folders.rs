@@ -11,10 +11,10 @@ use crate::{
     http::{
         AppStateRef,
         auth::AuthenticatedUser,
-        error::{HttpError, HttpResult},
+        error::{HttpError, HttpResult, is_unique_violation},
     },
     repo::{FolderPermissionsRepo, FoldersRepo},
-    utils::is_safe_path_component,
+    utils::file_names::validate_folder_name,
 };
 
 #[derive(Serialize)]
@@ -41,10 +41,9 @@ async fn create_folder(
     AuthenticatedUser(user): AuthenticatedUser,
     Json(new_folder): Json<NewFolderRequest>,
 ) -> HttpResult<impl IntoResponse> {
-    let name = new_folder.name.trim();
-    if !is_safe_path_component(name) {
-        return Err(HttpError::BadRequest("Invalid folder name".to_string()));
-    }
+    let name = validate_folder_name(&new_folder.name)
+        .map_err(|message| HttpError::BadRequest(message.to_string()))?;
+    let name = name.as_str();
 
     let owner_id = if new_folder.is_public {
         None
@@ -63,6 +62,18 @@ async fn create_folder(
         owner_id: owner_id.map(ToOwned::to_owned),
         name: name.to_owned(),
     }))
+}
+
+fn folder_exists() -> HttpError {
+    HttpError::Conflict("A folder with this name already exists".to_string())
+}
+
+fn map_unique_violation(error: sqlx::Error) -> HttpError {
+    if is_unique_violation(&error) {
+        folder_exists()
+    } else {
+        error.into()
+    }
 }
 
 #[derive(Deserialize)]
@@ -93,13 +104,13 @@ async fn update_folder(
         return Err(HttpError::Unauthorized);
     }
 
+    // A blank name means "don't rename" (as before)
     let new_name = request
         .name
-        .map(|n| n.trim().to_owned())
-        .filter(|n| !n.is_empty());
-    if new_name.as_deref().is_some_and(|n| !is_safe_path_component(n)) {
-        return Err(HttpError::BadRequest("Invalid folder name".to_string()));
-    }
+        .filter(|n| !n.trim().is_empty())
+        .map(|n| validate_folder_name(&n))
+        .transpose()
+        .map_err(|message| HttpError::BadRequest(message.to_string()))?;
     let new_owner_id = request.is_public.map(|is_public| {
         if is_public {
             None
@@ -130,19 +141,30 @@ async fn update_folder(
         .storage
         .resolve_folder(target_owner, Some(target_name));
 
+    if source_path != target_path && tokio::fs::try_exists(&target_path).await? {
+        return Err(folder_exists());
+    }
+
     if let Some(name) = &new_name {
-        tx.rename_folder(folder_id, name).await?;
+        tx.rename_folder(folder_id, name)
+            .await
+            .map_err(map_unique_violation)?;
     }
 
     if let Some(owner) = &new_owner_id {
-        tx.update_folder_owner(folder_id, owner.as_deref()).await?;
+        tx.update_folder_owner(folder_id, owner.as_deref())
+            .await
+            .map_err(map_unique_violation)?;
         if owner.is_none() {
             // Public folders are visible to everyone, so per-user shares are meaningless
             tx.delete_grantee_shares(folder_id).await?;
         }
     }
 
-    if source_path != target_path {
+    // Folders without photos may have no directory yet
+    let move_directory = source_path != target_path && tokio::fs::try_exists(&source_path).await?;
+
+    if move_directory {
         if let Some(parent) = target_path.parent()
             && !parent.exists()
         {
@@ -156,9 +178,7 @@ async fn update_folder(
 
     if let Err(e) = tx.commit().await {
         error!("Failed to commit folder update: {e}");
-        if source_path != target_path
-            && let Err(e) = tokio::fs::rename(&target_path, &source_path).await
-        {
+        if move_directory && let Err(e) = tokio::fs::rename(&target_path, &source_path).await {
             error!("Failed to undo folder rename: {e}");
         }
         return Err(e.into());

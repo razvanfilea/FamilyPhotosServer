@@ -1,13 +1,21 @@
 use axum::{
-    Json, Router, extract::{Path, Query, State}, http::StatusCode, response::IntoResponse, routing::{delete, get, post}
+    Json, Router,
+    extract::{Path, Query, State},
+    http::StatusCode,
+    response::IntoResponse,
+    routing::{delete, get, post},
 };
 use time::OffsetDateTime;
 use tokio::{fs, task};
 use tracing::{info, warn};
 
-use crate::{http::error::{HttpError, HttpResult}, utils::exif::read_exif};
 use crate::http::{AppStateRef, auth::AuthenticatedUser};
 use crate::repo::{PhotoAccess, PhotosHashRepo, PhotosRepo, PhotosTransactionRepo};
+use crate::{
+    http::error::{HttpError, HttpResult},
+    previews,
+    utils::exif::read_exif,
+};
 use time::serde::timestamp;
 
 pub fn router() -> Router<AppStateRef> {
@@ -76,7 +84,7 @@ async fn delete_photo(
         ));
     }
 
-    let _ = fs::remove_file(state.storage.resolve_preview(pf.partial_preview_path())).await;
+    previews::remove_renditions(&state.storage, pf.photo.id).await;
 
     let photo_path = state.storage.resolve_photo(pf.partial_path());
     if photo_path.exists() {

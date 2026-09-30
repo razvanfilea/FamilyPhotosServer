@@ -4,9 +4,10 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 use std::time::Duration;
 
-use mime_guess::MimeGuess;
 use tracing::warn;
 use wait_timeout::ChildExt;
+
+use crate::utils::media::is_video;
 
 pub const THUMB_HASH_IMAGE_SIZE: usize = 64;
 
@@ -82,17 +83,29 @@ fn run_ffmpeg_frame(load_path: &Path, save_path: &Path, video_filter: &str) -> i
 }
 
 fn generate_image_preview(load_path: &Path, save_path: &Path) -> io::Result<()> {
+    run_magick(
+        load_path,
+        save_path,
+        &[
+            "-auto-orient",
+            "-thumbnail",
+            &format!("{PREVIEW_SIZE}x{PREVIEW_SIZE}^>"),
+            "-quality",
+            "75",
+            "-define",
+            "webp:method=4",
+            "-strip",
+        ],
+    )
+}
+
+const SCREEN_SIZE: u32 = 2048;
+
+fn run_magick(load_path: &Path, save_path: &Path, args: &[&str]) -> io::Result<()> {
     let mut child = Command::new("magick")
         .arg(format!("{}[0]", load_path.display())) // [0] selects first frame for GIFs
-        .arg("-auto-orient")
-        .arg("-thumbnail")
-        .arg(format!("{PREVIEW_SIZE}x{PREVIEW_SIZE}^>"))
-        .arg("-quality")
-        .arg("75")
-        .arg("-define")
-        .arg("webp:method=4")
-        .arg("-strip")
-        .arg(save_path)
+        .args(args)
+        .arg(format!("webp:{}", save_path.display()))
         .stderr(Stdio::piped())
         .spawn()?;
 
@@ -124,41 +137,27 @@ fn generate_image_preview(load_path: &Path, save_path: &Path) -> io::Result<()> 
     }
 }
 
-pub fn generate_preview<P, R>(load_path: P, save_path: R) -> io::Result<()>
-where
-    P: AsRef<Path>,
-    R: AsRef<Path>,
-{
-    let load_path = load_path.as_ref();
-    let save_path = save_path.as_ref();
-
+/// Writes the output of `generate` to a temporary file next to `save_path`, validates it and
+/// atomically moves it into place.
+fn generate_atomically(
+    save_path: &Path,
+    generate: impl FnOnce(&Path) -> io::Result<()>,
+) -> io::Result<()> {
     // Get parent directory for temp file (same filesystem = atomic rename)
     let preview_dir = save_path
         .parent()
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "save_path has no parent"))?;
+    fs::create_dir_all(preview_dir)?;
 
     // Create temp file in same directory with .webp suffix
     let temp_file = tempfile::Builder::new()
         .suffix(".webp")
         .tempfile_in(preview_dir)?;
-    let temp_path = temp_file.path();
 
-    let mime = MimeGuess::from_path(load_path).first().ok_or_else(|| {
-        io::Error::other(format!(
-            "Couldn't detect mime type for: {}",
-            load_path.display()
-        ))
-    })?;
-
-    if mime.type_() == "video" {
-        generate_video_frame(load_path, temp_path)
-            .or_else(|_| generate_video_frame_simple(load_path, temp_path))?;
-    } else {
-        generate_image_preview(load_path, temp_path)?;
-    }
+    generate(temp_file.path())?;
 
     // Validate size
-    let size = fs::metadata(temp_path)?.len();
+    let size = fs::metadata(temp_file.path())?.len();
     if size < MIN_PREVIEW_SIZE {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
@@ -170,6 +169,40 @@ where
     temp_file.persist(save_path).map_err(|e| e.error)?;
 
     Ok(())
+}
+
+/// Generates the ~2048px viewer rendition of an image
+pub fn generate_screen_rendition(load_path: &Path, save_path: &Path) -> io::Result<()> {
+    generate_atomically(save_path, |temp_path| {
+        run_magick(
+            load_path,
+            temp_path,
+            &[
+                "-auto-orient",
+                "-resize",
+                &format!("{SCREEN_SIZE}x{SCREEN_SIZE}>"),
+                "-quality",
+                "82",
+            ],
+        )
+    })
+}
+
+pub fn generate_preview<P, R>(load_path: P, save_path: R) -> io::Result<()>
+where
+    P: AsRef<Path>,
+    R: AsRef<Path>,
+{
+    let load_path = load_path.as_ref();
+
+    generate_atomically(save_path.as_ref(), |temp_path| {
+        if is_video(&load_path.to_string_lossy()) {
+            generate_video_frame(load_path, temp_path)
+                .or_else(|_| generate_video_frame_simple(load_path, temp_path))
+        } else {
+            generate_image_preview(load_path, temp_path)
+        }
+    })
 }
 
 pub struct ThumbHashImage {

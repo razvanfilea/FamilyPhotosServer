@@ -1,4 +1,5 @@
 use crate::db::SessionStore;
+use crate::previews::PreviewGenerator;
 use crate::repo::users_repo::UsersRepository;
 use crate::utils::storage_resolver::StorageResolver;
 use axum::Router;
@@ -10,7 +11,6 @@ use axum_login::tower_sessions::{Expiry, SessionManagerLayer};
 use sqlx::SqlitePool;
 use time::Duration;
 use tokio::signal;
-use tokio::sync::Mutex;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::services::ServeDir;
 use tower_http::set_header::SetResponseHeaderLayer;
@@ -18,9 +18,10 @@ use tower_http::trace::TraceLayer;
 use tower_http::{cors, trace};
 use tracing::{Level, info, warn};
 
-mod api;
+pub mod api;
 mod auth;
-mod error;
+pub mod context;
+pub mod error;
 mod extractors;
 mod pages;
 mod session_activity;
@@ -78,7 +79,7 @@ pub struct AppState {
     pub read_pool: SqlitePool,
     pub write_pool: SqlitePool,
     pub users_repo: UsersRepository,
-    pub preview_generation: Mutex<()>,
+    pub previews: PreviewGenerator,
 }
 
 impl AppState {
@@ -90,7 +91,7 @@ impl AppState {
             users_repo: UsersRepository::new(read_pool.clone(), write_pool.clone()),
             read_pool,
             write_pool,
-            preview_generation: Mutex::new(()),
+            previews: PreviewGenerator::new(),
         }
     }
 }

@@ -4,24 +4,25 @@ use axum::{
     response::IntoResponse,
     routing::post,
 };
+use sqlx::{SqliteConnection, SqliteExecutor};
+use std::path::Path;
 use time::OffsetDateTime;
-use tokio::fs;
+use time::serde::timestamp;
+use tokio::{fs, task};
 use tracing::{error, info};
 
 use crate::http::{AppStateRef, auth::AuthenticatedUser};
 use crate::model::photo::Photo;
 use crate::repo::{FoldersRepo, PhotosHashRepo, PhotosTransactionRepo};
+use crate::tasks::get_timestamp_for_path;
+use crate::utils::file_names::sanitize_file_name;
 use crate::{
     http::error::{HttpError, HttpResult},
     model::folder::AccessibleFolder,
 };
 use crate::{
-    http::utils::write_field_to_file,
-    model::photo_hash::PhotoHash,
-    utils::{crop_blake_3_hash, is_safe_path_component},
+    http::utils::write_field_to_file, model::photo_hash::PhotoHash, utils::crop_blake_3_hash,
 };
-use sqlx::SqliteConnection;
-use time::serde::timestamp;
 
 pub fn router() -> Router<AppStateRef> {
     Router::new().route("/", post(upload_photo))
@@ -29,8 +30,13 @@ pub fn router() -> Router<AppStateRef> {
 
 #[derive(Debug, serde::Deserialize)]
 struct UploadDataQuery {
-    #[serde(with = "timestamp")]
-    time_created: OffsetDateTime,
+    /// When absent, the time is read from the file (EXIF, file name…), then `fallback_time`,
+    /// then the current time
+    #[serde(default, with = "timestamp::option")]
+    time_created: Option<OffsetDateTime>,
+    /// e.g. the browser's `File.lastModified`
+    #[serde(default, with = "timestamp::option")]
+    fallback_time: Option<OffsetDateTime>,
     folder_id: Option<i64>,
     #[serde(default)]
     make_public: bool,
@@ -45,20 +51,40 @@ struct UploadTarget {
     dedup_folder_id: Option<i64>,
 }
 
-async fn resolve_upload_target(
-    conn: &mut SqliteConnection,
+impl UploadTarget {
+    /// The existing photo an upload with this hash to this target would deduplicate to
+    async fn find_duplicate(
+        &self,
+        conn: &mut SqliteConnection,
+        hash: &[u8],
+    ) -> sqlx::Result<Option<Photo>> {
+        match self.dedup_folder_id {
+            Some(folder_id) => conn.get_photo_with_hash_in_folder(hash, folder_id).await,
+            None => {
+                conn.get_photo_with_hash(hash, self.photo_user_id.as_deref())
+                    .await
+            }
+        }
+    }
+}
+
+/// The owner and folder a new photo gets: the folder's owner if `folder_id` is set (it must
+/// allow uploads), else public if `make_public`, else the uploader.
+async fn resolve_upload_target<'c, E: SqliteExecutor<'c>>(
+    executor: E,
     user_id: &str,
-    query: &UploadDataQuery,
+    folder_id: Option<i64>,
+    make_public: bool,
 ) -> HttpResult<UploadTarget> {
-    let Some(target_folder_id) = query.folder_id else {
+    let Some(target_folder_id) = folder_id else {
         return Ok(UploadTarget {
-            photo_user_id: (!query.make_public).then_some(user_id.to_owned()),
+            photo_user_id: (!make_public).then_some(user_id.to_owned()),
             folder: None,
             dedup_folder_id: None,
         });
     };
 
-    let folder = conn
+    let folder = executor
         .get_accessible_folder(user_id, target_folder_id)
         .await?
         .ok_or(HttpError::Unauthorized)?;
@@ -94,22 +120,20 @@ async fn upload_photo(
     let file_name = field
         .file_name()
         .or(field.name())
-        .ok_or_else(|| HttpError::BadRequest("Multipart has no name".to_string()))?
-        .to_owned();
-
-    if !is_safe_path_component(&file_name) {
-        return Err(HttpError::BadRequest("Invalid file name".to_string()));
-    }
+        .map(sanitize_file_name)
+        .ok_or_else(|| HttpError::BadRequest("Multipart has no name".to_string()))?;
 
     {
+        // Cheap checks on a read connection: the write connection is only taken once the body
+        // has been received
         let mut conn = state.read_pool.acquire().await?;
-        let target = resolve_upload_target(&mut conn, &user.id, &query).await?;
+        let target =
+            resolve_upload_target(&mut *conn, &user.id, query.folder_id, query.make_public).await?;
 
-        if let Ok(client_hash) = blake3::Hash::from_hex(query.hash.as_deref().unwrap_or("")) {
-            let hash = crop_blake_3_hash(client_hash.as_bytes());
-            if let Some(photo) = check_existing_photo_with_hash(&mut conn, &target, &hash).await? {
-                return Ok(Json(photo));
-            }
+        if let Some(hash) = query.hash.as_deref().and_then(parse_hash)
+            && let Some(photo) = check_existing_photo_with_hash(&mut conn, &target, &hash).await?
+        {
+            return Ok(Json(photo));
         }
     }
 
@@ -119,7 +143,8 @@ async fn upload_photo(
     // share revoked, or the same file uploaded by someone else: check everything again.
     let mut tx = state.write_pool.begin().await?;
 
-    let target = resolve_upload_target(&mut tx, &user.id, &query).await?;
+    let target =
+        resolve_upload_target(tx.as_mut(), &user.id, query.folder_id, query.make_public).await?;
 
     if let Some(photo) =
         check_existing_photo_with_hash(&mut tx, &target, &written_file.hash).await?
@@ -133,7 +158,8 @@ async fn upload_photo(
         id: 0,
         user_id: target.photo_user_id,
         name: file_name,
-        created_at: query.time_created,
+        // Replaced by the file's own timestamp below when not given
+        created_at: query.time_created.unwrap_or_else(OffsetDateTime::now_utc),
         file_size: written_file.size as i64,
         folder_id: target.folder.as_ref().map(|f| f.id),
         thumb_hash: None,
@@ -161,23 +187,58 @@ async fn upload_photo(
 
     info!("Uploading file to {}", photo_path.display());
 
-    let photo = tx.insert_photo(&photo).await?;
-    tx.insert_hash(PhotoHash {
-        id: photo.id,
-        hash: written_file.hash.clone(),
-    })
-    .await?;
-
+    let hash = written_file.hash.clone();
     written_file.persist_to(&photo_path).await?;
 
-    tx.commit().await.inspect_err(|_| {
-        // Transaction failed, delete the file
-        if let Err(e) = std::fs::remove_file(photo_path) {
-            error!("Failed to remove uploaded file: {e}");
+    let result = async {
+        if query.time_created.is_none() {
+            photo.created_at = file_timestamp(&photo_path, query.fallback_time).await;
         }
-    })?;
 
-    Ok(Json(photo))
+        let photo = tx.insert_photo(&photo).await?;
+        tx.insert_hash(PhotoHash { id: photo.id, hash }).await?;
+        tx.commit().await?;
+        HttpResult::Ok(photo)
+    }
+    .await;
+
+    match result {
+        Ok(photo) => Ok(Json(photo)),
+        Err(e) => {
+            // The photo wasn't saved, delete the file
+            if let Err(e) = fs::remove_file(&photo_path).await {
+                error!("Failed to remove uploaded file: {e}");
+            }
+            Err(e)
+        }
+    }
+}
+
+/// The creation time of an uploaded file that came without one
+async fn file_timestamp(path: &Path, fallback: Option<OffsetDateTime>) -> OffsetDateTime {
+    let path = path.to_path_buf();
+    task::spawn_blocking(move || get_timestamp_for_path(path))
+        .await
+        .ok()
+        .flatten()
+        .or(fallback)
+        .unwrap_or_else(OffsetDateTime::now_utc)
+}
+
+/// Accepts a full (64 hex chars) or cropped (32 hex chars) blake3 hash and returns the cropped
+/// bytes stored in the database.
+fn parse_hash(hex: &str) -> Option<Vec<u8>> {
+    if let Ok(hash) = blake3::Hash::from_hex(hex) {
+        return Some(crop_blake_3_hash(hash.as_bytes()));
+    }
+
+    if hex.len() != 32 || !hex.is_ascii() {
+        return None;
+    }
+    (0..hex.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).ok())
+        .collect()
 }
 
 async fn check_existing_photo_with_hash(
@@ -185,13 +246,7 @@ async fn check_existing_photo_with_hash(
     target: &UploadTarget,
     hash: &[u8],
 ) -> Result<Option<Photo>, HttpError> {
-    let existing = match target.dedup_folder_id {
-        Some(folder_id) => conn.get_photo_with_hash_in_folder(hash, folder_id).await?,
-        None => {
-            conn.get_photo_with_hash(hash, target.photo_user_id.as_deref())
-                .await?
-        }
-    };
+    let existing = target.find_duplicate(conn, hash).await?;
 
     if let Some(photo) = existing {
         let folder_name = conn.get_folder_name(photo.folder_id).await?;
@@ -207,6 +262,28 @@ async fn check_existing_photo_with_hash(
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_hash() {
+        let full = blake3::hash(b"photo");
+        let cropped = crop_blake_3_hash(full.as_bytes());
+
+        assert_eq!(parse_hash(&full.to_hex()), Some(cropped.clone()));
+        assert_eq!(parse_hash(&full.to_hex()[..32]), Some(cropped));
+        assert_eq!(
+            parse_hash(&full.to_hex().to_uppercase()[..32]).map(|h| h.len()),
+            Some(16)
+        );
+        assert_eq!(parse_hash(""), None);
+        assert_eq!(parse_hash("xyz"), None);
+        assert_eq!(parse_hash(&"g".repeat(32)), None);
+        assert_eq!(parse_hash(&"ă".repeat(16)), None);
+    }
+}
+
+#[cfg(test)]
+mod concurrency_tests {
     use crate::db;
     use crate::http::{AppState, router};
     use crate::utils::password_hash::generate_hash_from_password;

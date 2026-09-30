@@ -50,7 +50,7 @@ pub trait FavoritesRepo<'c>: SqliteExecutor<'c> {
 
     async fn insert_favorite(self, photo_id: i64, user_id: &str) -> sqlx::Result<()> {
         query!(
-            "insert into favorite_photos (photo_id, user_id) values ($1, $2)",
+            "insert into favorite_photos (photo_id, user_id) values ($1, $2) on conflict do nothing",
             photo_id,
             user_id
         )
@@ -174,9 +174,9 @@ mod tests {
         let is_fav = pool.check_favorite(inserted.id, "user1").await?;
         assert!(is_fav);
 
-        // Insert duplicate → unique constraint error
-        let result = pool.insert_favorite(inserted.id, "user1").await;
-        assert!(result.is_err());
+        // Insert duplicate → no-op
+        pool.insert_favorite(inserted.id, "user1").await?;
+        assert_eq!(pool.get_favorite_photos("user1").await?.len(), 1);
 
         // Delete existing → success
         pool.delete_favorite(inserted.id, "user1").await?;

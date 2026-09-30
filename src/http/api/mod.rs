@@ -1,13 +1,18 @@
+mod context;
 mod download;
 mod favorite;
 mod folders;
 mod move_photos;
+pub mod photos_info;
 mod photos_misc;
 mod sharing;
 mod sync;
 mod trash;
 mod upload;
 mod users;
+
+#[cfg(test)]
+mod tests;
 
 use axum::Router;
 use axum_login::login_required;
@@ -18,6 +23,7 @@ use crate::repo::users_repo::UsersRepository;
 pub fn router(app_state: AppStateRef) -> Router {
     let protected_router = Router::new()
         .nest("/sync", sync::router())
+        .nest("/context", context::router())
         .nest("/move", move_photos::router())
         .nest("/trash", trash::router())
         .nest("/sharing", sharing::router())
@@ -25,6 +31,7 @@ pub fn router(app_state: AppStateRef) -> Router {
         .nest("/folders", folders::router())
         .nest("/upload", upload::router())
         .merge(photos_misc::router())
+        .merge(photos_info::router())
         .merge(download::router())
         .merge(users::protected_router())
         .route_layer(login_required!(UsersRepository));

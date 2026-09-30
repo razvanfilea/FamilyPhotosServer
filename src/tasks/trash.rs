@@ -1,4 +1,5 @@
 use crate::http::AppStateRef;
+use crate::previews;
 use crate::repo::{FoldersRepo, PhotosRepo, PhotosTransactionRepo};
 use tokio::fs;
 use tracing::{error, info, warn};
@@ -8,15 +9,7 @@ pub async fn cleanup_trash(app_state: AppStateRef) -> Result<(), sqlx::Error> {
     let folder_map = tx.as_mut().get_folder_name_map().await?;
 
     for photo in tx.get_expired_trash_photos().await?.iter() {
-        if let Err(e) = fs::remove_file(
-            app_state
-                .storage
-                .resolve_preview(photo.partial_preview_path()),
-        )
-        .await
-        {
-            warn!("Failed to remove photo preview: {e}");
-        }
+        previews::remove_renditions(&app_state.storage, photo.id).await;
 
         let folder_name = photo.folder_id.and_then(|id| folder_map.get(&id).cloned());
         let photo_path = app_state

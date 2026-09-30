@@ -9,6 +9,7 @@ use std::collections::HashSet;
 use std::fs;
 use std::num::NonZero;
 use std::time::Duration;
+pub use timestamp_parsing::get_timestamp_for_path;
 use tracing::{debug, error, info};
 
 use crate::http::AppStateRef;

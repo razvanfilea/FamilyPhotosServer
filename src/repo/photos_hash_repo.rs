@@ -83,10 +83,14 @@ pub trait PhotosHashRepo<'c>: SqliteExecutor<'c> {
     }
 
     async fn insert_hash(self, photo_hash: PhotoHash) -> sqlx::Result<()> {
-        query!("insert or replace into photos_hash (photo_id, hash) values ($1, $2)", photo_hash.id, photo_hash.hash)
-            .execute(self)
-            .await
-            .map(|_|{})
+        query!(
+            "insert or replace into photos_hash (photo_id, hash) values ($1, $2)",
+            photo_hash.id,
+            photo_hash.hash
+        )
+        .execute(self)
+        .await
+        .map(|_| {})
     }
 
     async fn insert_hashes(self, photos: &[PhotoHash]) -> sqlx::Result<()> {

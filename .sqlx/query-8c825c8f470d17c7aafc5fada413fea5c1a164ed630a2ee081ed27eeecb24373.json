@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "insert into favorite_photos (photo_id, user_id) values ($1, $2) on conflict do nothing",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "8c825c8f470d17c7aafc5fada413fea5c1a164ed630a2ee081ed27eeecb24373"
+}
