@@ -9,7 +9,7 @@ use axum::{
 
 use tracing::info;
 
-use crate::http::error::{HttpError, HttpResult};
+use crate::http::error::{HttpError, HttpResult, is_unique_violation};
 use crate::model::folder_permission::{CreateShareRequest, ShareResponse};
 use crate::repo::{FolderPermissionsRepo, FoldersRepo};
 use crate::{
@@ -94,7 +94,14 @@ async fn create_share(
             request.can_delete,
             request.expires_at,
         )
-        .await?;
+        .await
+        .map_err(|e| {
+            if is_unique_violation(&e) {
+                HttpError::Conflict("This person already has access".to_string())
+            } else {
+                e.into()
+            }
+        })?;
 
     tx.commit().await?;
 

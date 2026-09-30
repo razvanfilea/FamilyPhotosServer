@@ -64,10 +64,6 @@ impl PhotoWithFolder {
     pub fn partial_path(&self) -> String {
         self.photo.partial_path(self.folder_name.as_deref())
     }
-
-    pub fn partial_preview_path(&self) -> String {
-        self.photo.partial_preview_path()
-    }
 }
 
 #[derive(Serialize)]

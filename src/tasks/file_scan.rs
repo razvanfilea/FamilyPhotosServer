@@ -10,6 +10,7 @@ use walkdir::{DirEntry, WalkDir};
 use crate::http::AppStateRef;
 use crate::model::photo::Photo;
 use crate::model::user::PUBLIC_USER_FOLDER;
+use crate::previews;
 use crate::repo::{FoldersRepo, PhotosRepo, PhotosTransactionRepo};
 use crate::tasks::timestamp_parsing;
 
@@ -48,6 +49,9 @@ pub async fn scan_new_files(app_state: AppStateRef) -> sqlx::Result<()> {
                 if let Err(e) = tx.delete_photos(chunk).await {
                     error!("Failed deleting photos: {e}")
                 }
+            }
+            for photo_id in &removed_photo_ids {
+                previews::remove_renditions(&app_state.storage, *photo_id).await;
             }
         }
 

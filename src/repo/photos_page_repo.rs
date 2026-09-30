@@ -51,7 +51,7 @@ pub trait PhotosPageRepo<'c>: SqliteExecutor<'c> {
                     where user_id = $1
                       and trashed_on is null
                       and ($2 is null or created_at < $2 or (created_at = $2 and id < $3))
-                    order by created_at desc
+                    order by created_at desc, id desc
                     limit $4"#,
                     user_id,
                     cursor_created_at,
@@ -68,7 +68,7 @@ pub trait PhotosPageRepo<'c>: SqliteExecutor<'c> {
                     where user_id is null
                       and trashed_on is null
                       and ($1 is null or created_at < $1 or (created_at = $1 and id < $2))
-                    order by created_at desc
+                    order by created_at desc, id desc
                     limit $3"#,
                     cursor_created_at,
                     cursor_id,
@@ -91,7 +91,7 @@ pub trait PhotosPageRepo<'c>: SqliteExecutor<'c> {
                           and trashed_on is null
                           and ($1 is null or created_at < $1 or (created_at = $1 and id < $2))
                     )
-                    order by created_at desc
+                    order by created_at desc, id desc
                     limit $4"#,
                     cursor_created_at,
                     cursor_id,

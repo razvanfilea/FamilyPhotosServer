@@ -73,7 +73,9 @@ async fn move_photos(
         let destination_path = photo.partial_path(target_folder_name);
 
         if source_path == destination_path {
-            warn!("Source and destination are the same: {destination_path}. Photo cannot be moved.");
+            warn!(
+                "Source and destination are the same: {destination_path}. Photo cannot be moved."
+            );
             continue;
         }
 

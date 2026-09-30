@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "select user_id, name, file_size from photos\n            where (user_id is null or user_id = $1) and trashed_on is null",
+  "describe": {
+    "columns": [
+      {
+        "name": "user_id",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "photos",
+            "name": "user_id"
+          }
+        }
+      },
+      {
+        "name": "name",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "photos",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "file_size",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "photos",
+            "name": "file_size"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "72fa041846b1ca742a9443508ccac4b161a67c8ed04196629e31f79f72653131"
+}
