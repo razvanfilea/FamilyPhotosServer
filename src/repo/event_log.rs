@@ -146,15 +146,18 @@ pub trait FolderEventLogRepo<'c>: SqliteExecutor<'c> {
             .map(|_| ())
     }
 
+    /// Keeps only the last `max_per_folder` events of each folder. Event ids are global
+    /// across folders, so the cutoff has to be computed per folder. This always deletes
+    /// a prefix (the oldest events) of each folder's log.
     async fn delete_old_folder_events(self, max_per_folder: u32) -> sqlx::Result<()> {
         query!(
             r#"delete from folder_event_log where event_id in (
-                select e.event_id from folder_event_log e
-                inner join (
-                    select folder_id, max(event_id) - $1 as cutoff
+                select event_id from (
+                    select event_id,
+                        row_number() over (partition by folder_id order by event_id desc) as rn
                     from folder_event_log
-                    group by folder_id
-                ) c on e.folder_id = c.folder_id and e.event_id <= c.cutoff
+                )
+                where rn > $1
             )"#,
             max_per_folder
         )
@@ -167,11 +170,17 @@ pub trait FolderEventLogRepo<'c>: SqliteExecutor<'c> {
 impl<'c, E> FolderEventLogRepo<'c> for E where E: SqliteExecutor<'c> {}
 
 pub trait FolderEventLogTransactionRepo {
+    /// Returns the events of the folder after `after_event_id` (which must be > 0), or
+    /// `None` if the cursor is stale, meaning the client cannot rely on a delta:
+    /// - the folder has no events but the cursor is > 0
+    /// - the oldest remaining event is newer than the cursor (cleanup deleted events
+    ///   at or after the cursor; it only ever deletes the oldest events of a folder)
+    /// - the cursor is ahead of the newest event
     async fn get_folder_events(
         &mut self,
         folder_id: i64,
         after_event_id: i64,
-    ) -> sqlx::Result<EventLogs>;
+    ) -> sqlx::Result<Option<EventLogs>>;
 }
 
 impl FolderEventLogTransactionRepo for SqliteTransaction<'_> {
@@ -179,13 +188,22 @@ impl FolderEventLogTransactionRepo for SqliteTransaction<'_> {
         &mut self,
         folder_id: i64,
         after_event_id: i64,
-    ) -> sqlx::Result<EventLogs> {
-        let max_event_id = query_scalar!(
-            "select coalesce(max(event_id), 0) as 'id!: i64' from folder_event_log where folder_id = $1",
+    ) -> sqlx::Result<Option<EventLogs>> {
+        let (min_event_id, max_event_id) = query!(
+            "select min(event_id) as 'min_id: i64', max(event_id) as 'max_id: i64' from folder_event_log where folder_id = $1",
             folder_id
         )
+        .map(|record| (record.min_id, record.max_id))
         .fetch_one(self.as_mut())
         .await?;
+
+        let (Some(min_event_id), Some(max_event_id)) = (min_event_id, max_event_id) else {
+            return Ok(None);
+        };
+
+        if min_event_id > after_event_id || max_event_id < after_event_id {
+            return Ok(None);
+        }
 
         let events = query!(
             "select photo_id, data from folder_event_log where folder_id = $1 and event_id > $2 order by event_id",
@@ -199,10 +217,10 @@ impl FolderEventLogTransactionRepo for SqliteTransaction<'_> {
         .fetch_all(self.as_mut())
         .await?;
 
-        Ok(EventLogs {
+        Ok(Some(EventLogs {
             event_log_id: max_event_id,
             events,
-        })
+        }))
     }
 }
 
@@ -475,6 +493,55 @@ mod tests {
                 .fetch_one(&pool)
                 .await?;
         assert_eq!(count, 2);
+
+        Ok(())
+    }
+
+    async fn folder_event_ids(pool: &SqlitePool, folder_id: i64) -> sqlx::Result<Vec<i64>> {
+        sqlx::query_scalar!(
+            "select event_id from folder_event_log where folder_id = $1 order by event_id",
+            folder_id
+        )
+        .fetch_all(pool)
+        .await
+    }
+
+    #[sqlx::test]
+    async fn test_delete_old_folder_events_is_per_folder(pool: SqlitePool) -> sqlx::Result<()> {
+        let user = create_test_user("user1", "Test User");
+        insert_test_user(&pool, &user).await?;
+
+        let quiet = create_test_folder(&pool, Some("user1"), "quiet").await;
+        let busy = create_test_folder(&pool, Some("user1"), "busy").await;
+
+        // Interleave: 3 events in the quiet folder among 10 in the busy one
+        for i in 0..10 {
+            let folder_id = if i % 4 == 0 { quiet.id } else { busy.id };
+            let mut tx = pool.begin().await?;
+            tx.insert_photo(&create_test_photo(
+                0,
+                Some("user1"),
+                Some(folder_id),
+                &format!("p{i}.jpg"),
+            ))
+            .await?;
+            tx.commit().await?;
+        }
+
+        let quiet_before = folder_event_ids(&pool, quiet.id).await?;
+        let busy_before = folder_event_ids(&pool, busy.id).await?;
+        assert_eq!((quiet_before.len(), busy_before.len()), (3, 7));
+
+        pool.delete_old_folder_events(3).await?;
+
+        // The quiet folder keeps all its events even though they are far behind the global max
+        assert_eq!(folder_event_ids(&pool, quiet.id).await?, quiet_before);
+        // The busy folder keeps only its last 3
+        assert_eq!(folder_event_ids(&pool, busy.id).await?, &busy_before[4..]);
+
+        pool.delete_old_folder_events(1).await?;
+        assert_eq!(folder_event_ids(&pool, quiet.id).await?, &quiet_before[2..]);
+        assert_eq!(folder_event_ids(&pool, busy.id).await?, &busy_before[6..]);
 
         Ok(())
     }

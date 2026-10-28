@@ -211,14 +211,11 @@ impl<'c> PhotosTransactionRepo<'c> for SqliteTransaction<'c> {
         last_event_id: i64,
         user_id: &str,
     ) -> Result<EventLogs, UserEventLogError> {
-        let ids = query!(
-            "select min(event_id) as 'min_id!: i64', max(event_id) as 'max_id!: i64' from photos_event_log",
+        // An empty log yields min = max = 0
+        let (min_event_id, max_event_id) = query!(
+            "select coalesce(min(event_id), 0) as 'min_id!: i64', coalesce(max(event_id), 0) as 'max_id!: i64' from photos_event_log",
         ).map(|record| (record.min_id, record.max_id))
-            .fetch_optional(self.as_mut()).await?;
-
-        let Some((min_event_id, max_event_id)) = ids else {
-            return Err(UserEventLogError::NoEvents);
-        };
+            .fetch_one(self.as_mut()).await?;
 
         if last_event_id < min_event_id || last_event_id > max_event_id {
             return Err(UserEventLogError::InvalidEventId);
@@ -473,8 +470,6 @@ pub enum UserEventLogError {
     Database(#[from] sqlx::Error),
     #[error("Invalid event id parameter")]
     InvalidEventId,
-    #[error("No events found for user id")]
-    NoEvents,
 }
 
 #[cfg(test)]

@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "select min(event_id) as 'min_id: i64', max(event_id) as 'max_id: i64' from folder_event_log where folder_id = $1",
+  "describe": {
+    "columns": [
+      {
+        "name": "min_id: i64",
+        "ordinal": 0,
+        "type_info": "Null"
+      },
+      {
+        "name": "max_id: i64",
+        "ordinal": 1,
+        "type_info": "Null"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      true
+    ]
+  },
+  "hash": "1a98fc50d067408e81f6903a19f5ab2a0707e47e7e9fe57f668716b887f06b53"
+}

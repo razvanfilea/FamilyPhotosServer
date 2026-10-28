@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "delete from folder_event_log where event_id in (\n                select event_id from (\n                    select event_id,\n                        row_number() over (partition by folder_id order by event_id desc) as rn\n                    from folder_event_log\n                )\n                where rn > $1\n            )",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "d736393dd163c683588e8f0dd085a16a087bb07568b1686abdcb7af37a512c58"
+}

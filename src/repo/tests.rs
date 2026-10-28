@@ -216,4 +216,71 @@ mod integration {
 
         Ok(())
     }
+
+    #[sqlx::test]
+    async fn test_event_log_bounds_empty_log(pool: SqlitePool) -> sqlx::Result<()> {
+        let user = create_test_user("user1", "Test User");
+        insert_test_user(&pool, &user).await?;
+
+        // Empty log: cursor 0 → Ok with no events
+        let mut tx = pool.begin().await?;
+        let events = tx
+            .get_events_for_user(0, "user1")
+            .await
+            .expect("cursor 0 is valid on an empty log");
+        assert!(events.events.is_empty());
+        assert_eq!(events.event_log_id, 0);
+
+        // Any other cursor → InvalidEventId
+        let result = tx.get_events_for_user(5, "user1").await;
+        assert!(
+            matches!(result, Err(UserEventLogError::InvalidEventId)),
+            "Expected InvalidEventId for ID 5, got {:?}",
+            result
+        );
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn test_event_log_bounds_after_trimming(pool: SqlitePool) -> sqlx::Result<()> {
+        use crate::repo::EventLogRepo;
+
+        let user = create_test_user("user1", "Test User");
+        insert_test_user(&pool, &user).await?;
+
+        let photos: Vec<_> = (0..5)
+            .map(|i| create_test_photo(0, Some("user1"), None, &format!("p{i}.jpg")))
+            .collect();
+        let mut tx = pool.begin().await?;
+        tx.insert_photos(&photos).await?;
+        tx.commit().await?;
+
+        let max_id =
+            sqlx::query_scalar!("select max(event_id) as 'id!: i64' from photos_event_log")
+                .fetch_one(&pool)
+                .await?;
+        pool.delete_old_events(2).await?;
+        let min_id = max_id - 1;
+
+        let mut tx = pool.begin().await?;
+
+        // Cursor below the oldest remaining event → InvalidEventId
+        let result = tx.get_events_for_user(min_id - 1, "user1").await;
+        assert!(
+            matches!(result, Err(UserEventLogError::InvalidEventId)),
+            "Expected InvalidEventId, got {:?}",
+            result
+        );
+
+        // Cursor equal to the oldest remaining event → the newer events
+        let events = tx
+            .get_events_for_user(min_id, "user1")
+            .await
+            .expect("cursor at min is valid");
+        assert_eq!(events.events.len(), 1);
+        assert_eq!(events.event_log_id, max_id);
+
+        Ok(())
+    }
 }
