@@ -51,6 +51,10 @@ enum PhotosCommand {
     ScanPhotos,
     /// Trigger a manual generation of previews
     GeneratePreviews,
+    /// Trigger a manual generation of thumb hashes (needs the previews)
+    GenerateThumbHashes,
+    /// Trigger a manual computation of the file hashes used to detect duplicates
+    ComputeHashes,
 }
 
 #[derive(Subcommand)]
@@ -83,8 +87,9 @@ async fn user_commands(state: AppStateRef, command: UsersCommand) {
             name,
             password,
         } => {
+            // Logins lowercase the user id (web and Android), so store it that way
             let user = User {
-                id: user_id,
+                id: user_id.trim().to_lowercase(),
                 name,
                 password_hash: generate_hash_from_password(password),
             };
@@ -154,6 +159,14 @@ async fn photos_commands(state: AppStateRef, command: PhotosCommand) {
         PhotosCommand::GeneratePreviews => match previews::generate_all_previews(state).await {
             Ok(_) => println!("Preview generation finished"),
             Err(e) => eprintln!("Preview generation failed: {e}"),
+        },
+        PhotosCommand::GenerateThumbHashes => match tasks::generate_thumb_hashes(state).await {
+            Ok(_) => println!("Thumb hash generation finished"),
+            Err(e) => eprintln!("Thumb hash generation failed: {e}"),
+        },
+        PhotosCommand::ComputeHashes => match tasks::compute_photos_hash(state).await {
+            Ok(_) => println!("Hash computation finished"),
+            Err(e) => eprintln!("Hash computation failed: {e}"),
         },
     }
 }

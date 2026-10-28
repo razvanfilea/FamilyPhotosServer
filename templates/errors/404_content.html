@@ -1,0 +1,7 @@
+{% import "macros/ui.html" as ui %}
+<div data-testid="not-found">
+    {% call ui::empty_state("error", "Page not found", "The page you are looking for doesn't exist or was moved.") %}{% endcall %}
+    <div class="flex justify-center">
+        <a href="/" class="btn btn-primary" hx-boost="false">Go to Photos</a>
+    </div>
+</div>

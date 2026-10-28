@@ -1,4 +1,5 @@
-{% extends "base.html" %}
+{% extends "shell.html" %}
+{% import "macros/icons.html" as icons %}
 
 {% block title %}Upload - Family Photos{% endblock %}
 
@@ -22,8 +23,8 @@
 
     /* Drop zone drag state */
     #drop-zone.drag-over {
-        border-color: oklch(var(--p));
-        background-color: oklch(var(--b3));
+        border-color: var(--color-primary);
+        background-color: var(--color-base-300);
     }
 
     /* Folder search hidden state */
@@ -36,14 +37,14 @@
         <div class="card bg-base-200">
             <div class="card-body">
                 <h2 class="card-title mb-6">
-                    <span class="material-symbols-outlined">visibility</span>
+                    {% call icons::icon("visibility") %}{% endcall %}
                     Who can see these photos?
                 </h2>
 
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <button id="btn-personal" class="visibility-btn card bg-base-100 hover:bg-base-300 cursor-pointer transition-all border-2 border-transparent p-6 text-left min-h-32" data-value="personal">
                         <div class="flex items-center gap-3 mb-2">
-                            <span class="material-symbols-outlined text-3xl">person</span>
+                            {% call icons::icon("person", false, "text-3xl") %}{% endcall %}
                             <span class="text-xl font-semibold">Personal</span>
                         </div>
                         <p class="text-base-content/70">Only you can see these photos</p>
@@ -51,7 +52,7 @@
 
                     <button id="btn-family" class="visibility-btn card bg-base-100 hover:bg-base-300 cursor-pointer transition-all border-2 border-transparent p-6 text-left min-h-32" data-value="family">
                         <div class="flex items-center gap-3 mb-2">
-                            <span class="material-symbols-outlined text-3xl">groups</span>
+                            {% call icons::icon("groups", false, "text-3xl") %}{% endcall %}
                             <span class="text-xl font-semibold">Family</span>
                         </div>
                         <p class="text-base-content/70">Everyone in the family can see these</p>
@@ -66,35 +67,35 @@
         <div class="card bg-base-200">
             <div class="card-body">
                 <h2 class="card-title mb-6">
-                    <span class="material-symbols-outlined">folder</span>
+                    {% call icons::icon("folder") %}{% endcall %}
                     Choose a folder
                 </h2>
 
                 <div class="form-control mb-4">
                     <label class="input input-bordered flex items-center gap-2 w-full">
-                        <span class="material-symbols-outlined text-base-content/50">search</span>
+                        {% call icons::icon("search", false, "text-base-content/50") %}{% endcall %}
                         <input type="text" id="folder-search" placeholder="Search folders..." class="grow bg-transparent outline-none" />
                     </label>
                 </div>
 
                 <div id="folder-grid" class="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
                     <button class="folder-option btn btn-outline h-auto py-4 flex flex-col items-center gap-2" data-folder="">
-                        <span class="material-symbols-outlined">folder_off</span>
+                        {% call icons::icon("folder_off") %}{% endcall %}
                         <span class="text-sm">No folder</span>
                     </button>
                     <button class="folder-option btn btn-outline h-auto py-4 flex flex-col items-center gap-2" data-folder="__new__">
-                        <span class="material-symbols-outlined">create_new_folder</span>
+                        {% call icons::icon("create_new_folder") %}{% endcall %}
                         <span class="text-sm">New folder</span>
                     </button>
                     {% for folder in personal_folders %}
                     <button class="folder-option folder-personal btn btn-outline h-auto py-4 hidden flex-col items-center gap-2" data-folder="{{ folder.name }}">
-                        <span class="material-symbols-outlined">folder</span>
+                        {% call icons::icon("folder") %}{% endcall %}
                         <span class="text-sm truncate max-w-full">{{ folder.name }}</span>
                     </button>
                     {% endfor %}
                     {% for folder in family_folders %}
                     <button class="folder-option folder-family btn btn-outline h-auto py-4 hidden flex-col items-center gap-2" data-folder="{{ folder.name }}">
-                        <span class="material-symbols-outlined">folder</span>
+                        {% call icons::icon("folder") %}{% endcall %}
                         <span class="text-sm truncate max-w-full">{{ folder.name }}</span>
                     </button>
                     {% endfor %}
@@ -117,12 +118,12 @@
         <div class="card bg-base-200">
             <div class="card-body">
                 <h2 class="card-title mb-4">
-                    <span class="material-symbols-outlined">cloud_upload</span>
+                    {% call icons::icon("cloud_upload") %}{% endcall %}
                     Select Photos
                 </h2>
 
                 <div id="drop-zone" class="hide-on-results border-2 border-dashed border-base-content/30 rounded-lg p-8 sm:p-12 text-center cursor-pointer hover:border-primary hover:bg-base-300 transition-colors">
-                    <span class="material-symbols-outlined text-5xl sm:text-6xl text-base-content/50 mb-4">add_photo_alternate</span>
+                    {% call icons::icon("add_photo_alternate", false, "text-5xl sm:text-6xl text-base-content/50 mb-4") %}{% endcall %}
                     <p class="text-lg text-base-content/70">Drag & drop photos here</p>
                     <p class="text-sm text-base-content/50 mt-2">or click to select files</p>
                     <input type="file" id="file-input" multiple accept="image/*,video/*" class="hidden" />
@@ -132,14 +133,14 @@
                     <div class="flex items-center justify-between mb-3 hide-on-uploading hide-on-results">
                         <span id="file-count" class="text-sm font-medium">0 files selected</span>
                         <button id="btn-clear-files" class="btn btn-ghost btn-sm">
-                            <span class="material-symbols-outlined text-sm">close</span>
+                            {% call icons::icon("close", false, "text-sm") %}{% endcall %}
                             Clear all
                         </button>
                     </div>
                     <div id="file-preview-grid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3"></div>
 
                     <div id="size-warning" class="hidden alert alert-warning mt-4">
-                        <span class="material-symbols-outlined">warning</span>
+                        {% call icons::icon("warning") %}{% endcall %}
                         <span id="size-warning-text">Some files are larger than 50MB and may take longer to upload.</span>
                     </div>
                 </div>
@@ -152,7 +153,7 @@
                     </div>
                     <progress id="progress-bar" class="progress progress-primary w-full" value="0" max="100"></progress>
                     <button id="btn-cancel-upload" class="btn btn-error btn-sm mt-3">
-                        <span class="material-symbols-outlined text-sm">cancel</span>
+                        {% call icons::icon("cancel", false, "text-sm") %}{% endcall %}
                         Cancel Upload
                     </button>
                 </div>
@@ -160,21 +161,21 @@
                 <!-- Results Summary -->
                 <div id="upload-results" class="show-on-results hidden mt-6">
                     <div id="results-success" class="hidden alert alert-success mb-3">
-                        <span class="material-symbols-outlined">check_circle</span>
+                        {% call icons::icon("check_circle") %}{% endcall %}
                         <span id="success-message">Photos uploaded successfully!</span>
                     </div>
                     <div id="results-error" class="hidden alert alert-error mb-3">
-                        <span class="material-symbols-outlined">error</span>
+                        {% call icons::icon("error") %}{% endcall %}
                         <span id="error-message">Some uploads failed</span>
                         <button id="btn-retry-failed" class="btn btn-sm btn-ghost">Retry</button>
                     </div>
                     <div class="flex gap-2 mt-4">
                         <button id="btn-upload-more" class="btn btn-primary">
-                            <span class="material-symbols-outlined">add</span>
+                            {% call icons::icon("add") %}{% endcall %}
                             Upload More
                         </button>
                         <a id="btn-view-gallery" href="/" class="btn btn-ghost">
-                            <span class="material-symbols-outlined">photo_library</span>
+                            {% call icons::icon("photo_library") %}{% endcall %}
                             View Gallery
                         </a>
                     </div>
@@ -183,7 +184,7 @@
                 <!-- Action Buttons -->
                 <div id="upload-actions" class="flex justify-end mt-6 hide-on-uploading hide-on-results">
                     <button id="btn-start-upload" class="btn btn-primary" disabled>
-                        <span class="material-symbols-outlined">cloud_upload</span>
+                        {% call icons::icon("cloud_upload") %}{% endcall %}
                         Upload
                     </button>
                 </div>
@@ -196,7 +197,7 @@
 <template id="file-preview-template">
     <div class="file-preview relative aspect-square bg-base-300 rounded-lg overflow-hidden">
         <div class="preview-content w-full h-full flex items-center justify-center">
-            <span class="placeholder-icon material-symbols-outlined text-3xl text-base-content/50">image</span>
+            {% call icons::icon("image", false, "placeholder-icon text-3xl text-base-content/50") %}{% endcall %}
             <img class="preview-image hidden w-full h-full object-cover" alt="" />
         </div>
         <!-- Status overlays -->
@@ -204,14 +205,14 @@
             <span class="loading loading-spinner loading-md text-white"></span>
         </div>
         <div class="status-success hidden absolute inset-0 bg-success/30 flex items-center justify-center">
-            <span class="material-symbols-outlined text-3xl text-success">check_circle</span>
+            {% call icons::icon("check_circle", false, "text-3xl text-success") %}{% endcall %}
         </div>
         <div class="status-error hidden absolute inset-0 bg-error/30 flex items-center justify-center">
-            <span class="material-symbols-outlined text-3xl text-error">error</span>
+            {% call icons::icon("error", false, "text-3xl text-error") %}{% endcall %}
         </div>
         <!-- Remove button -->
         <button class="btn-remove-file absolute top-1 right-1 btn btn-circle btn-xs btn-ghost bg-black/50 hover:bg-black/70">
-            <span class="material-symbols-outlined text-sm text-white">close</span>
+            {% call icons::icon("close", false, "text-sm text-white") %}{% endcall %}
         </button>
         <div class="absolute bottom-0 left-0 right-0 bg-black/60 p-1">
             <p class="file-name text-xs text-white truncate"></p>
@@ -219,345 +220,8 @@
     </div>
 </template>
 
-<script>
-(function() {
-    const CONFIG = {
-        THUMBNAIL_SIZE: 200,
-        JPEG_QUALITY: 0.6,
-        LARGE_FILE_SIZE: 50 * 1024 * 1024,
-        UPLOAD_CONCURRENCY: 3,
-    };
+{% endblock %}
 
-    const $ = (sel, ctx = document) => ctx.querySelector(sel);
-    const $$ = (sel, ctx = document) => ctx.querySelectorAll(sel);
-    const show = el => el.classList.remove('hidden');
-    const hide = el => el.classList.add('hidden');
-    const pluralize = (n, word) => `${n} ${word}${n !== 1 ? 's' : ''}`;
-
-    const container = $('#upload-container');
-    const template = $('#file-preview-template');
-
-    const state = {
-        visibility: null,
-        folder: null,
-        isNewFolder: false,
-        files: [],
-        uploading: false,
-        abortController: null,
-    };
-
-    // Visibility selection
-    $$('.visibility-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const value = btn.dataset.value;
-            state.visibility = value;
-            state.folder = null;
-            state.isNewFolder = false;
-
-            $$('.visibility-btn').forEach(b => {
-                b.classList.toggle('border-primary', b === btn);
-                b.classList.toggle('ring-2', b === btn);
-                b.classList.toggle('ring-primary', b === btn);
-            });
-            container.dataset.visibility = value;
-
-            // Reset folder search
-            $('#folder-search').value = '';
-            $('#folder-search').dispatchEvent(new Event('input'));
-
-            show($('#section-folder'));
-            selectFolder('');
-            show($('#section-upload'));
-        });
-    });
-
-    // Folder selection
-    function selectFolder(folder) {
-        state.isNewFolder = folder === '__new__';
-        state.folder = state.isNewFolder ? null : (folder || null);
-
-        $$('.folder-option').forEach(btn => {
-            const isSelected = btn.dataset.folder === folder;
-            btn.classList.toggle('btn-primary', isSelected);
-            btn.classList.toggle('btn-outline', !isSelected);
-        });
-
-        const newFolderContainer = $('#new-folder-container');
-        const newFolderInput = $('#new-folder-input');
-        if (state.isNewFolder) {
-            show(newFolderContainer);
-            newFolderInput.focus();
-        } else {
-            hide(newFolderContainer);
-            newFolderInput.value = '';
-        }
-    }
-
-    $$('.folder-option').forEach(btn => {
-        btn.addEventListener('click', () => selectFolder(btn.dataset.folder));
-    });
-
-    // Folder search
-    const folderSearch = $('#folder-search');
-    folderSearch.addEventListener('input', () => {
-        const term = folderSearch.value.toLowerCase().trim();
-        $$('.folder-option').forEach(btn => {
-            const folder = btn.dataset.folder;
-            // Always show "No folder" and "New folder"
-            if (folder === '' || folder === '__new__') return;
-
-            const matches = folder.toLowerCase().includes(term);
-            btn.classList.toggle('search-hidden', !matches);
-        });
-    });
-
-    function getSelectedFolder() {
-        return state.isNewFolder ? $('#new-folder-input').value.trim() || null : state.folder;
-    }
-
-    // File handling
-    const dropZone = $('#drop-zone');
-    const fileInput = $('#file-input');
-    const previewGrid = $('#file-preview-grid');
-    const previewContainer = $('#file-preview-container');
-
-    dropZone.addEventListener('click', () => fileInput.click());
-    fileInput.addEventListener('change', () => handleFiles(fileInput.files));
-
-    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
-    dropZone.addEventListener('dragleave', e => { e.preventDefault(); dropZone.classList.remove('drag-over'); });
-    dropZone.addEventListener('drop', e => {
-        e.preventDefault();
-        dropZone.classList.remove('drag-over');
-        handleFiles(e.dataTransfer.files);
-    });
-
-    function handleFiles(fileList) {
-        Array.from(fileList).forEach(file => {
-            state.files.push({ file, preview: null, status: 'pending', error: null });
-        });
-        renderPreviews();
-        checkFileSizes();
-        updateUploadButton();
-    }
-
-    function renderPreviews() {
-        if (state.files.length === 0) {
-            hide(previewContainer);
-            return;
-        }
-
-        show(previewContainer);
-        $('#file-count').textContent = `${pluralize(state.files.length, 'file')} selected`;
-        previewGrid.innerHTML = '';
-
-        state.files.forEach((fileObj, index) => {
-            const clone = template.content.cloneNode(true);
-            const el = clone.querySelector('.file-preview');
-            el.dataset.index = index;
-
-            // File name
-            el.querySelector('.file-name').textContent = fileObj.file.name;
-
-            // Icon for videos
-            if (fileObj.file.type.startsWith('video/')) {
-                el.querySelector('.placeholder-icon').textContent = 'videocam';
-            }
-
-            // Preview image
-            if (fileObj.preview) {
-                const img = el.querySelector('.preview-image');
-                img.src = fileObj.preview;
-                img.alt = fileObj.file.name;
-                show(img);
-                hide(el.querySelector('.placeholder-icon'));
-            }
-
-            // Status overlays
-            el.querySelector('.status-uploading').classList.toggle('hidden', fileObj.status !== 'uploading');
-            el.querySelector('.status-success').classList.toggle('hidden', fileObj.status !== 'success');
-            el.querySelector('.status-error').classList.toggle('hidden', fileObj.status !== 'error');
-
-            // Remove button visibility
-            const removeBtn = el.querySelector('.btn-remove-file');
-            if (state.uploading || fileObj.status !== 'pending') {
-                hide(removeBtn);
-            }
-            removeBtn.addEventListener('click', e => {
-                e.stopPropagation();
-                state.files.splice(index, 1);
-                renderPreviews();
-                checkFileSizes();
-                updateUploadButton();
-            });
-
-            previewGrid.appendChild(clone);
-
-            // Generate thumbnail async
-            if (!fileObj.preview && fileObj.file.type.startsWith('image/')) {
-                generateThumbnail(fileObj, index);
-            }
-        });
-    }
-
-    function generateThumbnail(fileObj, index) {
-        const reader = new FileReader();
-        reader.onload = e => {
-            const img = new Image();
-            img.onload = () => {
-                const canvas = document.createElement('canvas');
-                const size = CONFIG.THUMBNAIL_SIZE;
-                canvas.width = canvas.height = size;
-                const ctx = canvas.getContext('2d');
-                const scale = Math.max(size / img.width, size / img.height);
-                const x = (size - img.width * scale) / 2;
-                const y = (size - img.height * scale) / 2;
-                ctx.drawImage(img, x, y, img.width * scale, img.height * scale);
-                fileObj.preview = canvas.toDataURL('image/jpeg', CONFIG.JPEG_QUALITY);
-
-                const previewEl = previewGrid.querySelector(`[data-index="${index}"]`);
-                if (previewEl) {
-                    const imgEl = previewEl.querySelector('.preview-image');
-                    imgEl.src = fileObj.preview;
-                    show(imgEl);
-                    hide(previewEl.querySelector('.placeholder-icon'));
-                }
-            };
-            img.src = e.target.result;
-        };
-        reader.readAsDataURL(fileObj.file);
-    }
-
-    function checkFileSizes() {
-        const largeFiles = state.files.filter(f => f.file.size > CONFIG.LARGE_FILE_SIZE);
-        const warning = $('#size-warning');
-        if (largeFiles.length > 0) {
-            show(warning);
-            $('#size-warning-text').textContent = `${pluralize(largeFiles.length, 'file')} ${largeFiles.length > 1 ? 'are' : 'is'} larger than 50MB and may take longer to upload.`;
-        } else {
-            hide(warning);
-        }
-    }
-
-    function updateUploadButton() {
-        $('#btn-start-upload').disabled = !state.files.some(f => f.status === 'pending');
-    }
-
-    $('#btn-clear-files').addEventListener('click', () => {
-        state.files = [];
-        fileInput.value = '';
-        renderPreviews();
-        hide($('#size-warning'));
-        updateUploadButton();
-    });
-
-    // Upload handling
-    $('#btn-start-upload').addEventListener('click', startUpload);
-    $('#btn-cancel-upload').addEventListener('click', () => state.abortController?.abort());
-    $('#btn-retry-failed').addEventListener('click', retryFailed);
-    $('#btn-upload-more').addEventListener('click', resetForMore);
-
-    async function startUpload() {
-        const pending = state.files.filter(f => f.status === 'pending');
-        if (pending.length === 0) return;
-
-        state.uploading = true;
-        state.abortController = new AbortController();
-        container.dataset.uploadState = 'uploading';
-
-        let completed = 0;
-        const total = pending.length;
-        updateProgress(0, total);
-
-        const queue = [...pending];
-        const uploadNext = async () => {
-            if (queue.length === 0 || state.abortController.signal.aborted) return;
-
-            const fileObj = queue.shift();
-            fileObj.status = 'uploading';
-            renderPreviews();
-
-            try {
-                await uploadFile(fileObj, state.abortController.signal);
-                fileObj.status = 'success';
-            } catch (e) {
-                fileObj.status = e.name === 'AbortError' ? 'pending' : 'error';
-                if (e.name !== 'AbortError') fileObj.error = e.message;
-            }
-
-            completed++;
-            updateProgress(completed, total);
-            renderPreviews();
-            await uploadNext();
-        };
-
-        await Promise.all(Array(Math.min(CONFIG.UPLOAD_CONCURRENCY, queue.length)).fill().map(uploadNext));
-        finishUpload();
-    }
-
-    function updateProgress(completed, total) {
-        $('#progress-bar').value = total > 0 ? (completed / total) * 100 : 0;
-        $('#progress-count').textContent = `${completed} / ${total}`;
-        $('#progress-text').textContent = completed < total ? 'Uploading...' : 'Finishing...';
-    }
-
-    async function uploadFile(fileObj, signal) {
-        const formData = new FormData();
-        formData.append('file', fileObj.file);
-
-        const params = new URLSearchParams();
-        params.set('time_created', Math.floor(fileObj.file.lastModified / 1000));
-        if (state.visibility === 'family') params.set('make_public', 'true');
-        const folder = getSelectedFolder();
-        if (folder) params.set('folder_name', folder);
-
-        const response = await fetch(`/api/upload?${params}`, { method: 'POST', body: formData, signal });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        return response.json();
-    }
-
-    function finishUpload() {
-        state.uploading = false;
-        state.abortController = null;
-        container.dataset.uploadState = 'results';
-
-        const successCount = state.files.filter(f => f.status === 'success').length;
-        const errorCount = state.files.filter(f => f.status === 'error').length;
-
-        const successEl = $('#results-success');
-        const errorEl = $('#results-error');
-
-        if (successCount > 0) {
-            show(successEl);
-            $('#success-message').textContent = `${pluralize(successCount, 'photo')} uploaded successfully!`;
-        } else hide(successEl);
-
-        if (errorCount > 0) {
-            show(errorEl);
-            $('#error-message').textContent = `${pluralize(errorCount, 'upload')} failed`;
-        } else hide(errorEl);
-
-        const folder = getSelectedFolder();
-        $('#btn-view-gallery').href = folder
-            ? `/folder/${encodeURIComponent(folder)}`
-            : state.visibility === 'family' ? '/?category=family' : '/?category=personal';
-    }
-
-    function retryFailed() {
-        state.files.filter(f => f.status === 'error').forEach(f => { f.status = 'pending'; f.error = null; });
-        renderPreviews();
-        startUpload();
-    }
-
-    function resetForMore() {
-        state.files = state.files.filter(f => f.status !== 'success');
-        state.files.forEach(f => { if (f.status === 'error') { f.status = 'pending'; f.error = null; } });
-        container.dataset.uploadState = 'idle';
-        fileInput.value = '';
-        renderPreviews();
-        checkFileSizes();
-        updateUploadButton();
-    }
-})();
-</script>
+{% block scripts %}
+<script src="/assets/js/upload/legacy-upload.js" defer></script>
 {% endblock %}

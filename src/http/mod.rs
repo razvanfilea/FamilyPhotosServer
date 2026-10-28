@@ -3,9 +3,10 @@ use crate::previews::PreviewGenerator;
 use crate::repo::users_repo::UsersRepository;
 use crate::utils::storage_resolver::StorageResolver;
 use axum::Router;
-use axum::extract::DefaultBodyLimit;
+use axum::extract::{DefaultBodyLimit, Request};
 use axum::http::{HeaderValue, header};
-use axum::middleware;
+use axum::middleware::{self, Next};
+use axum::response::Response;
 use axum_login::AuthManagerLayerBuilder;
 use axum_login::tower_sessions::{Expiry, SessionManagerLayer};
 use sqlx::SqlitePool;
@@ -23,10 +24,21 @@ mod auth;
 pub mod context;
 pub mod error;
 mod extractors;
+mod fragments;
+mod page_context;
 mod pages;
+mod prefs;
 mod session_activity;
 mod template_into_response;
 mod utils;
+mod views;
+
+#[cfg(test)]
+mod tests;
+
+const CONTENT_SECURITY_POLICY: &str = "default-src 'self'; img-src 'self' data: blob:; \
+    media-src 'self' blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; \
+    connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
 
 pub fn router(
     app_state: AppStateRef,
@@ -54,8 +66,18 @@ pub fn router(
     Router::new()
         .merge(pages::router(app_state))
         .nest("/api", api::router(app_state))
-        .nest_service("/assets", ServeDir::new("assets"))
+        .nest(
+            "/assets",
+            Router::new()
+                .fallback_service(ServeDir::new("assets"))
+                .layer(middleware::from_fn(asset_cache_headers)),
+        )
+        .fallback(pages::not_found)
         .layer(middleware::from_fn(session_activity::mark_session_active))
+        .layer(SetResponseHeaderLayer::overriding(
+            header::CONTENT_SECURITY_POLICY,
+            HeaderValue::from_static(CONTENT_SECURITY_POLICY),
+        ))
         .layer(SetResponseHeaderLayer::overriding(
             header::X_FRAME_OPTIONS,
             HeaderValue::from_static("DENY"),
@@ -74,6 +96,46 @@ pub fn router(
         .layer(DefaultBodyLimit::max(1024 * 1024 * 1024)) // 1GB
 }
 
+/// Versioned assets (`?v=<ASSET_VERSION>`) are cached forever in release builds; everything else,
+/// and all JS modules (whose relative imports can't carry the version), must be revalidated.
+async fn asset_cache_headers(request: Request, next: Next) -> Response {
+    let cache_control = asset_cache_control(
+        request.uri().path(),
+        request.uri().query(),
+        AppState::ASSET_VERSION,
+    );
+
+    let mut response = next.run(request).await;
+    // Never cache errors (e.g. a CSS file that isn't built yet) for a year
+    let cache_control = if response.status().is_success() {
+        cache_control
+    } else {
+        "no-cache"
+    };
+    response.headers_mut().insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static(cache_control),
+    );
+    response
+}
+
+/// `path` is relative to the assets directory, e.g. `/css/main.css`
+fn asset_cache_control(path: &str, query: Option<&str>, asset_version: &str) -> &'static str {
+    let immutable = asset_version != "dev"
+        && !path.starts_with("/js/")
+        && query.is_some_and(|query| {
+            query
+                .split('&')
+                .any(|param| param.strip_prefix("v=") == Some(asset_version))
+        });
+
+    if immutable {
+        "public, max-age=31536000, immutable"
+    } else {
+        "no-cache"
+    }
+}
+
 pub struct AppState {
     pub storage: StorageResolver,
     pub read_pool: SqlitePool,
@@ -83,7 +145,8 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub const CSS_VERSION: &str = env!("CSS_VERSION");
+    /// Hash of the static assets in release builds, `"dev"` otherwise
+    pub const ASSET_VERSION: &str = env!("ASSET_VERSION");
 
     pub fn new(read_pool: SqlitePool, write_pool: SqlitePool, storage: StorageResolver) -> Self {
         Self {

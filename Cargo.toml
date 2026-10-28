@@ -43,6 +43,7 @@ tempfile = "3.27"
 clap = { version = "4.6", features = ["derive", "cargo"] }
 thiserror = "2"
 regex = "1"
+form_urlencoded = "1"
 wait-timeout = "0.2"
 time = { version = "0.3", features = ["macros", "parsing", "serde"] }
 dotenvy = "0.15"

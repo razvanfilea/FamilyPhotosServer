@@ -15,6 +15,7 @@ mod users;
 mod tests;
 
 use axum::Router;
+use axum::http::StatusCode;
 use axum_login::login_required;
 
 use crate::http::AppStateRef;
@@ -39,5 +40,6 @@ pub fn router(app_state: AppStateRef) -> Router {
     Router::new()
         .merge(protected_router)
         .merge(users::public_router())
+        .fallback(async || StatusCode::NOT_FOUND)
         .with_state(app_state)
 }

@@ -3,6 +3,13 @@ use sqlx::{SqliteExecutor, query, query_as, query_scalar};
 use std::collections::HashMap;
 
 pub trait FoldersRepo<'c>: SqliteExecutor<'c> {
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "The old web pages were the only users; the new UI calls it again"
+        )
+    )]
     async fn get_folder(self, id: i64) -> sqlx::Result<Option<Folder>> {
         query_as!(Folder, "select * from folders where id = $1", id)
             .fetch_optional(self)

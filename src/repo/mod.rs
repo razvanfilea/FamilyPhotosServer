@@ -4,7 +4,6 @@ mod favorites_repo;
 mod folder_permissions_repo;
 mod folders_repo;
 mod photos_hash_repo;
-pub mod photos_page_repo;
 mod photos_repo;
 #[allow(dead_code)] // TODO: used by the Utilities page, remove this once it is
 mod stats_repo;

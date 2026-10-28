@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% import "macros/icons.html" as icons %}
+{% import "macros/ui.html" as ui %}
+
+{# A navigation item. `variant` is "rail" (rail/sidebar) or "bottom" (mobile bottom bar).
+   Favorites and Trash have their own items in the sidebar, but live under Utilities in the rail and
+   bottom bar: `fp-nav-item--parent` highlights Utilities in the rail while they're hidden. #}
+{% macro nav_item(nav, href, key, label, icon, variant) -%}
+{%- let active = (variant == "bottom" && nav.tab() == key) || (variant != "bottom" && nav.key() == key) -%}
+{%- let parent = variant != "bottom" && !active && nav.tab() == key -%}
+<a href="{{ href }}" class="fp-nav-item{% if variant == "secondary" %} fp-nav-item--secondary{% endif %}{% if parent %} fp-nav-item--parent{% endif %}"
+   hx-boost="false" data-testid="{% if variant == "bottom" %}bottom-{% endif %}nav-{{ key }}"
+   {%- if active %} aria-current="page"{% endif %}>
+    <span class="fp-nav-item__icon">{% call icons::icon(icon, active || parent) %}{% endcall %}</span>
+    <span class="fp-nav-item__label">{{ label }}</span>
+</a>
+{%- endmacro %}
+
+{% block body_class %}fp-shell-body{% endblock %}
+
+{% block body %}
+<a class="fp-skip-link" href="#main">Skip to content</a>
+
+<nav class="fp-rail" aria-label="Main" data-testid="nav-rail">
+    <a href="/" class="fp-rail__brand" hx-boost="false">
+        <img src="/assets/fav/icon-192.png" alt="" width="32" height="32">
+        <span>Family Photos</span>
+    </a>
+    <a href="/upload" class="fp-rail__upload btn btn-secondary" hx-boost="false" data-testid="nav-upload"
+       {% if ctx.nav_active.key() == "upload" %}aria-current="page"{% endif %}>
+        {% call icons::icon("cloud_upload", ctx.nav_active.key() == "upload") %}{% endcall %}
+        <span class="fp-rail__upload-label">Upload</span>
+    </a>
+    <div class="fp-rail__items">
+        {% call nav_item(ctx.nav_active, "/", "photos", "Photos", "photo_library", "rail") %}{% endcall %}
+        {% call nav_item(ctx.nav_active, "/folders", "folders", "Folders", "folder", "rail") %}{% endcall %}
+        {% call nav_item(ctx.nav_active, "/utilities", "utilities", "Utilities", "apps", "rail") %}{% endcall %}
+    </div>
+    <div class="fp-rail__secondary">
+        {% call nav_item(ctx.nav_active, "/favorites", "favorites", "Favorites", "star", "secondary") %}{% endcall %}
+        {% call nav_item(ctx.nav_active, "/trash", "trash", "Trash", "delete", "secondary") %}{% endcall %}
+    </div>
+</nav>
+
+<div class="fp-shell">
+    <header class="fp-topbar" data-testid="topbar">
+        <div class="fp-topbar__title">
+            {% block topbar %}<h1 class="fp-topbar__heading">{% block page_title %}Family Photos{% endblock %}</h1>{% endblock %}
+        </div>
+        <div class="fp-topbar__actions">
+            {% block topbar_actions %}{% endblock %}
+            <a href="/upload" class="btn btn-ghost btn-circle md:hidden" hx-boost="false"
+               aria-label="Upload" data-testid="topbar-upload">{% call icons::icon("cloud_upload") %}{% endcall %}</a>
+            <details class="dropdown dropdown-end fp-user-menu" data-component="dropdown" data-testid="user-menu">
+                <summary class="btn btn-ghost btn-circle" aria-label="Account menu for {{ ctx.user_display_name }}"
+                         data-testid="user-menu-button">
+                    {% call ui::avatar(ctx.user_display_name) %}{% endcall %}
+                </summary>
+                <ul class="dropdown-content menu fp-menu w-64" data-testid="user-menu-items">
+                    <li class="menu-title fp-user-menu__name" data-testid="user-menu-name">{{ ctx.user_display_name }}</li>
+                    <li><a href="/settings" hx-boost="false" data-testid="user-menu-settings">{% call icons::icon("settings") %}{% endcall %} Settings</a></li>
+                    <li>
+                        <button type="button" data-testid="user-menu-shortcuts"
+                                hx-get="/ui/dialogs/shortcuts" hx-target="#app-dialog-content" hx-swap="innerHTML">
+                            {% call icons::icon("keyboard") %}{% endcall %} Keyboard shortcuts
+                        </button>
+                    </li>
+                    <li>
+                        <button type="button" data-component="sign-out" data-testid="user-menu-sign-out">
+                            {% call icons::icon("logout") %}{% endcall %} Sign out
+                        </button>
+                    </li>
+                </ul>
+            </details>
+        </div>
+    </header>
+
+    <main id="main" class="fp-main" tabindex="-1">
+        {% block content %}{% endblock %}
+    </main>
+</div>
+
+<nav class="fp-bottom-nav" aria-label="Main" data-testid="bottom-nav">
+    {% call nav_item(ctx.nav_active, "/", "photos", "Photos", "photo_library", "bottom") %}{% endcall %}
+    {% call nav_item(ctx.nav_active, "/folders", "folders", "Folders", "folder", "bottom") %}{% endcall %}
+    {% call nav_item(ctx.nav_active, "/utilities", "utilities", "Utilities", "apps", "bottom") %}{% endcall %}
+</nav>
+
+<template id="sign-out-dialog">
+    <h2 id="app-dialog-title" class="text-lg font-semibold">Sign out?</h2>
+    <p class="py-4 text-base-content/80">You will need to log in again to see your photos.</p>
+</template>
+{% endblock %}
