@@ -1,4 +1,5 @@
 @import 'tailwindcss';
+@import './css/folders.css';
 @import './css/grid.css';
 
 @source "./**/*.html";

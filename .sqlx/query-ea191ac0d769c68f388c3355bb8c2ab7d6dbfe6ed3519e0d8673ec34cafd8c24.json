@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "insert into folder_permissions\n                (folder_id, grantee_id, token, can_upload, can_delete, expires_at)\n            values ($1, $2, $3, $4, $5, $6)\n            returning id as \"id!\", folder_id, grantee_id, token, can_upload, can_delete,\n                created_at, expires_at",
+  "query": "insert into folder_permissions\n                (folder_id, grantee_id, token, can_upload, can_delete, expires_at)\n            values ($1, $2, $3, $4, $5, $6)\n            returning id as \"id!\", folder_id, grantee_id, token, can_upload, can_delete,\n                created_at, expires_at as \"expires_at?\"",
   "describe": {
     "columns": [
       {
@@ -81,7 +81,7 @@
         }
       },
       {
-        "name": "expires_at",
+        "name": "expires_at?",
         "ordinal": 7,
         "type_info": "Datetime",
         "origin": {
@@ -106,5 +106,5 @@
       true
     ]
   },
-  "hash": "86879a8b819b8c1cffd50e088d101a97e45e5d50dbff6dca055a5191ce856686"
+  "hash": "ea191ac0d769c68f388c3355bb8c2ab7d6dbfe6ed3519e0d8673ec34cafd8c24"
 }

@@ -69,7 +69,7 @@ pub trait FolderPermissionsRepo<'c>: SqliteExecutor<'c> {
                 (folder_id, grantee_id, token, can_upload, can_delete, expires_at)
             values ($1, $2, $3, $4, $5, $6)
             returning id as "id!", folder_id, grantee_id, token, can_upload, can_delete,
-                created_at, expires_at"#,
+                created_at, expires_at as "expires_at?""#,
             folder_id,
             grantee_id,
             token,
@@ -93,8 +93,30 @@ pub trait FolderPermissionsRepo<'c>: SqliteExecutor<'c> {
             r#"update folder_permissions set can_upload = $3, can_delete = $4
             where id = $1 and folder_id in (select id from folders where owner_id = $2 or owner_id is null)
             returning id as "id!", folder_id, grantee_id, token, can_upload, can_delete,
-                created_at, expires_at"#,
+                created_at, expires_at as "expires_at?""#,
             share_id, owner_id, can_upload, can_delete
+        )
+        .fetch_optional(self)
+        .await
+    }
+
+    /// Sets (or clears, with `None`) the expiry of a share, under the same ownership rule as
+    /// `update_share`. Returns the updated share.
+    async fn set_share_expiry(
+        self,
+        share_id: i64,
+        owner_id: &str,
+        expires_at: Option<OffsetDateTime>,
+    ) -> sqlx::Result<Option<FolderPermission>> {
+        query_as!(
+            FolderPermission,
+            r#"update folder_permissions set expires_at = $3
+            where id = $1 and folder_id in (select id from folders where owner_id = $2 or owner_id is null)
+            returning id as "id!", folder_id, grantee_id, token, can_upload, can_delete,
+                created_at, expires_at as "expires_at?""#,
+            share_id,
+            owner_id,
+            expires_at
         )
         .fetch_optional(self)
         .await
@@ -214,6 +236,46 @@ mod tests {
         assert_eq!(pool.delete_share(share.id, "bob").await?, 0);
         assert_eq!(pool.delete_share(share.id, "alice").await?, 1);
         assert_eq!(pool.delete_share(public_share.id, "bob").await?, 1);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn test_set_share_expiry(pool: SqlitePool) -> sqlx::Result<()> {
+        insert_users(&pool).await;
+        let folder = create_test_folder(&pool, Some("alice"), "mine").await;
+        let share = pool
+            .create_share(folder.id, Some("bob"), false, false, None)
+            .await?;
+
+        let expires_at = OffsetDateTime::now_utc() + time::Duration::days(3);
+        let updated = pool
+            .set_share_expiry(share.id, "alice", Some(expires_at))
+            .await?
+            .unwrap();
+        assert_eq!(
+            updated.expires_at.map(|t| t.unix_timestamp()),
+            Some(expires_at.unix_timestamp())
+        );
+
+        // Only the owner may change it, and the flags aren't touched
+        assert!(
+            pool.set_share_expiry(share.id, "bob", None)
+                .await?
+                .is_none()
+        );
+        let updated = pool
+            .update_share(share.id, "alice", true, false)
+            .await?
+            .unwrap();
+        assert!(updated.expires_at.is_some());
+
+        let cleared = pool
+            .set_share_expiry(share.id, "alice", None)
+            .await?
+            .unwrap();
+        assert!(cleared.expires_at.is_none());
+        assert!(cleared.can_upload);
 
         Ok(())
     }

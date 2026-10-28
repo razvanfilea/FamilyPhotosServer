@@ -1,0 +1,48 @@
+{% import "macros/icons.html" as icons %}
+{% import "macros/ui.html" as ui %}
+
+{# Where photos go: the user's root, the family gallery, an existing folder or a new one. The
+   `destination-picker` component (assets/js/destination-picker/picker.js) exposes the choice. #}
+<div class="fp-picker fp-folder-browser" hx-sync="this:replace" data-component="folder-browser destination-picker" data-picker
+     data-mode="{{ picker.mode }}" data-filter="{{ browser.filter }}" data-selection="root"
+     {%- if let Some(folder) = picker.initial_folder %}
+     data-initial-folder-id="{{ folder.id }}" data-initial-folder-name="{{ folder.name }}"
+     data-initial-folder-public="{{ folder.is_public }}" data-initial-folder-type="{{ folder.type_key }}"
+     data-initial-folder-type-label="{{ folder.type_label }}"
+     {%- endif %}
+     data-testid="destination-picker">
+    <div data-slot="showcase"></div>
+
+    <div class="fp-folder-browser__chips">
+        {% call ui::filter_chips(browser.filter, "/folders") %}{% endcall %}
+    </div>
+
+    <div class="fp-picker__options">
+        <button type="button" class="fp-dest" data-dest="personal" aria-pressed="false" data-testid="dest-personal">
+            {% call icons::icon("person") %}{% endcall %}
+            <span>Into Personal Gallery</span>
+        </button>
+        <button type="button" class="fp-dest" data-dest="family" aria-pressed="false" data-testid="dest-family">
+            {% call icons::icon("family_restroom") %}{% endcall %}
+            <span>Into Family Gallery</span>
+        </button>
+        <div class="fp-dest fp-dest--selected" data-role="selected" data-testid="dest-selected">
+            <span data-role="selected-icon">{% call icons::icon("folder") %}{% endcall %}</span>
+            <span class="fp-dest__text">
+                <span data-role="selected-name" data-testid="dest-selected-name"></span>
+                <span class="fp-dest__type" data-role="selected-type" data-testid="dest-selected-type"></span>
+            </span>
+            <button type="button" class="btn btn-ghost btn-circle btn-sm" aria-label="Clear the selected folder"
+                    data-role="clear" data-testid="dest-clear">{% call icons::icon("close") %}{% endcall %}</button>
+        </div>
+        <button type="button" class="fp-dest fp-dest--create" data-dest="new" data-testid="dest-new">
+            {% call icons::icon("add") %}{% endcall %}
+            <span>Create new folder</span>
+        </button>
+    </div>
+
+    <div data-role="folders">
+        {% include "folders/search_bar.html" %}
+        {% include "folders/list.html" %}
+    </div>
+</div>

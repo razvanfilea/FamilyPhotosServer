@@ -1,0 +1,454 @@
+/* Folders tab, folder page, sharing dialog and destination picker */
+
+@layer components {
+    /* ---------- Folder browser: chips, search, sort, view, cards ---------- */
+
+    .fp-folder-browser__chips {
+        padding: 0.5rem 0;
+    }
+
+    .fp-folder-controls {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+        padding-bottom: 1rem;
+    }
+
+    .fp-folder-search {
+        flex: 1 1 14rem;
+        max-width: 28rem;
+
+        input[type="search"]::-webkit-search-cancel-button {
+            display: none;
+        }
+    }
+
+    .fp-folder-controls__options {
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+    }
+
+    /* Reserves the space of a check mark, which only shows for the selected item */
+    .fp-check-slot {
+        display: inline-flex;
+        width: 1.25em;
+        height: 1.25em;
+
+        .icon {
+            visibility: hidden;
+        }
+    }
+
+    [aria-checked="true"] > .fp-check-slot .icon {
+        visibility: visible;
+    }
+
+    .fp-folder-grid {
+        display: grid;
+        gap: 1rem 0.75rem;
+    }
+
+    .fp-folder-grid--grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+
+        @variant sm {
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
+
+        @variant lg {
+            grid-template-columns: repeat(6, minmax(0, 1fr));
+        }
+
+        @variant 2xl {
+            grid-template-columns: repeat(8, minmax(0, 1fr));
+        }
+    }
+
+    .fp-folder-grid--list {
+        grid-template-columns: minmax(0, 1fr);
+
+        @variant lg {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+    }
+
+    /* The picker lives in a dialog or a card, whatever the viewport width */
+    .fp-picker .fp-folder-grid--grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .fp-picker .fp-folder-grid--list {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .fp-folder-no-match {
+        padding: 2rem 0;
+        text-align: center;
+        color: var(--color-neutral-content);
+    }
+
+    .fp-folder-card {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+        width: 100%;
+        min-width: 0;
+        color: inherit;
+        text-align: center;
+        text-decoration: none;
+        border-radius: 1rem;
+        cursor: pointer;
+    }
+
+    .fp-folder-card__cover {
+        position: relative;
+        display: block;
+        aspect-ratio: 1;
+        overflow: hidden;
+        border-radius: 1rem;
+        background-color: var(--color-base-300);
+        transition: opacity 150ms ease;
+    }
+
+    .fp-folder-card:hover .fp-folder-card__cover {
+        opacity: 0.9;
+    }
+
+    .fp-folder-card__hash,
+    .fp-folder-card__img {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+
+    .fp-folder-card__empty {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--fp-outline);
+    }
+
+    .fp-folder-card__empty-icon {
+        width: 40%;
+        height: 40%;
+    }
+
+    .fp-folder-card__scrim {
+        position: absolute;
+        inset: auto 0 0 0;
+        display: flex;
+        padding: 1.5rem 0.5rem 0.375rem;
+        background: linear-gradient(to top, rgb(0 0 0 / 0.65), transparent);
+        color: white;
+    }
+
+    .fp-folder-card__text {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+    }
+
+    .fp-folder-card__name {
+        @apply truncate text-sm font-medium;
+    }
+
+    .fp-folder-card__meta {
+        @apply truncate text-xs;
+        color: var(--color-neutral-content);
+    }
+
+    .fp-folder-card--list {
+        flex-direction: row;
+        align-items: center;
+        gap: 1rem;
+        text-align: left;
+
+        .fp-folder-card__cover {
+            flex: none;
+            width: 4.5rem;
+            border-radius: 0.75rem;
+        }
+
+        .fp-folder-card__name {
+            @apply text-base;
+        }
+    }
+
+    /* ---------- Folder page ---------- */
+
+    .fp-folder-title {
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+        min-width: 0;
+    }
+
+    .fp-folder-title__text {
+        min-width: 0;
+    }
+
+    .fp-folder-title__badges {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
+    .fp-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        padding: 0.125rem 0.625rem;
+        border-radius: 9999px;
+        background-color: var(--color-base-300);
+        color: var(--color-neutral-content);
+        font-size: 0.75rem;
+        font-weight: 500;
+        white-space: nowrap;
+
+        .icon {
+            width: 0.9rem;
+            height: 0.9rem;
+        }
+    }
+
+    .fp-folder-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+    }
+
+    /* A floating button on phones, a regular one next to the other actions on wider screens */
+    .fp-folder-upload {
+        position: fixed;
+        right: max(1rem, env(safe-area-inset-right));
+        bottom: calc(var(--fp-bottom-nav-height) + env(safe-area-inset-bottom) + 1rem);
+        width: 3.5rem;
+        height: 3.5rem;
+        padding: 0;
+        border-radius: 1rem;
+        box-shadow: 0 4px 12px rgb(0 0 0 / 0.4);
+
+        @variant md {
+            position: static;
+            width: auto;
+            height: var(--size);
+            padding-inline: 1rem;
+            border-radius: var(--radius-field);
+            box-shadow: none;
+        }
+    }
+
+    .fp-folder-upload__label {
+        @apply sr-only;
+
+        @variant md {
+            position: static;
+            width: auto;
+            height: auto;
+            margin: 0;
+            overflow: visible;
+            clip-path: none;
+            white-space: nowrap;
+        }
+    }
+
+    /* ---------- Folder name dialog ---------- */
+
+    .fp-folder-form {
+        display: flex;
+        flex-direction: column;
+    }
+
+    /* ---------- Sharing dialog ---------- */
+
+    .fp-sharing__heading {
+        margin: 1rem 0 0.25rem;
+        font-weight: 700;
+    }
+
+    .fp-sharing__list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+
+    .fp-sharing__row {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.375rem 0.25rem;
+    }
+
+    .fp-sharing__who {
+        display: flex;
+        flex: 1;
+        flex-direction: column;
+        min-width: 0;
+    }
+
+    .fp-sharing__name {
+        @apply truncate font-semibold;
+    }
+
+    .fp-sharing__detail {
+        font-size: 0.8rem;
+        color: var(--color-neutral-content);
+    }
+
+    .fp-member-menu {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        margin: 0.25rem 0 0.5rem 2.75rem;
+        padding: 0.75rem;
+        border-radius: var(--radius-box);
+        background-color: var(--color-base-300);
+    }
+
+    .fp-member-menu__options {
+        display: flex;
+        flex-direction: column;
+
+        button {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem;
+            border-radius: var(--radius-field);
+            text-align: left;
+        }
+
+        button:hover {
+            background-color: color-mix(in oklab, var(--color-base-content) 8%, transparent);
+        }
+
+        button[aria-checked="true"] {
+            font-weight: 600;
+        }
+    }
+
+    .fp-member-menu__confirm {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .fp-sharing__add {
+        margin-top: 0.5rem;
+    }
+
+    .fp-sharing__add-toggle {
+        cursor: pointer;
+        list-style: none;
+        border-radius: var(--radius-field);
+
+        &::-webkit-details-marker {
+            display: none;
+        }
+
+        &:hover {
+            background-color: color-mix(in oklab, var(--color-base-content) 8%, transparent);
+        }
+    }
+
+    .fp-sharing__add-panel {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        padding: 0.5rem 0 0 0.5rem;
+    }
+
+    .fp-sharing__person {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        width: 100%;
+        padding: 0.5rem 0.75rem;
+        border-radius: var(--radius-box);
+        background-color: color-mix(in oklab, var(--color-neutral) 30%, transparent);
+        text-align: left;
+    }
+
+    .fp-sharing__person:hover {
+        background-color: color-mix(in oklab, var(--color-neutral) 60%, transparent);
+    }
+
+    /* ---------- Destination picker ---------- */
+
+    .fp-picker__options {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        padding-bottom: 1rem;
+    }
+
+    .fp-dest {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        width: 100%;
+        padding: 0.75rem 1rem;
+        border: 1px solid var(--fp-outline);
+        border-radius: 0.75rem;
+        background-color: var(--color-base-300);
+        text-align: left;
+        cursor: pointer;
+    }
+
+    .fp-dest[aria-pressed="true"],
+    .fp-dest--selected {
+        border-color: var(--color-secondary-content);
+        background-color: var(--color-secondary);
+        color: var(--color-secondary-content);
+    }
+
+    .fp-dest--selected {
+        cursor: default;
+        padding-block: 0.5rem;
+        padding-right: 0.5rem;
+    }
+
+    .fp-dest--create {
+        background-color: transparent;
+        color: var(--color-primary);
+    }
+
+    .fp-dest__text {
+        display: flex;
+        flex: 1;
+        flex-direction: column;
+        min-width: 0;
+    }
+
+    .fp-dest__type {
+        font-size: 0.75rem;
+        opacity: 0.7;
+    }
+
+    /* Which options are offered follows the filter chips and the current choice */
+    .fp-picker[data-filter="shared"] [data-dest="personal"],
+    .fp-picker[data-filter="shared"] [data-dest="family"],
+    .fp-picker[data-filter="shared"] [data-dest="new"],
+    .fp-picker[data-filter="family"] [data-dest="personal"],
+    .fp-picker[data-filter="personal"] [data-dest="family"] {
+        display: none;
+    }
+
+    .fp-picker[data-selection="folder"] [data-role="folders"],
+    .fp-picker[data-selection="new"] [data-role="folders"],
+    .fp-picker[data-selection="folder"] [data-dest="new"],
+    .fp-picker[data-selection="new"] [data-dest="new"] {
+        display: none;
+    }
+
+    .fp-picker:not([data-selection="folder"]):not([data-selection="new"]) [data-role="selected"] {
+        display: none;
+    }
+}

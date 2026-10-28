@@ -1,0 +1,31 @@
+{% import "macros/icons.html" as icons %}
+{% import "macros/ui.html" as ui %}
+{% import "folders/card.html" as cards %}
+
+{# The folder cards. Re-fetched from `/ui/folders/list` when the filter, sort order or view change. #}
+<div {% if !browser.picker %}id="folder-list" {% endif %}class="fp-folder-list" data-role="list"
+     data-view="{{ browser.view }}" data-count="{{ browser.cards.len() }}" data-testid="folder-list">
+    {%- if browser.cards.is_empty() %}
+    {%- if browser.picker %}
+    {% call ui::empty_state("folder_off", "No folders to choose", "You can't upload to any folder yet.") %}{% endcall %}
+    {%- else if crate::http::views::str_eq(browser.filter, "shared") %}
+    {% call ui::empty_state("folder", "No shared folders", "Folders other people share with you show up here.") %}{% endcall %}
+    {%- else %}
+    {% call ui::empty_state("folder", "No folders yet", "Create a folder to organise your photos.") %}{% endcall %}
+    <div class="flex justify-center">
+        <button type="button" class="btn btn-primary" data-component="new-folder-button"
+                data-testid="folders-empty-new-folder">
+            {% call icons::icon("add") %}{% endcall %}
+            New folder
+        </button>
+    </div>
+    {%- endif %}
+    {%- else %}
+    <ul class="fp-folder-grid fp-folder-grid--{{ browser.view }}" role="list">
+        {%- for card in browser.cards %}
+        <li data-name="{{ card.name }}">{% call cards::folder_card(card, browser.view, browser.picker) %}{% endcall %}</li>
+        {%- endfor %}
+    </ul>
+    <p class="fp-folder-no-match" data-role="no-match" data-testid="folders-no-match" hidden>No folders match</p>
+    {%- endif %}
+</div>

@@ -1,0 +1,80 @@
+{% extends "shell.html" %}
+{% import "macros/icons.html" as icons %}
+{% import "grid/macros.html" as grids %}
+
+{% block title %}{{ folder.name }} - Family Photos{% endblock %}
+
+{% block topbar %}
+<div class="fp-folder-title">
+    <a href="/folders" class="btn btn-ghost btn-circle" aria-label="Back to folders" hx-boost="false"
+       data-testid="folder-back">{% call icons::icon("arrow_back") %}{% endcall %}</a>
+    <div class="fp-folder-title__text">
+        <h1 class="fp-topbar__heading" data-testid="folder-title">{{ folder.name }}</h1>
+        <div class="fp-folder-title__badges">
+            <span class="fp-pill" data-bind="photo-count" data-testid="folder-count">
+                {%- if folder.photo_count == 1 %}1 photo{% else %}{{ folder.photo_count }} photos{% endif -%}
+            </span>
+            <span class="fp-pill" data-testid="folder-badge">
+                <span data-bind="folder-badge-icon">{% call icons::icon(folder.badge_icon, true) %}{% endcall %}</span>
+                <span data-bind="folder-badge-label">{{ folder.badge_label }}</span>
+            </span>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block topbar_actions %}
+{% call grids::zoom_controls(grid.zoom) %}{% endcall %}
+<div class="fp-folder-actions" data-component="folder-actions" data-folder-id="{{ folder.id }}"
+     data-folder-name="{{ folder.name }}" data-public="{{ folder.is_public }}"
+     data-message-renamed="Folder renamed" data-message-deleted="Folder deleted"
+     data-delete-title="Delete folder" data-delete-body="Delete the empty folder “{name}”?"
+     data-delete-confirm="Delete">
+    {%- if folder.can_share %}
+    <button type="button" class="btn btn-ghost btn-circle" data-action="share" aria-label="Share folder"
+            data-testid="folder-share">{% call icons::icon("group") %}{% endcall %}</button>
+    {%- endif %}
+    {%- if folder.can_view_access %}
+    <button type="button" class="btn btn-ghost btn-circle" data-action="share" aria-label="People with access"
+            data-testid="folder-access">{% call icons::icon("group") %}{% endcall %}</button>
+    {%- endif %}
+    {%- if folder.can_edit %}
+    <button type="button" class="btn btn-ghost btn-circle" data-action="edit" aria-label="Edit folder"
+            data-testid="folder-edit">{% call icons::icon("edit") %}{% endcall %}</button>
+    {%- endif %}
+    {%- if folder.can_delete %}
+    <details class="dropdown dropdown-end" data-component="dropdown">
+        <summary class="btn btn-ghost btn-circle" aria-label="More actions" data-testid="folder-more">
+            {% call icons::icon("more_vert") %}{% endcall %}
+        </summary>
+        <ul class="dropdown-content menu fp-menu w-56">
+            <li>
+                <button type="button" class="text-error" data-action="delete" data-testid="folder-delete">
+                    {% call icons::icon("delete") %}{% endcall %}
+                    Delete folder
+                </button>
+            </li>
+        </ul>
+    </details>
+    {%- endif %}
+    {%- if folder.can_upload %}
+    <a href="/upload?folder_id={{ folder.id }}" class="fp-folder-upload btn btn-primary" hx-boost="false"
+       aria-label="Upload to this folder" data-testid="folder-upload">
+        {% call icons::icon("cloud_upload") %}{% endcall %}
+        <span class="fp-folder-upload__label">Upload</span>
+    </a>
+    {%- endif %}
+</div>
+{% endblock %}
+
+{% block content %}
+<div data-testid="folder-page" data-folder-id="{{ folder.id }}" data-context="{{ folder.context_key }}"
+     data-can-delete="{{ folder.can_delete_photos }}" data-can-upload="{{ folder.can_upload }}">
+    {% call grids::grid_empty(grid, "folder", "This folder is empty", "", folder.empty_upload_href) %}{% endcall %}
+    {% call grids::photo_grid(grid) %}{% endcall %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script type="module" src="/assets/js/pages/folder.js"></script>
+{% endblock %}

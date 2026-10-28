@@ -1,0 +1,39 @@
+{% import "macros/icons.html" as icons %}
+
+{# Search, sort order and view of a folder list; the `folder-browser` component wires them up #}
+<div class="fp-folder-controls">
+    <label class="input input-bordered fp-folder-search">
+        {% call icons::icon("search", false, "text-base-content/50") %}{% endcall %}
+        <input type="search" value="{{ browser.query }}" placeholder="Search folders…" aria-label="Search folders"
+               autocomplete="off" enterkeyhint="search" data-role="search" data-testid="folder-search">
+        <button type="button" class="btn btn-ghost btn-xs btn-circle" aria-label="Clear search" hidden
+                data-role="search-clear" data-testid="folder-search-clear">
+            {% call icons::icon("close") %}{% endcall %}
+        </button>
+    </label>
+    <div class="fp-folder-controls__options">
+        <details class="dropdown dropdown-end" data-component="dropdown">
+            <summary class="btn btn-ghost btn-sm" aria-label="Sort folders" data-testid="folder-sort">
+                {% call icons::icon("sort") %}{% endcall %}
+                <span data-role="sort-label">{{ browser.sort_label }}</span>
+            </summary>
+            <ul class="dropdown-content menu fp-menu w-56">
+                {%- for (key, label) in [("date_desc", "Date (Newest)"), ("name_asc", "Name (A to Z)"), ("name_desc", "Name (Z to A)"), ("count_desc", "Photo Count (Most)")] %}
+                {%- let selected = crate::http::views::str_eq(key, browser.sort) %}
+                <li>
+                    <button type="button" data-sort="{{ key }}" data-label="{{ label }}" role="menuitemradio"
+                            aria-checked="{{ selected }}" data-testid="folder-sort-option-{{ key }}">
+                        <span class="fp-check-slot">{% call icons::icon("check") %}{% endcall %}</span>
+                        {{ label }}
+                    </button>
+                </li>
+                {%- endfor %}
+            </ul>
+        </details>
+        <button type="button" class="btn btn-ghost btn-sm btn-circle" data-role="view-toggle"
+                data-view="{{ browser.view }}" data-testid="folder-view-toggle"
+                aria-label="{% if crate::http::views::str_eq(browser.view, "grid") %}Switch to list view{% else %}Switch to grid view{% endif %}">
+            {% if crate::http::views::str_eq(browser.view, "grid") %}{% call icons::icon("view_list") %}{% endcall %}{% else %}{% call icons::icon("grid_view") %}{% endcall %}{% endif %}
+        </button>
+    </div>
+</div>

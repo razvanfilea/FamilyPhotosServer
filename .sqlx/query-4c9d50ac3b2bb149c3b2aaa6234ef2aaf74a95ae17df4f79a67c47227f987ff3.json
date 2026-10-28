@@ -1,0 +1,126 @@
+{
+  "db_name": "SQLite",
+  "query": "with accessible as (\n            select f.id, f.owner_id, f.name,\n                (f.owner_id = $1 or f.owner_id is null or coalesce(fp.can_upload, false)) as can_upload,\n                (f.owner_id = $1 or f.owner_id is null or coalesce(fp.can_delete, false)) as can_delete\n            from folders f\n            left join folder_permissions fp on f.id = fp.folder_id and fp.grantee_id = $1\n                and (fp.expires_at is null or datetime(fp.expires_at) > datetime('now'))\n            where (f.owner_id = $1 or f.owner_id is null or fp.grantee_id is not null)\n                and ($2 is null or f.id = $2)\n        ), ranked as (\n            select p.folder_id, p.id, p.thumb_hash, p.created_at,\n                row_number() over (partition by p.folder_id order by p.created_at desc, p.id desc) as rn,\n                count(*) over (partition by p.folder_id) as cnt\n            from photos p\n            where p.trashed_on is null and p.folder_id in (select id from accessible)\n        )\n        select a.id as \"id!: i64\", a.name as \"name!\", a.owner_id, u.name as owner_name,\n            a.can_upload as \"can_upload!: bool\", a.can_delete as \"can_delete!: bool\",\n            coalesce(r.cnt, 0) as \"photo_count!: i64\",\n            r.id as cover_photo_id, r.thumb_hash as cover_thumb_hash,\n            r.created_at as \"latest_photo_at: OffsetDateTime\",\n            case when a.owner_id = $1 then (\n                select count(*) from folder_permissions s\n                where s.folder_id = a.id and s.grantee_id is not null\n                    and (s.expires_at is null or datetime(s.expires_at) > datetime('now'))\n            ) else 0 end as \"share_count!: i64\"\n        from accessible a\n        left join ranked r on r.folder_id = a.id and r.rn = 1\n        left join users u on u.id = a.owner_id",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "folders",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "name!",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "folders",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "owner_id",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "folders",
+            "name": "owner_id"
+          }
+        }
+      },
+      {
+        "name": "owner_name",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "can_upload!: bool",
+        "ordinal": 4,
+        "type_info": "Bool",
+        "origin": "Expression"
+      },
+      {
+        "name": "can_delete!: bool",
+        "ordinal": 5,
+        "type_info": "Integer",
+        "origin": "Expression"
+      },
+      {
+        "name": "photo_count!: i64",
+        "ordinal": 6,
+        "type_info": "Integer",
+        "origin": "Expression"
+      },
+      {
+        "name": "cover_photo_id",
+        "ordinal": 7,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "photos",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "cover_thumb_hash",
+        "ordinal": 8,
+        "type_info": "Blob",
+        "origin": {
+          "Table": {
+            "table": "photos",
+            "name": "thumb_hash"
+          }
+        }
+      },
+      {
+        "name": "latest_photo_at: OffsetDateTime",
+        "ordinal": 9,
+        "type_info": "Datetime",
+        "origin": {
+          "Table": {
+            "table": "photos",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "name": "share_count!: i64",
+        "ordinal": 10,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "4c9d50ac3b2bb149c3b2aaa6234ef2aaf74a95ae17df4f79a67c47227f987ff3"
+}

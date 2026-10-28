@@ -7,6 +7,7 @@ use axum::{
     routing::{delete, get, post, put},
 };
 
+use time::OffsetDateTime;
 use tracing::info;
 
 use crate::http::error::{HttpError, HttpResult, is_unique_violation};
@@ -62,11 +63,24 @@ async fn list_folder_shares(
     Ok(Json(responses))
 }
 
+fn ensure_in_the_future(expires_at: OffsetDateTime) -> HttpResult<()> {
+    if expires_at <= OffsetDateTime::now_utc() {
+        return Err(HttpError::BadRequest(
+            "Expiry must be in the future".to_string(),
+        ));
+    }
+    Ok(())
+}
+
 async fn create_share(
     State(state): State<AppStateRef>,
     AuthenticatedUser(user): AuthenticatedUser,
     Json(request): Json<CreateShareRequest>,
 ) -> HttpResult<impl IntoResponse> {
+    if let Some(expires_at) = request.expires_at {
+        ensure_in_the_future(expires_at)?;
+    }
+
     let mut tx = state.write_pool.begin().await?;
 
     let Some(folder) = tx
@@ -122,14 +136,34 @@ async fn update_share(
     Path(share_id): Path<i64>,
     Json(request): Json<UpdateShareRequest>,
 ) -> HttpResult<impl IntoResponse> {
+    // `Some(None)` removes the expiry, `None` (field absent, as sent by Android) keeps it
+    let new_expiry = match request.expires_at {
+        None => None,
+        Some(None) => Some(None),
+        Some(Some(unix)) => {
+            let expires_at = OffsetDateTime::from_unix_timestamp(unix)
+                .map_err(|_| HttpError::BadRequest("Invalid expiry".to_string()))?;
+            ensure_in_the_future(expires_at)?;
+            Some(Some(expires_at))
+        }
+    };
+
     let mut tx = state.write_pool.begin().await?;
-    let Some(share) = tx
+    let Some(mut share) = tx
         .as_mut()
         .update_share(share_id, &user.id, request.can_upload, request.can_delete)
         .await?
     else {
         return Err(HttpError::NotFound);
     };
+
+    if let Some(expires_at) = new_expiry {
+        share = tx
+            .as_mut()
+            .set_share_expiry(share_id, &user.id, expires_at)
+            .await?
+            .ok_or(HttpError::NotFound)?;
+    }
 
     let Some(folder) = tx.get_accessible_folder(&user.id, share.folder_id).await? else {
         return Err(HttpError::NotFound);

@@ -16,7 +16,7 @@ function destinations(): Destination[] {
     return [
         { path: '/', heading: 'Photos', nav: 'photos', tab: 'photos' },
         { path: '/folders', heading: 'Folders', nav: 'folders', tab: 'folders' },
-        { path: `/folders/${folderId('Holiday')}`, heading: 'Folder', nav: 'folders', tab: 'folders' },
+        { path: `/folders/${folderId('Holiday')}`, heading: 'Holiday', nav: 'folders', tab: 'folders' },
         { path: '/utilities', heading: 'Utilities', nav: 'utilities', tab: 'utilities' },
         { path: '/favorites', heading: 'Favorites', nav: 'favorites', tab: 'utilities' },
         { path: '/trash', heading: 'Trash', nav: 'trash', tab: 'utilities' },
