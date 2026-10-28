@@ -1,0 +1,37 @@
+{% import "macros/ui.html" as ui %}
+
+{# Create or rename a folder; the `folder-name-form` component submits it (assets/js/folders/name-dialog.js) #}
+<form class="fp-folder-form" data-component="folder-name-form" data-testid="folder-name-form" autocomplete="off"
+      data-initial-name="{{ name }}" data-initial-public="{{ is_public }}"
+      data-warning-to-family="All photos in this folder will become visible to the whole family."
+      data-warning-to-personal="This folder and its photos will become private to you."
+      {%- if renaming %} data-renaming{% endif %}>
+    <h2 id="folder-name-title" class="text-lg font-semibold">{% if renaming %}Edit folder{% else %}New folder{% endif %}</h2>
+
+    <div class="fp-field mt-4">
+        <label class="fp-field__label" for="folder-name-input">Folder name</label>
+        <input id="folder-name-input" name="name" type="text" class="input input-bordered w-full" maxlength="100"
+               value="{{ name }}" autofocus data-testid="folder-name-input">
+        <p class="text-sm text-error" role="alert" hidden data-role="error" data-testid="folder-name-error"></p>
+    </div>
+
+    <div class="fp-field mt-4">
+        <span class="fp-field__label" id="folder-visibility-label">Who can see it</span>
+        <div aria-labelledby="folder-visibility-label">
+            {%- if is_public %}
+            {% call ui::segmented("folder-visibility", [("personal", "Personal"), ("family", "Family")], "family") %}{% endcall %}
+            {%- else %}
+            {% call ui::segmented("folder-visibility", [("personal", "Personal"), ("family", "Family")], "personal") %}{% endcall %}
+            {%- endif %}
+        </div>
+        <p class="text-sm text-warning" role="status" hidden data-role="warning"
+           data-testid="folder-visibility-warning"></p>
+    </div>
+
+    <div class="modal-action">
+        <button type="button" class="btn btn-ghost" data-dialog-close data-testid="folder-name-cancel">Cancel</button>
+        <button type="submit" class="btn btn-primary" data-testid="folder-name-confirm" disabled>
+            {% if renaming %}Save{% else %}Create{% endif %}
+        </button>
+    </div>
+</form>

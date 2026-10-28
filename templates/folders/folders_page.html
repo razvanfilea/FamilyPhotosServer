@@ -1,0 +1,29 @@
+{% extends "shell.html" %}
+{% import "macros/icons.html" as icons %}
+{% import "macros/ui.html" as ui %}
+
+{% block title %}Folders - Family Photos{% endblock %}
+{% block page_title %}Folders{% endblock %}
+
+{% block topbar_actions %}
+<button type="button" class="btn btn-primary btn-sm md:btn-md" data-component="new-folder-button"
+        data-testid="new-folder">
+    {% call icons::icon("add") %}{% endcall %}
+    <span>New folder</span>
+</button>
+{% endblock %}
+
+{% block content %}
+<div class="fp-folder-browser" hx-sync="this:replace" data-component="folder-browser" data-filter="{{ browser.filter }}"
+     data-testid="folder-browser">
+    <div class="fp-folder-browser__chips">
+        {% call ui::filter_chips(browser.filter, "/folders") %}{% endcall %}
+    </div>
+    {% include "folders/search_bar.html" %}
+    {% include "folders/list.html" %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script type="module" src="/assets/js/pages/folders.js"></script>
+{% endblock %}

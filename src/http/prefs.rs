@@ -20,10 +20,6 @@ pub enum FolderSort {
 }
 
 impl FolderSort {
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "Read by the pages of later packages")
-    )]
     pub fn as_str(self) -> &'static str {
         match self {
             Self::DateDesc => "date_desc",
@@ -56,10 +52,6 @@ pub enum FolderView {
 }
 
 impl FolderView {
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "Read by the pages of later packages")
-    )]
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Grid => "grid",

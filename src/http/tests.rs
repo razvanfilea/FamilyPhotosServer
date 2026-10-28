@@ -117,7 +117,6 @@ async fn test_pages_and_fragments_render_when_logged_in(pool: SqlitePool) {
     for (uri, heading) in [
         ("/", "Photos"),
         ("/folders", "Folders"),
-        ("/folders/1", "Folder"),
         ("/favorites", "Favorites"),
         ("/utilities", "Utilities"),
         ("/trash", "Trash"),

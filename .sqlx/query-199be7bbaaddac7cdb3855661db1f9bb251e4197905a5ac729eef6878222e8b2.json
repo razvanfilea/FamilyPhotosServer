@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "select count(*) as \"count!: i64\" from photos where folder_id = $1",
+  "describe": {
+    "columns": [
+      {
+        "name": "count!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "199be7bbaaddac7cdb3855661db1f9bb251e4197905a5ac729eef6878222e8b2"
+}

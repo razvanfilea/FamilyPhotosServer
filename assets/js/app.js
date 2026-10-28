@@ -8,6 +8,8 @@ import { register as registerShortcut } from './core/keyboard.js';
 import { errorMessage, redirectToLogin } from './core/api.js';
 import { t } from './core/strings.js';
 import './components/shell.js';
+// The destination picker (and the folder browser and name dialog it uses) is opened from dialogs on many pages
+import './destination-picker/picker.js';
 
 function initHtmxErrors() {
     const silent = (element) => element?.closest?.('[data-silent-errors]') != null;

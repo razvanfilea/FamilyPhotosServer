@@ -18,11 +18,12 @@ export function redirectToLogin() {
 }
 
 /**
- * Error message for a failed response: the server's 400 bodies are user-facing, others aren't.
+ * Error message for a failed response: the server's 400 and 409 bodies are user-facing, others
+ * aren't.
  * @returns {string}
  */
 export function errorMessage(status, body) {
-    return status === 400 && body ? body : t('genericError');
+    return (status === 400 || status === 409) && body ? body : t('genericError');
 }
 
 /**

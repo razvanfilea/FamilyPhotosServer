@@ -33,6 +33,9 @@ pub struct UpdateShareRequest {
     pub can_upload: bool,
     #[serde(default)]
     pub can_delete: bool,
+    /// Unix seconds. Absent: the expiry is left unchanged, `null`: the share no longer expires
+    #[serde(default, with = "::serde_with::rust::double_option")]
+    pub expires_at: Option<Option<i64>>,
 }
 
 #[derive(Debug, Serialize)]

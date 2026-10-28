@@ -1,0 +1,41 @@
+{% import "macros/icons.html" as icons %}
+
+{# What a folder card shows, in the grid or the list view #}
+{% macro card_body(card, view) -%}
+<span class="fp-folder-card__cover">
+    {%- if let Some(cover) = card.cover_photo_id %}
+    <canvas class="fp-folder-card__hash" data-thumbhash="{{ card.thumb_hash_b64 }}" aria-hidden="true"></canvas>
+    <img class="fp-folder-card__img" src="/api/preview/{{ cover }}" loading="lazy" decoding="async" alt="">
+    {%- else %}
+    <span class="fp-folder-card__empty">{% call icons::icon("folder", false, "fp-folder-card__empty-icon") %}{% endcall %}</span>
+    {%- endif %}
+    {%- if crate::http::views::str_eq(view, "grid") %}
+    <span class="fp-folder-card__scrim">
+        {% call icons::icon(card.type_icon, true) %}{% endcall %}
+        <span class="sr-only">{{ card.type_label }}</span>
+    </span>
+    {%- endif %}
+</span>
+<span class="fp-folder-card__text">
+    <span class="fp-folder-card__name" data-testid="folder-card-name">{{ card.name }}</span>
+    <span class="fp-folder-card__meta" data-testid="folder-card-meta">
+        {%- if crate::http::views::str_eq(view, "grid") %}{{ card.count_label }}{% else %}{{ card.list_details }}{% endif -%}
+    </span>
+</span>
+{%- endmacro %}
+
+{# A link to the folder, or in the destination picker a button that selects it #}
+{% macro folder_card(card, view, picker) -%}
+{%- if picker -%}
+<button type="button" class="fp-folder-card fp-folder-card--{{ view }}" data-testid="folder-card"
+        data-folder-id="{{ card.id }}" data-folder-name="{{ card.name }}" data-type="{{ card.type_key }}"
+        data-public="{{ card.is_public }}">
+    {% call card_body(card, view) %}{% endcall %}
+</button>
+{%- else -%}
+<a href="/folders/{{ card.id }}" class="fp-folder-card fp-folder-card--{{ view }}" data-testid="folder-card"
+   data-folder-id="{{ card.id }}" data-type="{{ card.type_key }}">
+    {% call card_body(card, view) %}{% endcall %}
+</a>
+{%- endif -%}
+{%- endmacro %}

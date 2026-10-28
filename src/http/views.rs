@@ -64,6 +64,8 @@ pub enum DateStyle {
     Long,
     /// Screen reader labels: `"8 Jun 2024 14:03"`
     Accessible,
+    /// A date without a time, e.g. a share expiry: `"8 Jun 2024"`
+    Day,
 }
 
 pub fn format_date(date: OffsetDateTime, style: DateStyle) -> String {
@@ -96,6 +98,7 @@ fn format_date_in_year(date: OffsetDateTime, style: DateStyle, current_year: i32
             short_month(month),
             date.year()
         ),
+        DateStyle::Day => format!("{} {} {}", date.day(), short_month(month), date.year()),
     }
 }
 
@@ -198,6 +201,7 @@ mod tests {
             "Saturday, 8 June 2024 · 14:03"
         );
         assert_eq!(format_date(date, DateStyle::Accessible), "8 Jun 2024 14:03");
+        assert_eq!(format_date(date, DateStyle::Day), "8 Jun 2024");
     }
 
     #[test]

@@ -1,0 +1,8 @@
+<h2 id="app-dialog-title" class="text-lg font-semibold" data-testid="move-title">{{ title }}</h2>
+<div class="mt-4" data-component="move-dialog" data-testid="move-dialog">
+    {% include "destination_picker/picker.html" %}
+    <div class="modal-action">
+        <button type="button" class="btn btn-ghost" data-dialog-close data-testid="move-cancel">Cancel</button>
+        <button type="button" class="btn btn-primary" disabled data-testid="move-confirm">Move photos</button>
+    </div>
+</div>

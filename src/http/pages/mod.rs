@@ -6,6 +6,7 @@ use axum::middleware;
 use axum::routing::get;
 use axum_login::login_required;
 
+mod destination_picker;
 mod duplicates;
 mod errors;
 mod favorites;
@@ -14,6 +15,7 @@ pub mod grid;
 mod large_files;
 mod placeholder;
 mod settings;
+mod sharing;
 mod shortcuts;
 mod timeline;
 mod trash;
@@ -22,6 +24,9 @@ mod user;
 mod utilities;
 
 pub use errors::not_found;
+
+#[cfg(test)]
+mod folder_tests;
 
 pub fn router(app_state: AppStateRef) -> Router {
     // Full pages: redirect to the login page when logged out
@@ -41,6 +46,17 @@ pub fn router(app_state: AppStateRef) -> Router {
     // HTML fragments for HTMX/JS: 401 + HX-Redirect when logged out
     let fragments_router = Router::new()
         .route("/ui/dialogs/shortcuts", get(shortcuts::shortcuts_dialog))
+        .route("/ui/folders/list", get(folders::list_fragment))
+        .route("/ui/dialogs/folder-name", get(folders::folder_name_dialog))
+        .route(
+            "/ui/dialogs/sharing/{folder_id}",
+            get(sharing::sharing_dialog),
+        )
+        .route(
+            "/ui/destination-picker",
+            get(destination_picker::picker_fragment),
+        )
+        .route("/ui/dialogs/move", get(destination_picker::move_dialog))
         .route("/ui/grid/month", get(grid::month_page))
         .route("/ui/grid/month-picker", get(grid::month_picker))
         .route_layer(middleware::from_fn(fragments::require_login));

@@ -1,6 +1,7 @@
 use axum::{
     Json, Router,
     extract::{Path, State},
+    http::StatusCode,
     response::IntoResponse,
     routing::{patch, post},
 };
@@ -27,7 +28,7 @@ struct FolderResponse {
 pub fn router() -> Router<AppStateRef> {
     Router::new()
         .route("/", post(create_folder))
-        .route("/{id}", patch(update_folder))
+        .route("/{id}", patch(update_folder).delete(delete_folder))
 }
 
 #[derive(Deserialize)]
@@ -195,4 +196,56 @@ async fn update_folder(
         owner_id: target_owner.map(ToOwned::to_owned),
         name: target_name.to_owned(),
     }))
+}
+
+/// Deletes a folder that has no photos at all (trashed ones included)
+async fn delete_folder(
+    State(state): State<AppStateRef>,
+    AuthenticatedUser(user): AuthenticatedUser,
+    Path(folder_id): Path<i64>,
+) -> HttpResult<impl IntoResponse> {
+    let mut tx = state.write_pool.begin().await?;
+
+    let folder = tx
+        .as_mut()
+        .get_accessible_folder(&user.id, folder_id)
+        .await?
+        .ok_or(HttpError::NotFound)?;
+
+    if folder
+        .owner_id
+        .as_deref()
+        .is_some_and(|owner| owner != user.id)
+    {
+        return Err(HttpError::Unauthorized);
+    }
+
+    if tx.as_mut().count_folder_photos(folder_id).await? > 0 {
+        return Err(HttpError::Conflict(
+            "Move or delete the photos in this folder first".to_string(),
+        ));
+    }
+
+    tx.as_mut().delete_folder(folder_id).await?;
+    tx.commit().await?;
+
+    // The directory may not exist (folders get one with their first photo). Anything left in it
+    // isn't a known photo, so leave it alone.
+    let path = state
+        .storage
+        .resolve_folder(folder.owner_id.as_deref(), Some(&folder.name));
+    match tokio::fs::remove_dir(&path).await {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => warn!("Failed to remove the directory of deleted folder {folder_id}: {e}"),
+    }
+
+    info!(
+        user = user.id,
+        folder_id,
+        name = folder.name,
+        "Folder deleted"
+    );
+
+    Ok(StatusCode::NO_CONTENT)
 }
