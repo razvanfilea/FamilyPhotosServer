@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "insert into folder_permissions\n                (owner_id, folder_name, grantee_id, token, can_upload, can_delete, expires_at)\n            values ($1, $2, $3, $4, $5, $6, $7)\n            returning *",
+  "query": "select fp.* from folder_permissions fp\n            inner join folders f on f.id = fp.folder_id\n            where f.owner_id = $1 or f.owner_id is null\n            order by fp.created_at desc",
   "describe": {
     "columns": [
       {
@@ -9,51 +9,45 @@
         "type_info": "Integer"
       },
       {
-        "name": "owner_id",
+        "name": "folder_id",
         "ordinal": 1,
-        "type_info": "Text"
+        "type_info": "Integer"
       },
       {
-        "name": "folder_name",
+        "name": "grantee_id",
         "ordinal": 2,
         "type_info": "Text"
       },
       {
-        "name": "grantee_id",
+        "name": "token",
         "ordinal": 3,
         "type_info": "Text"
       },
       {
-        "name": "token",
-        "ordinal": 4,
-        "type_info": "Text"
-      },
-      {
         "name": "can_upload",
-        "ordinal": 5,
+        "ordinal": 4,
         "type_info": "Bool"
       },
       {
         "name": "can_delete",
-        "ordinal": 6,
+        "ordinal": 5,
         "type_info": "Bool"
       },
       {
         "name": "created_at",
-        "ordinal": 7,
+        "ordinal": 6,
         "type_info": "Datetime"
       },
       {
         "name": "expires_at",
-        "ordinal": 8,
+        "ordinal": 7,
         "type_info": "Datetime"
       }
     ],
     "parameters": {
-      "Right": 7
+      "Right": 1
     },
     "nullable": [
-      false,
       false,
       false,
       true,
@@ -64,5 +58,5 @@
       true
     ]
   },
-  "hash": "0189cc03f77b51c5c4b42982277e64291a7e93b7b2d2a6c49819db01f7b46645"
+  "hash": "c4e1855442ae891ee35172ec1d5de8e44d9344272887a68495b5a8c606ebb438"
 }

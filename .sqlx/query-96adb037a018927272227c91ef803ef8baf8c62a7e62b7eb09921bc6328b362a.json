@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "select * from folder_permissions where id = $1",
+  "query": "select * from photos where folder_id = $1 and trashed_on is null order by created_at desc",
   "describe": {
     "columns": [
       {
@@ -9,44 +9,39 @@
         "type_info": "Integer"
       },
       {
-        "name": "owner_id",
+        "name": "user_id",
         "ordinal": 1,
         "type_info": "Text"
       },
       {
-        "name": "folder_name",
+        "name": "name",
         "ordinal": 2,
         "type_info": "Text"
       },
       {
-        "name": "grantee_id",
-        "ordinal": 3,
-        "type_info": "Text"
-      },
-      {
-        "name": "token",
-        "ordinal": 4,
-        "type_info": "Text"
-      },
-      {
-        "name": "can_upload",
-        "ordinal": 5,
-        "type_info": "Bool"
-      },
-      {
-        "name": "can_delete",
-        "ordinal": 6,
-        "type_info": "Bool"
-      },
-      {
         "name": "created_at",
-        "ordinal": 7,
+        "ordinal": 3,
         "type_info": "Datetime"
       },
       {
-        "name": "expires_at",
-        "ordinal": 8,
+        "name": "file_size",
+        "ordinal": 4,
+        "type_info": "Integer"
+      },
+      {
+        "name": "trashed_on",
+        "ordinal": 5,
         "type_info": "Datetime"
+      },
+      {
+        "name": "thumb_hash",
+        "ordinal": 6,
+        "type_info": "Blob"
+      },
+      {
+        "name": "folder_id",
+        "ordinal": 7,
+        "type_info": "Integer"
       }
     ],
     "parameters": {
@@ -54,15 +49,14 @@
     },
     "nullable": [
       false,
-      false,
-      false,
-      true,
       true,
       false,
       false,
       false,
+      true,
+      true,
       true
     ]
   },
-  "hash": "6e655d90e48c2470e46a23ca2f97f40611c328125f5152f2589f6a0ec65727d9"
+  "hash": "96adb037a018927272227c91ef803ef8baf8c62a7e62b7eb09921bc6328b362a"
 }

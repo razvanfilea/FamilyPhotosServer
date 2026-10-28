@@ -1,14 +1,14 @@
 ARG TARGET_ARCH=x86_64-unknown-linux-musl
 
-FROM rust:1.97-alpine AS base
+FROM rust:1.99-alpine AS base
 ARG TARGET_ARCH
 USER root
 
 RUN rustup target add $TARGET_ARCH && \
     apk add --no-cache musl-dev npm sccache && \
-    cargo install cargo-chef
+    cargo install cargo-chef --locked --version 0.1.78
 
-ENV RUSTC_WRAPPER=sccache SCCACHE_DIR=/sccache
+ENV RUSTC_WRAPPER=sccache SCCACHE_DIR=/sccache SQLX_OFFLINE=true
 
 
 FROM base AS planner
@@ -24,7 +24,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=$SCCACHE_DIR,sharing=locked \
     cargo chef cook --release --target $TARGET_ARCH --recipe-path recipe.json
 COPY . .
-RUN npm install --ignore-scripts && npm run prod
+RUN npm ci --ignore-scripts && npm run prod
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     --mount=type=cache,target=$SCCACHE_DIR,sharing=locked \

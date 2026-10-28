@@ -8,7 +8,11 @@ use time::OffsetDateTime;
 use tokio::fs;
 use tracing::{error, info};
 
-use crate::{http::utils::write_field_to_file, model::photo_hash::PhotoHash, utils::crop_blake_3_hash};
+use crate::{
+    http::utils::write_field_to_file,
+    model::photo_hash::PhotoHash,
+    utils::{crop_blake_3_hash, is_safe_path_component},
+};
 use crate::http::{AppStateRef, auth::AuthenticatedUser};
 use crate::model::photo::Photo;
 use crate::repo::{FoldersRepo, PhotosHashRepo, PhotosTransactionRepo};
@@ -36,6 +40,9 @@ struct UploadDataQuery {
 struct UploadTarget {
     photo_user_id: Option<String>,
     folder: Option<AccessibleFolder>,
+    /// Set when uploading into a folder shared by another user: duplicates are only
+    /// looked up inside this folder, so the uploader can't probe the owner's other photos.
+    dedup_folder_id: Option<i64>,
 }
 
 async fn resolve_upload_target(
@@ -47,6 +54,7 @@ async fn resolve_upload_target(
         return Ok(UploadTarget {
             photo_user_id: (!query.make_public).then_some(user_id.to_owned()),
             folder: None,
+            dedup_folder_id: None,
         });
     };
 
@@ -60,8 +68,14 @@ async fn resolve_upload_target(
         return Err(HttpError::Unauthorized);
     }
 
+    let is_shared = folder
+        .owner_id
+        .as_deref()
+        .is_some_and(|owner_id| owner_id != user_id);
+
     Ok(UploadTarget {
         photo_user_id: folder.owner_id.clone(),
+        dedup_folder_id: is_shared.then_some(folder.id),
         folder: Some(folder),
     })
 }
@@ -83,6 +97,10 @@ async fn upload_photo(
         .or(field.name())
         .ok_or_else(|| HttpError::BadRequest("Multipart has no name".to_string()))?
         .to_owned();
+
+    if !is_safe_path_component(&file_name) {
+        return Err(HttpError::BadRequest("Invalid file name".to_string()));
+    }
 
     let mut tx = state.write_pool.begin().await?;
 
@@ -158,9 +176,13 @@ async fn check_existing_photo_with_hash(
     target: &UploadTarget,
     hash: &[u8],
 ) -> Result<Option<Photo>, HttpError> {
-    let existing = tx
-        .get_photo_with_hash(hash, target.photo_user_id.as_deref())
-        .await?;
+    let existing = match target.dedup_folder_id {
+        Some(folder_id) => tx.get_photo_with_hash_in_folder(hash, folder_id).await?,
+        None => {
+            tx.get_photo_with_hash(hash, target.photo_user_id.as_deref())
+                .await?
+        }
+    };
 
     if let Some(photo) = existing {
         let folder_name = tx.as_mut().get_folder_name(photo.folder_id).await?;

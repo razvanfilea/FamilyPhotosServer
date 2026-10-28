@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "select * from photos\n                where user_id is null\n                  and trashed_on is null\n                  and folder = $1\n                  and ($2 is null or created_at < $2 or (created_at = $2 and id < $3))\n                order by created_at desc, id desc\n                limit $4",
+  "query": "select * from photos\n            where folder_id = $1\n              and trashed_on is null\n              and ($2 is null or created_at < $2 or (created_at = $2 and id < $3))\n            order by created_at desc, id desc\n            limit $4",
   "describe": {
     "columns": [
       {
@@ -29,19 +29,19 @@
         "type_info": "Integer"
       },
       {
-        "name": "folder",
-        "ordinal": 5,
-        "type_info": "Text"
-      },
-      {
         "name": "trashed_on",
-        "ordinal": 6,
+        "ordinal": 5,
         "type_info": "Datetime"
       },
       {
         "name": "thumb_hash",
-        "ordinal": 7,
+        "ordinal": 6,
         "type_info": "Blob"
+      },
+      {
+        "name": "folder_id",
+        "ordinal": 7,
+        "type_info": "Integer"
       }
     ],
     "parameters": {
@@ -58,5 +58,5 @@
       true
     ]
   },
-  "hash": "1c92190885d82c9f3fd4347c7ec7d109920dc541d6e86bc07dc98a63546a4a24"
+  "hash": "61b9af0b878d083ddde1a30c54c853bd182cc676d3c3644c73e0ebcf8e456121"
 }

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "insert into folder_event_log (folder_id, photo_id, data) values ($1, $2, $3)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "63eb38ce1696c5bfcbff0bf0fd405cfe6f43c722fbe971b94a3bb1eab0a91eb4"
+}

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "delete from folder_permissions\n            where id = $1 and folder_id in (select id from folders where owner_id = $2 or owner_id is null)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "b5de4ba3bba52041d961bd4811de74d06123a604121e5687a93e9d931ad94e40"
+}

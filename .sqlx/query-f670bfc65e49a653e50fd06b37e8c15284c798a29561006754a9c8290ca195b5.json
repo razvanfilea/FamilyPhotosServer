@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "select name from folders where id = $1",
+  "describe": {
+    "columns": [
+      {
+        "name": "name",
+        "ordinal": 0,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "f670bfc65e49a653e50fd06b37e8c15284c798a29561006754a9c8290ca195b5"
+}

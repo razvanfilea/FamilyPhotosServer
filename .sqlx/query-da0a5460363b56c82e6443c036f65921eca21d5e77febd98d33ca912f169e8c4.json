@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "select photo_id, data from folder_event_log where folder_id = $1 and event_id > $2 order by event_id",
+  "describe": {
+    "columns": [
+      {
+        "name": "photo_id",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "data",
+        "ordinal": 1,
+        "type_info": "Blob"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      true
+    ]
+  },
+  "hash": "da0a5460363b56c82e6443c036f65921eca21d5e77febd98d33ca912f169e8c4"
+}

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "delete from folder_event_log where event_id in (\n                select e.event_id from folder_event_log e\n                inner join (\n                    select folder_id, max(event_id) - $1 as cutoff\n                    from folder_event_log\n                    group by folder_id\n                ) c on e.folder_id = c.folder_id and e.event_id <= c.cutoff\n            )",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "3eb40a70b0596d58c0e9dabb9be7759efab87f608bb82690b6517b46250988c9"
+}

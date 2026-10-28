@@ -9,3 +9,9 @@
 *.db*
 
 Dockerfile
+
+.git
+.github
+.idea
+docs
+playwright

@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT * FROM photos WHERE id = $1 AND user_id = $2 AND folder = $3",
+  "query": "select p.* from photos p join photos_hash e on p.id = e.photo_id\n             where e.hash = $1 and p.folder_id = $2",
   "describe": {
     "columns": [
       {
@@ -29,23 +29,23 @@
         "type_info": "Integer"
       },
       {
-        "name": "folder",
-        "ordinal": 5,
-        "type_info": "Text"
-      },
-      {
         "name": "trashed_on",
-        "ordinal": 6,
+        "ordinal": 5,
         "type_info": "Datetime"
       },
       {
         "name": "thumb_hash",
-        "ordinal": 7,
+        "ordinal": 6,
         "type_info": "Blob"
+      },
+      {
+        "name": "folder_id",
+        "ordinal": 7,
+        "type_info": "Integer"
       }
     ],
     "parameters": {
-      "Right": 3
+      "Right": 2
     },
     "nullable": [
       false,
@@ -58,5 +58,5 @@
       true
     ]
   },
-  "hash": "839e57f5ec344819b5fd0ba0f059d1194b59fece5f09262734d1bd74c72429bd"
+  "hash": "4ac96ac07d3ccfee78f1ad802cfd1bf84912026d695df77af74a75c7ecb590a7"
 }
