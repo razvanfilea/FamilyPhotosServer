@@ -86,6 +86,8 @@
     {% call nav_item(ctx.nav_active, "/utilities", "utilities", "Utilities", "apps", "bottom") %}{% endcall %}
 </nav>
 
+{% include "viewer/root.html" %}
+
 <template id="sign-out-dialog">
     <h2 id="app-dialog-title" class="text-lg font-semibold">Sign out?</h2>
     <p class="py-4 text-base-content/80">You will need to log in again to see your photos.</p>

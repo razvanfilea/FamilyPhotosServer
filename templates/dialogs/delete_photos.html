@@ -1,0 +1,25 @@
+{% import "macros/icons.html" as icons %}
+{# The delete dialog (Android's DeletePhotosDialog), opened by `openDeleteDialog` in
+   assets/js/viewer/delete-dialog.js for the viewer, the selection bar, the trash and duplicates.
+   The texts for one photo, several photos and permanent deletion are in the data attributes. #}
+<template id="delete-dialog-template"
+          data-title-one="Delete photo" data-title-many="Delete photos" data-title-permanent="Delete permanently"
+          data-message-one="Are you sure you want to move this photo to the trash?"
+          data-message-many="Are you sure you want to move these photos to the trash?"
+          data-message-permanent-one="This photo will be permanently deleted and cannot be recovered."
+          data-message-permanent-many="These photos will be permanently deleted and cannot be recovered."
+          data-confirm="Delete" data-confirm-permanent="Delete permanently">
+    <div class="delete-dialog" data-testid="delete-dialog">
+        <span class="delete-dialog__icon" data-slot="icon-trash">{% call icons::icon("delete") %}{% endcall %}</span>
+        <span class="delete-dialog__icon delete-dialog__icon--permanent" data-slot="icon-permanent" hidden>{% call icons::icon("delete_forever") %}{% endcall %}</span>
+        <h2 id="app-dialog-title" class="delete-dialog__title" data-slot="title"></h2>
+        <p class="delete-dialog__message" data-slot="message"></p>
+        <ul class="delete-dialog__thumbs" data-slot="thumbs" aria-hidden="true"></ul>
+        <p class="delete-dialog__status" data-slot="status" role="status" hidden></p>
+        <p class="delete-dialog__error" data-slot="error" role="alert" data-testid="delete-error" hidden></p>
+        <div class="modal-action">
+            <button type="button" class="btn btn-ghost" data-slot="cancel" data-testid="delete-cancel">Cancel</button>
+            <button type="button" class="btn btn-error" data-slot="confirm" data-testid="delete-confirm"></button>
+        </div>
+    </div>
+</template>

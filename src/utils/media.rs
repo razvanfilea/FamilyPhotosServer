@@ -5,7 +5,7 @@ const VIDEO_EXTENSIONS: &[&str] = &[
     "flv", "wmv", "ogv",
 ];
 
-const BROWSER_IMAGE_EXTENSIONS: &[&str] =
+pub const BROWSER_IMAGE_EXTENSIONS: &[&str] =
     &["jpg", "jpeg", "png", "gif", "webp", "avif", "bmp", "svg"];
 
 fn extension(name: &str) -> Option<String> {

@@ -1,0 +1,107 @@
+{% import "macros/icons.html" as icons %}
+{# The full-screen photo viewer, included once by shell.html. Its behaviour is
+   assets/js/viewer/. `data-initial-photo` opens it on page
+   load (deep link `?photo={id}`), walking `data-context` (the page's context, or the one named by
+   `&ctx=`; when empty the script uses the page's grid). #}
+<div id="viewer-root" class="viewer" data-component="viewer" hidden
+     data-initial-photo="{% if let Some(photo_id) = ctx.viewer.photo_id %}{{ photo_id }}{% endif %}"
+     data-context="{{ ctx.viewer.context_key.as_deref().unwrap_or_default() }}"
+     data-user-id="{{ ctx.user_id }}"
+     data-image-extensions="{{ crate::http::pages::viewer::browser_image_extensions() }}"
+     data-testid="viewer" role="dialog" aria-modal="true" aria-label="Photo viewer" tabindex="-1">
+    <div class="viewer__main">
+        <div class="viewer__stage" data-testid="viewer-stage">
+            <div class="viewer__track"></div>
+        </div>
+
+        <button type="button" class="viewer__nav viewer__nav--prev viewer-chrome" data-action="prev"
+                data-testid="viewer-prev" aria-label="Previous photo">{% call icons::icon("chevron_left") %}{% endcall %}</button>
+        <button type="button" class="viewer__nav viewer__nav--next viewer-chrome" data-action="next"
+                data-testid="viewer-next" aria-label="Next photo">{% call icons::icon("chevron_right") %}{% endcall %}</button>
+
+        <header class="viewer__bar viewer__bar--top viewer-chrome">
+            <button type="button" class="btn btn-ghost btn-circle" data-action="close" data-testid="viewer-close"
+                    aria-label="Close">{% call icons::icon("arrow_back") %}{% endcall %}</button>
+            <h2 class="viewer__title" data-testid="viewer-title"></h2>
+            <button type="button" class="btn btn-ghost btn-circle viewer__favorite" data-action="favorite"
+                    data-testid="viewer-favorite" aria-pressed="false" aria-label="Favorite">
+                <span class="viewer__favorite-off">{% call icons::icon("star") %}{% endcall %}</span>
+                <span class="viewer__favorite-on">{% call icons::icon("star", true) %}{% endcall %}</span>
+            </button>
+            <details class="dropdown dropdown-end" data-component="dropdown" data-testid="viewer-more">
+                <summary class="btn btn-ghost btn-circle" aria-label="More options">{% call icons::icon("more_vert") %}{% endcall %}</summary>
+                <ul class="dropdown-content menu fp-menu w-52">
+                    <li><button type="button" data-action="download" data-testid="viewer-download">{% call icons::icon("download") %}{% endcall %} Download</button></li>
+                    <li><button type="button" data-action="copy-link" data-testid="viewer-copy-link">{% call icons::icon("link") %}{% endcall %} Copy link</button></li>
+                </ul>
+            </details>
+        </header>
+
+        <footer class="viewer__bar viewer__bar--bottom viewer-chrome">
+            <button type="button" class="viewer__action" data-action="delete" data-testid="viewer-delete" data-for="photos">
+                {% call icons::icon("delete") %}{% endcall %}<span>Delete</span></button>
+            <button type="button" class="viewer__action" data-action="share" data-testid="viewer-share" data-for="photos">
+                {% call icons::icon("share") %}{% endcall %}<span>Share</span></button>
+            <button type="button" class="viewer__action" data-action="move" data-testid="viewer-move" data-for="photos">
+                {% call icons::icon("drive_file_move") %}{% endcall %}<span>Move</span></button>
+            <button type="button" class="viewer__action" data-action="restore" data-testid="viewer-restore" data-for="trash">
+                {% call icons::icon("restore_from_trash") %}{% endcall %}<span>Restore</span></button>
+            <button type="button" class="viewer__action viewer__action--danger" data-action="delete-forever"
+                    data-testid="viewer-delete-forever" data-for="trash">
+                {% call icons::icon("delete_forever") %}{% endcall %}<span>Delete forever</span></button>
+            <button type="button" class="viewer__action" data-action="info" data-testid="viewer-info" aria-expanded="false">
+                {% call icons::icon("info") %}{% endcall %}<span>Info</span></button>
+        </footer>
+    </div>
+
+    <aside class="viewer__info" aria-label="Photo details" data-testid="viewer-info-panel" hidden>
+        <div class="viewer__info-handle">
+            <button type="button" class="btn btn-ghost btn-circle btn-sm" data-action="info"
+                    aria-label="Close details" data-testid="viewer-info-close">{% call icons::icon("close") %}{% endcall %}</button>
+        </div>
+        <div class="viewer__info-body" data-slot="info" aria-live="polite"></div>
+    </aside>
+
+    <template data-template="video">
+        <div class="viewer-video">
+            <video class="viewer-video__video" preload="metadata" playsinline data-testid="viewer-video"></video>
+            <div class="viewer-video__center viewer-chrome">
+                <button type="button" class="viewer-video__button" data-video="back" aria-label="Back 5 seconds"
+                        data-testid="video-back">{% call icons::icon("replay_5") %}{% endcall %}</button>
+                <button type="button" class="viewer-video__button viewer-video__button--play" data-video="play"
+                        aria-label="Play" data-testid="video-play">
+                    <span class="viewer-video__play-icon">{% call icons::icon("play_arrow", true) %}{% endcall %}</span>
+                    <span class="viewer-video__pause-icon">{% call icons::icon("pause", true) %}{% endcall %}</span>
+                </button>
+                <button type="button" class="viewer-video__button" data-video="forward" aria-label="Forward 5 seconds"
+                        data-testid="video-forward">{% call icons::icon("forward_5") %}{% endcall %}</button>
+            </div>
+            <div class="viewer-video__bottom viewer-chrome">
+                <div class="viewer-video__row">
+                    <span class="viewer-video__time" data-video="time" data-testid="video-time">00:00 / 00:00</span>
+                    <button type="button" class="btn btn-ghost btn-circle btn-sm viewer-video__mute" data-video="mute"
+                            aria-label="Mute" aria-pressed="false" data-testid="video-mute">
+                        <span class="viewer-video__sound-icon">{% call icons::icon("volume_up") %}{% endcall %}</span>
+                        <span class="viewer-video__muted-icon">{% call icons::icon("volume_off") %}{% endcall %}</span>
+                    </button>
+                </div>
+                <input type="range" class="viewer-video__seek" data-video="seek" min="0" max="1000" step="1" value="0"
+                       aria-label="Seek" data-testid="video-seek">
+            </div>
+            <div class="viewer-video__error" data-video="error" data-testid="video-error" hidden>
+                <p>This video can't be played in the browser</p>
+                <a class="btn btn-primary" data-video="download" download>{% call icons::icon("download") %}{% endcall %} Download</a>
+            </div>
+        </div>
+    </template>
+
+    <script type="application/json" data-viewer-strings>
+    {"photoNotFound":"Photo not found","movedToTrash":"Photo moved to trash","undo":"Undo",
+     "restored":"Photo restored","deletedForever":"Photo deleted permanently","moved":"Photo moved",
+     "linkCopied":"Link copied","copyFailed":"Couldn't copy the link","addFavorite":"Add to favorites",
+     "removeFavorite":"Remove from favorites","play":"Play","pause":"Pause","mute":"Mute","unmute":"Unmute",
+     "infoError":"Couldn't load the details"}
+    </script>
+</div>
+{% include "dialogs/delete_photos.html" %}
+<script type="module" src="/assets/js/viewer/index.js"></script>

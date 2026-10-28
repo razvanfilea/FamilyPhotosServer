@@ -1,0 +1,43 @@
+{% import "macros/icons.html" as icons %}
+{# The info panel of a photo (`pages::viewer::info_panel`): shown in the viewer's side panel or
+   bottom sheet, or in #app-dialog with `dialog`. Text is selectable. #}
+<div class="viewer-info" data-photo-id="{{ info.photo_id }}" data-testid="viewer-info-content">
+    <header class="viewer-info__header">
+        <h2 {% if dialog %}id="app-dialog-title" {% endif %}class="viewer-info__name" data-testid="viewer-info-name">{{ info.name }}</h2>
+        <p class="viewer-info__date" data-testid="viewer-info-date">{{ info.date }}</p>
+    </header>
+    {%- if let Some(location) = info.location %}
+    <h3 class="viewer-info__section">Location</h3>
+    <a class="viewer-info__card viewer-info__row viewer-info__location" href="{{ location.maps_url }}"
+       target="_blank" rel="noopener noreferrer" data-testid="viewer-info-location">
+        {% call icons::icon("location_on") %}{% endcall %}
+        <span class="viewer-info__text">
+            <span class="viewer-info__title">{{ location.label }}</span>
+            <span class="viewer-info__summary viewer-info__summary--link">Open in Maps</span>
+        </span>
+    </a>
+    {%- endif %}
+    <h3 class="viewer-info__section">Details</h3>
+    <ul class="viewer-info__card">
+        {%- for row in info.rows %}
+        <li class="viewer-info__row" data-testid="{{ row.testid }}">
+            {% call icons::icon(row.icon) %}{% endcall %}
+            <span class="viewer-info__text">
+                {%- if let Some(href) = row.href %}
+                <a class="viewer-info__title link link-hover" href="{{ href }}">{{ row.title }}</a>
+                {%- else %}
+                <span class="viewer-info__title{% if row.muted %} viewer-info__title--muted{% endif %}">{{ row.title }}</span>
+                {%- endif %}
+                {%- if let Some(summary) = row.summary %}
+                <span class="viewer-info__summary">{{ summary }}</span>
+                {%- endif %}
+            </span>
+        </li>
+        {%- endfor %}
+    </ul>
+    {%- if dialog %}
+    <div class="modal-action">
+        <button type="button" class="btn btn-primary" data-dialog-close>Close</button>
+    </div>
+    {%- endif %}
+</div>

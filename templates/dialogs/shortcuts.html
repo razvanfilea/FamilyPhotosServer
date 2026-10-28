@@ -1,15 +1,32 @@
+{%- macro row(keys, label) -%}
+<div><dt>{% for key in keys %}<kbd class="kbd kbd-sm">{{ key }}</kbd>{% if !loop.last %} {% endif %}{% endfor %}</dt><dd>{{ label }}</dd></div>
+{%- endmacro -%}
 <h2 id="app-dialog-title" class="text-lg font-semibold" data-testid="shortcuts-dialog">Keyboard shortcuts</h2>
-<dl class="fp-shortcuts">
-    <div><dt><kbd class="kbd kbd-sm">g</kbd> <kbd class="kbd kbd-sm">p</kbd></dt><dd>Go to Photos</dd></div>
-    <div><dt><kbd class="kbd kbd-sm">g</kbd> <kbd class="kbd kbd-sm">f</kbd></dt><dd>Go to Folders</dd></div>
-    <div><dt><kbd class="kbd kbd-sm">g</kbd> <kbd class="kbd kbd-sm">u</kbd></dt><dd>Go to Utilities</dd></div>
-    <div><dt><kbd class="kbd kbd-sm">u</kbd></dt><dd>Upload</dd></div>
-    <div><dt><kbd class="kbd kbd-sm">?</kbd></dt><dd>Show keyboard shortcuts</dd></div>
-    <div><dt><kbd class="kbd kbd-sm">+</kbd> <kbd class="kbd kbd-sm">-</kbd></dt><dd>Zoom the photo grid</dd></div>
-    <div><dt><kbd class="kbd kbd-sm">Ctrl</kbd> <kbd class="kbd kbd-sm">scroll</kbd></dt><dd>Zoom the photo grid</dd></div>
-    <div><dt><kbd class="kbd kbd-sm">&larr;</kbd> <kbd class="kbd kbd-sm">&rarr;</kbd> <kbd class="kbd kbd-sm">&uarr;</kbd> <kbd class="kbd kbd-sm">&darr;</kbd></dt><dd>Move between photos</dd></div>
-    <div><dt><kbd class="kbd kbd-sm">Enter</kbd></dt><dd>Open the focused photo</dd></div>
-</dl>
+<div class="fp-shortcuts">
+    <section>
+        <h3>Photos</h3>
+        <dl>
+            {% call row(["←", "→", "↑", "↓"], "Move between photos") %}{% endcall %}
+            {% call row(["Enter"], "Open the photo") %}{% endcall %}
+            {% call row(["+", "-"], "Bigger / smaller tiles") %}{% endcall %}
+            {% call row(["?"], "Show this list") %}{% endcall %}
+        </dl>
+    </section>
+    <section>
+        <h3>Viewer</h3>
+        <dl>
+            {% call row(["←", "→"], "Previous / next photo") %}{% endcall %}
+            {% call row(["f"], "Favorite") %}{% endcall %}
+            {% call row(["i"], "Details") %}{% endcall %}
+            {% call row(["Delete"], "Delete") %}{% endcall %}
+            {% call row(["m"], "Move") %}{% endcall %}
+            {% call row(["d"], "Download") %}{% endcall %}
+            {% call row(["+", "-", "0"], "Zoom in / out / reset") %}{% endcall %}
+            {% call row(["Space"], "Play / pause a video") %}{% endcall %}
+            {% call row(["Esc"], "Close") %}{% endcall %}
+        </dl>
+    </section>
+</div>
 <div class="modal-action">
     <button type="button" class="btn btn-primary" data-dialog-close data-testid="shortcuts-close">Close</button>
 </div>

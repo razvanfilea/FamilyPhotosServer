@@ -30,14 +30,14 @@ const PASSWORD: &str = "password";
 static PASSWORD_HASH: LazyLock<String> = LazyLock::new(|| generate_hash_from_password(PASSWORD));
 
 /// The router with a temporary storage and the users of [`USERS`], who can log in
-struct TestServer {
+pub(crate) struct TestServer {
     router: Router,
     state: AppStateRef,
     _storage: TempDir,
 }
 
 impl TestServer {
-    async fn new(pool: SqlitePool) -> Self {
+    pub(crate) async fn new(pool: SqlitePool) -> Self {
         let storage_dir = TempDir::new().unwrap();
         let storage = StorageResolver::new(
             storage_dir.path().join("storage"),
@@ -63,7 +63,7 @@ impl TestServer {
         }
     }
 
-    fn pool(&self) -> &SqlitePool {
+    pub(crate) fn pool(&self) -> &SqlitePool {
         &self.state.write_pool
     }
 
@@ -82,7 +82,7 @@ impl TestServer {
         }
     }
 
-    async fn login(&self, user_id: &str) -> Client<'_> {
+    pub(crate) async fn login(&self, user_id: &str) -> Client<'_> {
         let response = self
             .send(
                 Request::post("/api/login")
@@ -99,7 +99,7 @@ impl TestServer {
         }
     }
 
-    fn anonymous(&self) -> Client<'_> {
+    pub(crate) fn anonymous(&self) -> Client<'_> {
         Client {
             server: self,
             cookie: String::new(),
@@ -107,7 +107,12 @@ impl TestServer {
     }
 
     /// Writes the photo's file to the storage
-    fn write_file(&self, photo: &Photo, folder_name: Option<&str>, content: &[u8]) -> PathBuf {
+    pub(crate) fn write_file(
+        &self,
+        photo: &Photo,
+        folder_name: Option<&str>,
+        content: &[u8],
+    ) -> PathBuf {
         let path = self
             .state
             .storage
@@ -119,7 +124,7 @@ impl TestServer {
 }
 
 /// Sends requests with a session cookie (none for [`TestServer::anonymous`])
-struct Client<'a> {
+pub(crate) struct Client<'a> {
     server: &'a TestServer,
     cookie: String,
 }
@@ -149,11 +154,11 @@ impl Client<'_> {
         self.server.send(builder.body(body).unwrap()).await
     }
 
-    async fn get(&self, uri: &str) -> TestResponse {
+    pub(crate) async fn get(&self, uri: &str) -> TestResponse {
         self.request(Method::GET, uri, &[], None).await
     }
 
-    async fn get_with(&self, uri: &str, headers: &[(HeaderName, &str)]) -> TestResponse {
+    pub(crate) async fn get_with(&self, uri: &str, headers: &[(HeaderName, &str)]) -> TestResponse {
         self.request(Method::GET, uri, headers, None).await
     }
 
@@ -197,14 +202,14 @@ impl Client<'_> {
     }
 }
 
-struct TestResponse {
-    status: StatusCode,
+pub(crate) struct TestResponse {
+    pub(crate) status: StatusCode,
     headers: HeaderMap,
     body: Vec<u8>,
 }
 
 impl TestResponse {
-    fn assert_status(self, status: StatusCode) -> Self {
+    pub(crate) fn assert_status(self, status: StatusCode) -> Self {
         assert_eq!(self.status, status, "{}", self.text());
         self
     }
@@ -215,11 +220,11 @@ impl TestResponse {
         })
     }
 
-    fn text(&self) -> String {
+    pub(crate) fn text(&self) -> String {
         String::from_utf8_lossy(&self.body).into_owned()
     }
 
-    fn header(&self, name: HeaderName) -> &str {
+    pub(crate) fn header(&self, name: HeaderName) -> &str {
         self.headers
             .get(&name)
             .unwrap_or_else(|| panic!("missing {name}"))

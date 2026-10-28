@@ -10,11 +10,13 @@ export const EVENTS = Object.freeze({
     photosRemoved: 'fp:photos-removed',
     /** {photos: PhotoJson[]} */
     photosChanged: 'fp:photos-changed',
+    /** {ids: number[], contextKey?} — photos came (back) into contexts, e.g. Undo of a trash: grids reload */
+    photosAdded: 'fp:photos-added',
     /** {level} */
     gridZoom: 'fp:grid-zoom',
     /** {section, month, tiles: Element[]} */
     sectionLoaded: 'fp:section-loaded',
-    /** {photoId} */
+    /** {photoId, contextKey, index?} — index only when the viewer walked the page grid's context */
     viewerClosed: 'fp:viewer-closed',
     /** {message, type} — also triggered by the server with the `HX-Trigger` header */
     toast: 'fp:toast',
