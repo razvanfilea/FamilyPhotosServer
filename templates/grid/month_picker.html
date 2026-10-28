@@ -1,0 +1,16 @@
+<div data-component="month-picker">
+    <h2 id="app-dialog-title" class="text-lg font-semibold" data-testid="month-picker">Select a Month</h2>
+    <ul class="fp-month-picker">
+        {%- for row in rows %}
+        <li>
+            <button type="button" class="fp-month-picker__row" data-month="{{ row.month }}" data-testid="month-picker-row">
+                <img class="fp-month-picker__cover" src="/api/preview/{{ row.cover_photo_id }}" loading="lazy" decoding="async" alt="">
+                <span class="fp-month-picker__text">
+                    <span class="fp-month-picker__label">{{ row.label_with_year }}</span>
+                    <span class="fp-month-picker__count">{{ row.count_label }}</span>
+                </span>
+            </button>
+        </li>
+        {%- endfor %}
+    </ul>
+</div>

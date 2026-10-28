@@ -1,7 +1,8 @@
 {% import "macros/icons.html" as icons %}
 
 {# THE photo tile, used by every grid. `photo` is a `crate::http::views::PhotoTileView`. #}
-{% macro photo_tile(photo, index, badge="") -%}
+{# `badge_kind` is "" or "error" (red) #}
+{% macro photo_tile(photo, index, badge="", badge_kind="") -%}
 <button type="button"
         class="photo-tile"
         data-photo-id="{{ photo.id }}"
@@ -15,6 +16,6 @@
     <img class="photo-tile__img" src="/api/preview/{{ photo.id }}" loading="lazy" decoding="async" alt="">
     {%- if photo.is_video %}<span class="photo-tile__video">{% call icons::icon("play_circle", true) %}{% endcall %}</span>{% endif %}
     <span class="photo-tile__check" aria-hidden="true">{% call icons::icon("radio_button_unchecked") %}{% endcall %}{% call icons::icon("check_circle", true) %}{% endcall %}</span>
-    {%- if badge != "" %}<span class="photo-tile__badge">{{ badge }}</span>{% endif %}
+    {%- if badge != "" %}<span class="photo-tile__badge{% if badge_kind != "" %} photo-tile__badge--{{ badge_kind }}{% endif %}">{{ badge }}</span>{% endif %}
 </button>
 {%- endmacro %}

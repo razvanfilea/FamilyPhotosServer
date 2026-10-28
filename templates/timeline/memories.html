@@ -1,0 +1,12 @@
+{% if !memories.is_empty() %}
+<section class="memories" data-component="memories" aria-label="On this day" data-testid="memories">
+    {%- for memory in memories %}
+    <button type="button" class="memory-card" data-photo-id="{{ memory.cover_photo_id }}" data-context="{{ memory.context_key }}"
+            data-testid="memory-card" aria-label="{{ memory.label }}">
+        <canvas class="photo-tile__hash" data-thumbhash="{{ memory.thumb_hash_b64 }}" aria-hidden="true"></canvas>
+        <img class="photo-tile__img" src="/api/preview/{{ memory.cover_photo_id }}" loading="lazy" decoding="async" alt="">
+        <span class="memory-card__label">{{ memory.label }}</span>
+    </button>
+    {%- endfor %}
+</section>
+{% endif %}
