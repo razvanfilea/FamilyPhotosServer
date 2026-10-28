@@ -132,125 +132,88 @@ fn generate_token() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::repo::tests::{create_test_folder, create_test_user, insert_test_user};
+    use crate::http::error::is_unique_violation;
+    use crate::repo::tests::{create_test_folder, insert_users};
     use sqlx::SqlitePool;
 
     #[sqlx::test]
-    async fn test_create_share(pool: SqlitePool) -> sqlx::Result<()> {
-        let owner = create_test_user("owner", "Owner");
-        let grantee = create_test_user("grantee", "Grantee");
-        insert_test_user(&pool, &owner).await?;
-        insert_test_user(&pool, &grantee).await?;
+    async fn test_shares(pool: SqlitePool) -> sqlx::Result<()> {
+        insert_users(&pool).await;
+        let folder = create_test_folder(&pool, Some("alice"), "shared").await;
+        let public = create_test_folder(&pool, None, "family").await;
+        let bobs = create_test_folder(&pool, Some("bob"), "bobs").await;
 
-        let folder = create_test_folder(&pool, Some("owner"), "shared").await;
-
-        // With grantee: no token generated
+        // With a grantee: no token
         let share = pool
-            .create_share(folder.id, Some("grantee"), true, false, None)
+            .create_share(folder.id, Some("bob"), true, false, None)
             .await?;
-
         assert_eq!(share.folder_id, folder.id);
-        assert_eq!(share.grantee_id.as_deref(), Some("grantee"));
-        assert!(share.token.is_none());
-        assert!(share.can_upload);
-        assert!(!share.can_delete);
-        assert!(share.expires_at.is_none());
+        assert_eq!(share.grantee_id.as_deref(), Some("bob"));
+        assert_eq!(share.token, None);
+        assert!(share.can_upload && !share.can_delete);
+        assert_eq!(share.expires_at, None);
 
-        // Without grantee: token auto-generated
-        let token_share = pool
+        let duplicate = pool
+            .create_share(folder.id, Some("bob"), false, false, None)
+            .await;
+        assert!(is_unique_violation(&duplicate.unwrap_err()));
+
+        // Without a grantee: a link token
+        let link = pool
             .create_share(folder.id, None, false, false, None)
             .await?;
-
-        assert!(token_share.grantee_id.is_none());
-        let token = token_share.token.expect("token should be generated");
+        assert_eq!(link.grantee_id, None);
+        let token = link.token.clone().unwrap();
         assert_eq!(token.len(), 32);
         assert!(token.chars().all(|c| c.is_ascii_hexdigit()));
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn test_get_shares_by_owner(pool: SqlitePool) -> sqlx::Result<()> {
-        let owner = create_test_user("owner", "Owner");
-        let other = create_test_user("other", "Other");
-        insert_test_user(&pool, &owner).await?;
-        insert_test_user(&pool, &other).await?;
-
-        let folder_a = create_test_folder(&pool, Some("owner"), "a").await;
-        let folder_b = create_test_folder(&pool, Some("other"), "b").await;
-
-        pool.create_share(folder_a.id, Some("other"), false, false, None)
-            .await?;
-        pool.create_share(folder_b.id, Some("owner"), false, false, None)
-            .await?;
-
-        let shares = pool.get_shares_by_owner("owner").await?;
-        assert_eq!(shares.len(), 1);
-        assert_eq!(shares[0].folder_id, folder_a.id);
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn test_get_shares_for_folder(pool: SqlitePool) -> sqlx::Result<()> {
-        let owner = create_test_user("owner", "Owner");
-        let grantee = create_test_user("grantee", "Grantee");
-        insert_test_user(&pool, &owner).await?;
-        insert_test_user(&pool, &grantee).await?;
-
-        let folder = create_test_folder(&pool, Some("owner"), "shared").await;
-
-        pool.create_share(folder.id, Some("grantee"), true, true, None)
-            .await?;
-        pool.create_share(folder.id, None, false, false, None)
-            .await?;
-
-        let shares = pool.get_shares_for_folder(folder.id).await?;
-        assert_eq!(shares.len(), 2);
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn test_delete_share_validates_ownership(pool: SqlitePool) -> sqlx::Result<()> {
-        let owner = create_test_user("owner", "Owner");
-        let other = create_test_user("other", "Other");
-        insert_test_user(&pool, &owner).await?;
-        insert_test_user(&pool, &other).await?;
-
-        let folder = create_test_folder(&pool, Some("owner"), "mine").await;
-
-        let share = pool
-            .create_share(folder.id, Some("other"), false, false, None)
-            .await?;
-
-        let deleted = pool.delete_share(share.id, "other").await?;
-        assert_eq!(deleted, 0);
-
-        let deleted = pool.delete_share(share.id, "owner").await?;
-        assert_eq!(deleted, 1);
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn test_get_permission_by_token(pool: SqlitePool) -> sqlx::Result<()> {
-        let owner = create_test_user("owner", "Owner");
-        insert_test_user(&pool, &owner).await?;
-
-        let folder = create_test_folder(&pool, Some("owner"), "public").await;
-
-        let share = pool
-            .create_share(folder.id, None, false, false, None)
-            .await?;
-        let token = share.token.clone().unwrap();
-
         let by_token = pool.get_permission_by_token(&token).await?;
-        assert!(by_token.is_some());
-        assert_eq!(by_token.unwrap().id, share.id);
+        assert_eq!(by_token.map(|p| p.id), Some(link.id));
+        assert!(pool.get_permission_by_token("nonexistent").await?.is_none());
 
-        let missing = pool.get_permission_by_token("nonexistent").await?;
-        assert!(missing.is_none());
+        let public_share = pool
+            .create_share(public.id, Some("carol"), false, false, None)
+            .await?;
+        let bobs_share = pool
+            .create_share(bobs.id, Some("alice"), false, false, None)
+            .await?;
+
+        let ids = |shares: Vec<FolderPermission>| {
+            let mut ids: Vec<i64> = shares.into_iter().map(|s| s.id).collect();
+            ids.sort();
+            ids
+        };
+        assert_eq!(
+            ids(pool.get_shares_for_folder(folder.id).await?),
+            [share.id, link.id]
+        );
+        // The shares of alice's and public folders
+        assert_eq!(
+            ids(pool.get_shares_by_owner("alice").await?),
+            [share.id, link.id, public_share.id]
+        );
+        let shared_folder = pool.get_folder_by_share_id(bobs_share.id).await?;
+        assert_eq!(shared_folder.map(|f| f.id), Some(bobs.id));
+
+        // Only the folder owner (anyone for public folders) can change or revoke a share
+        assert!(
+            pool.update_share(share.id, "bob", true, true)
+                .await?
+                .is_none()
+        );
+        let updated = pool
+            .update_share(share.id, "alice", false, true)
+            .await?
+            .unwrap();
+        assert!(!updated.can_upload && updated.can_delete);
+        assert!(
+            pool.update_share(public_share.id, "bob", true, true)
+                .await?
+                .is_some()
+        );
+
+        assert_eq!(pool.delete_share(share.id, "bob").await?, 0);
+        assert_eq!(pool.delete_share(share.id, "alice").await?, 1);
+        assert_eq!(pool.delete_share(public_share.id, "bob").await?, 1);
 
         Ok(())
     }

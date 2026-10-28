@@ -187,34 +187,18 @@ async fn sync_folders(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::repo::tests::{
-        create_test_folder, create_test_photo, create_test_user, insert_test_user,
-    };
+    use crate::repo::tests::{create_test_folder, insert_photo, insert_users, photo};
     use sqlx::SqlitePool;
 
-    async fn setup_folder(pool: &SqlitePool, count: usize) -> sqlx::Result<i64> {
-        insert_test_user(pool, &create_test_user("owner", "Owner")).await?;
-        let folder = create_test_folder(pool, Some("owner"), "shared").await;
-        add_photos(pool, folder.id, count).await?;
-        Ok(folder.id)
-    }
-
-    async fn add_photos(pool: &SqlitePool, folder_id: i64, count: usize) -> sqlx::Result<()> {
-        let photos: Vec<_> = (0..count)
-            .map(|i| create_test_photo(0, Some("owner"), Some(folder_id), &format!("p{i}.jpg")))
-            .collect();
-        let mut tx = pool.begin().await?;
-        tx.insert_photos(&photos).await?;
-        tx.commit().await
-    }
-
-    async fn sync(
-        pool: &SqlitePool,
-        folder_id: i64,
-        cursor: i64,
-    ) -> sqlx::Result<SharedFolderSync> {
-        let mut tx = pool.begin().await?;
-        sync_shared_folder(&mut tx, folder_id, cursor).await
+    /// Adds `count` photos (one folder event each) to the folder
+    async fn add_photos(pool: &SqlitePool, folder_id: i64, count: usize) {
+        for i in 0..count {
+            let photo = Photo {
+                folder_id: Some(folder_id),
+                ..photo(Some("alice"), &format!("p{i}.jpg"))
+            };
+            insert_photo(pool, photo).await;
+        }
     }
 
     async fn folder_event_ids(pool: &SqlitePool, folder_id: i64) -> sqlx::Result<Vec<i64>> {
@@ -226,99 +210,131 @@ mod tests {
         .await
     }
 
-    fn expect_photos(result: SharedFolderSync, expected_latest: i64, expected_count: usize) {
-        match result {
-            SharedFolderSync::Photos {
-                latest_event_id,
-                photos,
-            } => {
-                assert_eq!(latest_event_id, expected_latest);
-                assert_eq!(photos.len(), expected_count);
+    /// What the sync of a shared folder must return
+    #[derive(Debug, PartialEq)]
+    enum Expected {
+        /// The deltas: the number of events
+        Events(usize),
+        /// The full list: the number of photos
+        Photos(usize),
+    }
+
+    struct Case {
+        name: &'static str,
+        /// Photos (one folder event each) created before the sync
+        photos: usize,
+        /// Keep only the last n events of each folder before the sync
+        trim: Option<u32>,
+        /// The cursor, from the folder's event ids before the trimming
+        cursor: fn(&[i64]) -> i64,
+        /// Photos added after the cursor was chosen
+        added_after: usize,
+        expected: Expected,
+    }
+
+    #[sqlx::test]
+    async fn test_sync_shared_folder(pool: SqlitePool) -> sqlx::Result<()> {
+        insert_users(&pool).await;
+
+        let cases = [
+            Case {
+                name: "cursor 0 returns the photos",
+                photos: 3,
+                trim: None,
+                cursor: |_| 0,
+                added_after: 0,
+                expected: Expected::Photos(3),
+            },
+            Case {
+                name: "up to date cursor returns no events",
+                photos: 3,
+                trim: None,
+                cursor: |ids| *ids.last().unwrap(),
+                added_after: 0,
+                expected: Expected::Events(0),
+            },
+            Case {
+                name: "valid cursor returns the new events",
+                photos: 3,
+                trim: None,
+                cursor: |ids| *ids.last().unwrap(),
+                added_after: 2,
+                expected: Expected::Events(2),
+            },
+            Case {
+                name: "cursor at the oldest surviving event keeps the events",
+                photos: 5,
+                trim: Some(3),
+                cursor: |ids| ids[2],
+                added_after: 0,
+                expected: Expected::Events(2),
+            },
+            Case {
+                name: "cursor before the oldest surviving event returns the photos",
+                photos: 5,
+                trim: Some(2),
+                cursor: |ids| ids[1],
+                added_after: 0,
+                expected: Expected::Photos(5),
+            },
+            Case {
+                name: "cursor of the newest deleted event returns the photos",
+                photos: 5,
+                trim: Some(2),
+                cursor: |ids| ids[2],
+                added_after: 0,
+                expected: Expected::Photos(5),
+            },
+            Case {
+                name: "cursor ahead of the newest event returns the photos",
+                photos: 3,
+                trim: None,
+                cursor: |ids| ids.last().unwrap() + 100,
+                added_after: 0,
+                expected: Expected::Photos(3),
+            },
+            Case {
+                name: "folder without events returns the photos",
+                photos: 0,
+                trim: None,
+                cursor: |_| 7,
+                added_after: 0,
+                expected: Expected::Photos(0),
+            },
+        ];
+
+        for (i, case) in cases.iter().enumerate() {
+            let folder_id = create_test_folder(&pool, Some("alice"), &format!("shared{i}"))
+                .await
+                .id;
+            add_photos(&pool, folder_id, case.photos).await;
+            let ids = folder_event_ids(&pool, folder_id).await?;
+            if let Some(trim) = case.trim {
+                pool.delete_old_folder_events(trim).await?;
             }
-            SharedFolderSync::Events(_) => panic!("expected the full photo list"),
+            let cursor = (case.cursor)(&ids);
+            add_photos(&pool, folder_id, case.added_after).await;
+            let latest = folder_event_ids(&pool, folder_id)
+                .await?
+                .last()
+                .copied()
+                .unwrap_or(0);
+
+            let mut tx = pool.begin().await?;
+            let result = sync_shared_folder(&mut tx, folder_id, cursor).await?;
+            let (actual, actual_latest) = match result {
+                SharedFolderSync::Events(logs) => {
+                    (Expected::Events(logs.events.len()), logs.event_log_id)
+                }
+                SharedFolderSync::Photos {
+                    latest_event_id,
+                    photos,
+                } => (Expected::Photos(photos.len()), latest_event_id),
+            };
+            assert_eq!(actual, case.expected, "{}", case.name);
+            assert_eq!(actual_latest, latest, "{}: latest event id", case.name);
         }
-    }
 
-    fn expect_events(result: SharedFolderSync, expected_latest: i64, expected_count: usize) {
-        match result {
-            SharedFolderSync::Events(logs) => {
-                assert_eq!(logs.event_log_id, expected_latest);
-                assert_eq!(logs.events.len(), expected_count);
-            }
-            SharedFolderSync::Photos { .. } => panic!("expected events"),
-        }
-    }
-
-    #[sqlx::test]
-    async fn test_sync_cursor_zero_returns_photos(pool: SqlitePool) -> sqlx::Result<()> {
-        let folder_id = setup_folder(&pool, 3).await?;
-        let latest = *folder_event_ids(&pool, folder_id).await?.last().unwrap();
-
-        expect_photos(sync(&pool, folder_id, 0).await?, latest, 3);
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn test_sync_up_to_date_cursor_returns_empty_events(
-        pool: SqlitePool,
-    ) -> sqlx::Result<()> {
-        let folder_id = setup_folder(&pool, 3).await?;
-        let latest = *folder_event_ids(&pool, folder_id).await?.last().unwrap();
-
-        expect_events(sync(&pool, folder_id, latest).await?, latest, 0);
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn test_sync_valid_cursor_returns_new_events(pool: SqlitePool) -> sqlx::Result<()> {
-        let folder_id = setup_folder(&pool, 3).await?;
-        let cursor = *folder_event_ids(&pool, folder_id).await?.last().unwrap();
-        add_photos(&pool, folder_id, 2).await?;
-        let latest = *folder_event_ids(&pool, folder_id).await?.last().unwrap();
-
-        expect_events(sync(&pool, folder_id, cursor).await?, latest, 2);
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn test_sync_valid_cursor_after_trimming_keeps_events(
-        pool: SqlitePool,
-    ) -> sqlx::Result<()> {
-        let folder_id = setup_folder(&pool, 5).await?;
-        let ids = folder_event_ids(&pool, folder_id).await?;
-        pool.delete_old_folder_events(3).await?;
-
-        expect_events(sync(&pool, folder_id, ids[2]).await?, ids[4], 2);
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn test_sync_trimmed_cursor_returns_photos(pool: SqlitePool) -> sqlx::Result<()> {
-        let folder_id = setup_folder(&pool, 5).await?;
-        let ids = folder_event_ids(&pool, folder_id).await?;
-        pool.delete_old_folder_events(2).await?;
-        assert_eq!(folder_event_ids(&pool, folder_id).await?, &ids[3..]);
-
-        // Events after the cursor were deleted, the survivors are not a complete delta
-        expect_photos(sync(&pool, folder_id, ids[1]).await?, ids[4], 5);
-        expect_photos(sync(&pool, folder_id, ids[2]).await?, ids[4], 5);
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn test_sync_cursor_ahead_of_max_returns_photos(pool: SqlitePool) -> sqlx::Result<()> {
-        let folder_id = setup_folder(&pool, 3).await?;
-        let latest = *folder_event_ids(&pool, folder_id).await?.last().unwrap();
-
-        expect_photos(sync(&pool, folder_id, latest + 100).await?, latest, 3);
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn test_sync_folder_without_events_returns_photos(pool: SqlitePool) -> sqlx::Result<()> {
-        let folder_id = setup_folder(&pool, 0).await?;
-
-        expect_photos(sync(&pool, folder_id, 7).await?, 0, 0);
         Ok(())
     }
 }

@@ -240,34 +240,36 @@ mod tests {
 
     #[test]
     fn test_is_valid_month() {
-        assert!(is_valid_month("2024-06"));
-        assert!(is_valid_month("1999-12"));
-        for month in [
-            "2024-6",
-            "2024/06",
-            "24-06",
-            "2024-06-01",
-            "abcd-ef",
-            "",
-            "2024-0a",
+        for (month, valid) in [
+            ("2024-06", true),
+            ("1999-12", true),
+            ("2024-6", false),
+            ("2024/06", false),
+            ("24-06", false),
+            ("2024-06-01", false),
+            ("abcd-ef", false),
+            ("", false),
+            ("2024-0a", false),
         ] {
-            assert!(!is_valid_month(month), "{month}");
+            assert_eq!(is_valid_month(month), valid, "{month}");
         }
     }
 
     #[test]
     fn test_is_month_sectioned() {
-        assert!(PhotoListContext::Timeline(PhotoFilter::Shared).is_month_sectioned());
-        assert!(PhotoListContext::Folder(1).is_month_sectioned());
-        assert!(PhotoListContext::Favorites.is_month_sectioned());
-        assert!(!PhotoListContext::Trash.is_month_sectioned());
-        assert!(!PhotoListContext::LargeFiles.is_month_sectioned());
-        assert!(
-            !PhotoListContext::Memories {
-                years_ago: 1,
-                filter: PhotoFilter::All
-            }
-            .is_month_sectioned()
-        );
+        let memories = PhotoListContext::Memories {
+            years_ago: 1,
+            filter: PhotoFilter::All,
+        };
+        for (context, sectioned) in [
+            (PhotoListContext::Timeline(PhotoFilter::Shared), true),
+            (PhotoListContext::Folder(1), true),
+            (PhotoListContext::Favorites, true),
+            (PhotoListContext::Trash, false),
+            (PhotoListContext::LargeFiles, false),
+            (memories, false),
+        ] {
+            assert_eq!(context.is_month_sectioned(), sectioned, "{}", context.key());
+        }
     }
 }
