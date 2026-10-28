@@ -26,10 +26,14 @@ async fn move_photos(
     Query(query): Query<MovePhotosQuery>,
     Json(photo_ids): Json<Vec<i64>>,
 ) -> HttpResult<Json<Vec<Photo>>> {
+    // The write pool has a single connection, so holding it for the whole request keeps
+    // the target folder check consistent with the moves below.
+    let mut conn = state.write_pool.acquire().await?;
+
     let target_folder = match query.target_folder_id {
         Some(id) => {
-            let folder = state
-                .read_pool
+            let folder = conn
+                .as_mut()
                 .get_accessible_folder(&user.id, id)
                 .await?
                 .ok_or(HttpError::NotFound)?;
@@ -51,7 +55,6 @@ async fn move_photos(
     let target_folder_id = target_folder.as_ref().map(|f| f.id);
 
     let mut moved_photos = Vec::with_capacity(photo_ids.len());
-    let mut conn = state.write_pool.acquire().await?;
 
     for photo_id in photo_ids {
         let mut tx = conn.begin().await?;

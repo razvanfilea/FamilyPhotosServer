@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "delete from favorite_photos where photo_id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "bea687f7dbb7aee85e59b7348479d5d3ea35046e33a35266ef78ac2a15c9c879"
+}

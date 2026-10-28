@@ -109,6 +109,16 @@ pub trait FolderPermissionsRepo<'c>: SqliteExecutor<'c> {
         .await
         .map(|r| r.rows_affected())
     }
+
+    async fn delete_grantee_shares(self, folder_id: i64) -> sqlx::Result<u64> {
+        sqlx::query!(
+            "delete from folder_permissions where folder_id = $1 and grantee_id is not null",
+            folder_id
+        )
+        .execute(self)
+        .await
+        .map(|r| r.rows_affected())
+    }
 }
 
 impl<'c, E> FolderPermissionsRepo<'c> for E where E: SqliteExecutor<'c> {}

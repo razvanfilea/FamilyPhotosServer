@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "select coalesce(max(event_id), 0) as 'id!: i64' from folder_event_log where folder_id = $1",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: i64",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "d16b6e77437ac1303b5c808a021047aa33382444c9cac4d460fa27aca1665748"
+}

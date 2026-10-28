@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "delete from folder_permissions where folder_id = $1 and grantee_id is not null",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "69d3fb17486f47514b6821c0eeb591270aa718b600314d39b5c2c22f7ad30cbe"
+}

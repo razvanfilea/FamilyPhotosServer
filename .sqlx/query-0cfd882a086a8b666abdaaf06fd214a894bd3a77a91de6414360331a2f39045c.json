@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "insert or replace into photos_hash (photo_id, hash) values ($1, $2)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "0cfd882a086a8b666abdaaf06fd214a894bd3a77a91de6414360331a2f39045c"
+}

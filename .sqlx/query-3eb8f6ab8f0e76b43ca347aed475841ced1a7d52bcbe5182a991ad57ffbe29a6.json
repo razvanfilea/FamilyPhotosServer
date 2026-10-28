@@ -6,14 +6,14 @@
       {
         "name": "ids!: String",
         "ordinal": 0,
-        "type_info": "Integer"
+        "type_info": "Null"
       }
     ],
     "parameters": {
       "Right": 1
     },
     "nullable": [
-      false
+      null
     ]
   },
   "hash": "3eb8f6ab8f0e76b43ca347aed475841ced1a7d52bcbe5182a991ad57ffbe29a6"

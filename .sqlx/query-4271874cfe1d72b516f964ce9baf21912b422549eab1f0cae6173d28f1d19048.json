@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "select * from folder_permissions where grantee_id = $1 and owner_id = $2 and folder_name = $3",
+  "query": "insert into folder_permissions\n                (folder_id, grantee_id, token, can_upload, can_delete, expires_at)\n            values ($1, $2, $3, $4, $5, $6)\n            returning *",
   "describe": {
     "columns": [
       {
@@ -9,51 +9,45 @@
         "type_info": "Integer"
       },
       {
-        "name": "owner_id",
+        "name": "folder_id",
         "ordinal": 1,
-        "type_info": "Text"
+        "type_info": "Integer"
       },
       {
-        "name": "folder_name",
+        "name": "grantee_id",
         "ordinal": 2,
         "type_info": "Text"
       },
       {
-        "name": "grantee_id",
+        "name": "token",
         "ordinal": 3,
         "type_info": "Text"
       },
       {
-        "name": "token",
-        "ordinal": 4,
-        "type_info": "Text"
-      },
-      {
         "name": "can_upload",
-        "ordinal": 5,
+        "ordinal": 4,
         "type_info": "Bool"
       },
       {
         "name": "can_delete",
-        "ordinal": 6,
+        "ordinal": 5,
         "type_info": "Bool"
       },
       {
         "name": "created_at",
-        "ordinal": 7,
+        "ordinal": 6,
         "type_info": "Datetime"
       },
       {
         "name": "expires_at",
-        "ordinal": 8,
+        "ordinal": 7,
         "type_info": "Datetime"
       }
     ],
     "parameters": {
-      "Right": 3
+      "Right": 6
     },
     "nullable": [
-      false,
       false,
       false,
       true,
@@ -64,5 +58,5 @@
       true
     ]
   },
-  "hash": "1ef521a14cecdd1d40b49ed8c0e6fdd84b887d05b243558759f7c38fda16d876"
+  "hash": "4271874cfe1d72b516f964ce9baf21912b422549eab1f0cae6173d28f1d19048"
 }

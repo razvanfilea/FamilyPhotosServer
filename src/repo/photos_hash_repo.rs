@@ -30,6 +30,22 @@ pub trait PhotosHashRepo<'c>: SqliteExecutor<'c> {
         .await
     }
 
+    async fn get_photo_with_hash_in_folder(
+        self,
+        hash: &[u8],
+        folder_id: i64,
+    ) -> sqlx::Result<Option<Photo>> {
+        query_as!(
+            Photo,
+            "select p.* from photos p join photos_hash e on p.id = e.photo_id
+             where e.hash = $1 and p.folder_id = $2",
+            hash,
+            folder_id
+        )
+        .fetch_optional(self)
+        .await
+    }
+
     async fn get_duplicates_for_user(self, user_id: &str) -> sqlx::Result<Vec<Vec<i64>>> {
         // Note: Parentheses are important here for correct precedence
         // We want: (user's photos OR public photos) AND not trashed

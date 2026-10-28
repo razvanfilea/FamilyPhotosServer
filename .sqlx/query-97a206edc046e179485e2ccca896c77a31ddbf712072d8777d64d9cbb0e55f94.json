@@ -1,0 +1,68 @@
+{
+  "db_name": "SQLite",
+  "query": "select p.*, f.name as \"folder_name: String\"\n            from photos p\n            left join folders f on f.id = p.folder_id\n            left join folder_permissions fp\n                on fp.folder_id = p.folder_id and fp.grantee_id = $2\n            where p.id = $1 and (\n                p.user_id is null\n                or p.user_id = $2\n                or (\n                    fp.grantee_id is not null\n                    and (fp.expires_at is null or fp.expires_at > datetime('now'))\n                    and ($3 = 1 or ($3 = 2 and fp.can_delete = true))\n                )\n            )",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "user_id",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "name",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at",
+        "ordinal": 3,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "file_size",
+        "ordinal": 4,
+        "type_info": "Integer"
+      },
+      {
+        "name": "trashed_on",
+        "ordinal": 5,
+        "type_info": "Datetime"
+      },
+      {
+        "name": "thumb_hash",
+        "ordinal": 6,
+        "type_info": "Blob"
+      },
+      {
+        "name": "folder_id",
+        "ordinal": 7,
+        "type_info": "Integer"
+      },
+      {
+        "name": "folder_name: String",
+        "ordinal": 8,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      false,
+      true,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "97a206edc046e179485e2ccca896c77a31ddbf712072d8777d64d9cbb0e55f94"
+}

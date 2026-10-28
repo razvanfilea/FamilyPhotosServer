@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "insert into photos (user_id, name, created_at, file_size, folder, trashed_on) values ($1, $2, $3, $4, $5, $6) returning *",
+  "query": "select * from photos\n            where rowid not in (\n                select min(rowid)\n                from photos\n                group by user_id, folder_id, name)",
   "describe": {
     "columns": [
       {
@@ -29,23 +29,23 @@
         "type_info": "Integer"
       },
       {
-        "name": "folder",
-        "ordinal": 5,
-        "type_info": "Text"
-      },
-      {
         "name": "trashed_on",
-        "ordinal": 6,
+        "ordinal": 5,
         "type_info": "Datetime"
       },
       {
         "name": "thumb_hash",
-        "ordinal": 7,
+        "ordinal": 6,
         "type_info": "Blob"
+      },
+      {
+        "name": "folder_id",
+        "ordinal": 7,
+        "type_info": "Integer"
       }
     ],
     "parameters": {
-      "Right": 6
+      "Right": 0
     },
     "nullable": [
       false,
@@ -58,5 +58,5 @@
       true
     ]
   },
-  "hash": "7f81e0607a617bad6c28e2cc25986807cc91b59d90024149070ca67ac4889edf"
+  "hash": "3bd6a2fd741405ad634eb9fc1b70cbab47a4bb1d9b586a74888b2b301b41c19a"
 }

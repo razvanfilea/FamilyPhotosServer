@@ -13,7 +13,8 @@ use crate::{
         auth::AuthenticatedUser,
         error::{HttpError, HttpResult},
     },
-    repo::FoldersRepo,
+    repo::{FolderPermissionsRepo, FoldersRepo},
+    utils::is_safe_path_component,
 };
 
 #[derive(Serialize)]
@@ -41,10 +42,8 @@ async fn create_folder(
     Json(new_folder): Json<NewFolderRequest>,
 ) -> HttpResult<impl IntoResponse> {
     let name = new_folder.name.trim();
-    if name.is_empty() {
-        return Err(HttpError::BadRequest(
-            "Folder name cannot be empty".to_string(),
-        ));
+    if !is_safe_path_component(name) {
+        return Err(HttpError::BadRequest("Invalid folder name".to_string()));
     }
 
     let owner_id = if new_folder.is_public {
@@ -98,6 +97,9 @@ async fn update_folder(
         .name
         .map(|n| n.trim().to_owned())
         .filter(|n| !n.is_empty());
+    if new_name.as_deref().is_some_and(|n| !is_safe_path_component(n)) {
+        return Err(HttpError::BadRequest("Invalid folder name".to_string()));
+    }
     let new_owner_id = request.is_public.map(|is_public| {
         if is_public {
             None
@@ -134,6 +136,10 @@ async fn update_folder(
 
     if let Some(owner) = &new_owner_id {
         tx.update_folder_owner(folder_id, owner.as_deref()).await?;
+        if owner.is_none() {
+            // Public folders are visible to everyone, so per-user shares are meaningless
+            tx.delete_grantee_shares(folder_id).await?;
+        }
     }
 
     if source_path != target_path {

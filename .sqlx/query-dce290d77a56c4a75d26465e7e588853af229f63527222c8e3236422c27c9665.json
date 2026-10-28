@@ -29,19 +29,19 @@
         "type_info": "Integer"
       },
       {
-        "name": "folder",
-        "ordinal": 5,
-        "type_info": "Text"
-      },
-      {
         "name": "trashed_on",
-        "ordinal": 6,
+        "ordinal": 5,
         "type_info": "Datetime"
       },
       {
         "name": "thumb_hash",
-        "ordinal": 7,
+        "ordinal": 6,
         "type_info": "Blob"
+      },
+      {
+        "name": "folder_id",
+        "ordinal": 7,
+        "type_info": "Integer"
       }
     ],
     "parameters": {

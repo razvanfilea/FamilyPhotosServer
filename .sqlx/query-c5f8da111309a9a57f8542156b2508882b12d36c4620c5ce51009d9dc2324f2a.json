@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "select * from folder_permissions where grantee_id = $1 order by created_at desc",
+  "query": "select * from folder_permissions where folder_id = $1 order by created_at desc",
   "describe": {
     "columns": [
       {
@@ -9,43 +9,38 @@
         "type_info": "Integer"
       },
       {
-        "name": "owner_id",
+        "name": "folder_id",
         "ordinal": 1,
-        "type_info": "Text"
+        "type_info": "Integer"
       },
       {
-        "name": "folder_name",
+        "name": "grantee_id",
         "ordinal": 2,
         "type_info": "Text"
       },
       {
-        "name": "grantee_id",
+        "name": "token",
         "ordinal": 3,
         "type_info": "Text"
       },
       {
-        "name": "token",
-        "ordinal": 4,
-        "type_info": "Text"
-      },
-      {
         "name": "can_upload",
-        "ordinal": 5,
+        "ordinal": 4,
         "type_info": "Bool"
       },
       {
         "name": "can_delete",
-        "ordinal": 6,
+        "ordinal": 5,
         "type_info": "Bool"
       },
       {
         "name": "created_at",
-        "ordinal": 7,
+        "ordinal": 6,
         "type_info": "Datetime"
       },
       {
         "name": "expires_at",
-        "ordinal": 8,
+        "ordinal": 7,
         "type_info": "Datetime"
       }
     ],
@@ -53,7 +48,6 @@
       "Right": 1
     },
     "nullable": [
-      false,
       false,
       false,
       true,
@@ -64,5 +58,5 @@
       true
     ]
   },
-  "hash": "49bf17b9a0078912d49bc88b14dfffffe55e621918805024aa8f107798589e4f"
+  "hash": "c5f8da111309a9a57f8542156b2508882b12d36c4620c5ce51009d9dc2324f2a"
 }

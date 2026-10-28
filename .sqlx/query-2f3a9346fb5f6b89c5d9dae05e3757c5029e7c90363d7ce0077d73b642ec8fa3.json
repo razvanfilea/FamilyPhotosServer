@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "update folders set owner_id = $2 where id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "2f3a9346fb5f6b89c5d9dae05e3757c5029e7c90363d7ce0077d73b642ec8fa3"
+}

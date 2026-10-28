@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "select p.* from photos p\n                inner join favorite_photos f on p.id = f.photo_id and f.user_id = $1\n                where (p.user_id is null or p.user_id = $1)\n                  and p.trashed_on is null\n                order by p.created_at desc, p.id desc\n                limit $2",
+  "query": "select p.* from photos p\n            inner join favorite_photos f on p.id = f.photo_id and f.user_id = $1\n            where (p.user_id is null or p.user_id = $1)\n              and p.trashed_on is null\n              and ($2 is null or p.created_at < $2 or (p.created_at = $2 and p.id < $3))\n            order by p.created_at desc, p.id desc\n            limit $4",
   "describe": {
     "columns": [
       {
@@ -29,23 +29,23 @@
         "type_info": "Integer"
       },
       {
-        "name": "folder",
-        "ordinal": 5,
-        "type_info": "Text"
-      },
-      {
         "name": "trashed_on",
-        "ordinal": 6,
+        "ordinal": 5,
         "type_info": "Datetime"
       },
       {
         "name": "thumb_hash",
-        "ordinal": 7,
+        "ordinal": 6,
         "type_info": "Blob"
+      },
+      {
+        "name": "folder_id",
+        "ordinal": 7,
+        "type_info": "Integer"
       }
     ],
     "parameters": {
-      "Right": 2
+      "Right": 4
     },
     "nullable": [
       false,
@@ -58,5 +58,5 @@
       true
     ]
   },
-  "hash": "15e562e6542da7436f7d16e814f4043a8b7d8c1479450ca14097fac4a509b21f"
+  "hash": "a3c9bc92fee733f7ab76212d5cd6d0acfd2a5f6aab0c92490063a8c1ad186bf5"
 }
