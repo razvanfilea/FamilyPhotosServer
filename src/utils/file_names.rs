@@ -29,6 +29,12 @@ pub fn validate_folder_name(name: &str) -> Result<String, &'static str> {
     Ok(name.to_owned())
 }
 
+/// Whether an uploaded file name is a single path component that can't escape its directory.
+/// Uploads with other names are rejected before [`sanitize_file_name`] runs.
+pub fn is_safe_path_component(name: &str) -> bool {
+    !name.is_empty() && name != "." && name != ".." && !name.contains(['/', '\\', '\0'])
+}
+
 /// Makes an uploaded file name safe to store: keeps only the last path component and removes
 /// control characters and slashes. Names that are empty, `.`/`..` or hidden are replaced with
 /// `<uuid>.<ext>`.
@@ -119,28 +125,34 @@ mod tests {
         assert!(!sanitize_file_name("..").contains('.'));
     }
 
-    /// Names that could escape their parent directory are rejected as folder names and
-    /// sanitized into a single, non-hidden component as file names
+    /// Names that could escape their parent directory are rejected both as folder names and
+    /// as file names
     #[test]
     fn test_unsafe_path_components() {
         for name in ["vacation", "IMG_001.jpg"] {
             assert_eq!(validate_folder_name(name), Ok(name.to_string()));
+            assert!(is_safe_path_component(name), "{name:?}");
             assert_eq!(sanitize_file_name(name), name);
         }
 
-        // `..hidden` is fine as a path component, but hidden names aren't allowed either
         for name in [
-            "", ".", "..", "../bob", "/tmp/x", "a\\b", "a\0b", "..hidden",
+            "",
+            ".",
+            "..",
+            "../bob",
+            "/tmp/x",
+            "a\\b",
+            "a\0b",
+            "../../etc/passwd",
         ] {
             assert!(validate_folder_name(name).is_err(), "{name:?}");
-
-            let sanitized = sanitize_file_name(name);
-            assert!(!sanitized.is_empty(), "{name:?}");
-            assert!(!sanitized.starts_with('.'), "{name:?} → {sanitized}");
-            assert!(
-                !sanitized.contains(['/', '\\', '\0']),
-                "{name:?} → {sanitized}"
-            );
+            assert!(!is_safe_path_component(name), "{name:?}");
         }
+
+        // `..hidden` is a safe path component, but hidden names aren't allowed as folders and
+        // get renamed as files
+        assert!(is_safe_path_component("..hidden"));
+        assert!(validate_folder_name("..hidden").is_err());
+        assert!(!sanitize_file_name("..hidden").starts_with('.'));
     }
 }

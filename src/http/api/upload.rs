@@ -16,7 +16,7 @@ use crate::http::{AppStateRef, auth::AuthenticatedUser};
 use crate::model::photo::Photo;
 use crate::repo::{FoldersRepo, PhotosHashRepo, PhotosTransactionRepo};
 use crate::tasks::get_timestamp_for_path;
-use crate::utils::file_names::sanitize_file_name;
+use crate::utils::file_names::{is_safe_path_component, sanitize_file_name};
 use crate::{
     http::error::{HttpError, HttpResult},
     model::folder::AccessibleFolder,
@@ -126,8 +126,12 @@ async fn upload_photo(
     let file_name = field
         .file_name()
         .or(field.name())
-        .map(sanitize_file_name)
         .ok_or_else(|| HttpError::BadRequest("Multipart has no name".to_string()))?;
+
+    if !is_safe_path_component(file_name) {
+        return Err(HttpError::BadRequest("Invalid file name".to_string()));
+    }
+    let file_name = sanitize_file_name(file_name);
 
     {
         // Cheap checks on a read connection: the write connection is only taken once the body
