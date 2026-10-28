@@ -1,4 +1,4 @@
-use crate::http::page_context::PageContext;
+use crate::http::page_context::{PageContext, ViewerLink};
 use crate::http::prefs::Prefs;
 use crate::http::template_into_response::TemplateIntoResponse;
 use crate::http::utils::AuthSession;
@@ -16,8 +16,10 @@ struct NotFoundTemplate {
 #[template(path = "errors/404_minimal.html")]
 struct NotFoundMinimalTemplate;
 
-/// The 404 page inside the shell, for handlers that find nothing to show
-pub fn not_found_page(ctx: PageContext) -> Response {
+/// The 404 page inside the shell, for handlers that find nothing to show. A `?photo=` deep link
+/// doesn't open the viewer over it.
+pub fn not_found_page(mut ctx: PageContext) -> Response {
+    ctx.viewer = ViewerLink::default();
     (
         StatusCode::NOT_FOUND,
         NotFoundTemplate { ctx }.into_response(),

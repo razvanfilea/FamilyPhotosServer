@@ -94,17 +94,12 @@ pub async fn timeline_page(
         .and_then(|filter| filter.parse().ok())
         .unwrap_or(prefs.filter);
 
-    let grid = build_grid_view(
-        state,
-        &ctx.user_id,
-        &PhotoListContext::Timeline(filter),
-        &prefs,
-    )
-    .await?;
+    let context = PhotoListContext::Timeline(filter);
+    let grid = build_grid_view(state, &ctx.user_id, &context, &prefs).await?;
     let memories = memories(state, &ctx.user_id, filter).await?;
 
     TimelineTemplate {
-        ctx: ctx.nav(Nav::Photos),
+        ctx: ctx.nav(Nav::Photos).viewer_context(&context),
         filter,
         memories,
         grid,

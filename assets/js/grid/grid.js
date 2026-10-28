@@ -458,7 +458,6 @@ register('photo-grid', (root) => {
         }
 
         const total = Math.max(0, Number(root.dataset.total) - removedCount);
-        root.dataset.total = String(total);
         renumber();
         // The month picker is offered with more than two months (as the server renders it)
         const pickable = sectionElements().length > 2;
@@ -466,15 +465,79 @@ register('photo-grid', (root) => {
         invalidateLayout();
         ensureRoving();
 
-        for (const element of document.querySelectorAll('[data-bind="photo-count"]')) {
-            element.textContent = plural(total, 'photo');
-        }
-        if (total === 0) {
-            document.querySelector('[data-grid-empty]')?.removeAttribute('hidden');
-        } else if (focusedIndex !== null) {
+        showTotal(total);
+        if (total > 0 && focusedIndex !== null) {
             const next = tileByIndex(focusedIndex) ?? tileByIndex(total - 1);
             if (next) focusTile(next);
         }
+    }
+
+    /** The photo count: on the grid, wherever the page shows it, and the empty state */
+    function showTotal(total) {
+        root.dataset.total = String(total);
+        for (const element of document.querySelectorAll('[data-bind="photo-count"]')) {
+            element.textContent = plural(total, 'photo');
+        }
+        document.querySelector('[data-grid-empty]')?.toggleAttribute('hidden', total > 0);
+    }
+
+    let refreshRequest = null;
+
+    /**
+     * Rebuilds the sections from the page as the server renders it now. For photos that came
+     * (back) into the context: only the server knows their months, counts and positions.
+     * @returns {Promise<boolean>} whether the grid was rebuilt
+     */
+    async function refresh() {
+        refreshRequest?.abort();
+        const controller = new AbortController();
+        refreshRequest = controller;
+        // The same page without the viewer's deep link
+        const url = new URL(location.href);
+        url.searchParams.delete('photo');
+        url.searchParams.delete('ctx');
+
+        let html;
+        try {
+            html = await api(url.pathname + url.search, { signal: controller.signal, silent: true });
+        } catch {
+            return false;
+        } finally {
+            if (refreshRequest === controller) refreshRequest = null;
+        }
+        if (controller.signal.aborted || !root.isConnected) return false;
+        const fresh = new DOMParser().parseFromString(html ?? '', 'text/html')
+            .querySelector(`.photo-grid[data-context="${CSS.escape(contextKey)}"]`);
+        if (!fresh) return false;
+
+        const focusedId = root.contains(document.activeElement)
+            ? document.activeElement.closest(TILE)?.dataset.photoId
+            : undefined;
+        const old = sectionElements();
+        for (const section of old) {
+            stateOf(section).request?.abort();
+            thumbs.unobserve(section);
+            unmount(section);
+        }
+        const sections = [...fresh.querySelectorAll(':scope > .month')];
+        root.replaceChildren(...sections);
+        for (const section of old) settleWaiters(section, true);
+        window.htmx.process(root);
+
+        const tiles = [...root.querySelectorAll(TILE)];
+        prepareTiles(tiles);
+        thumbs.observe(tiles);
+        invalidateLayout();
+        showTotal(Number(fresh.dataset.total));
+        for (const section of sections) {
+            const loaded = [...tilesOf(section)];
+            if (loaded.length > 0) {
+                emit(section, EVENTS.sectionLoaded, { section, month: section.dataset.month ?? null, tiles: loaded });
+            }
+        }
+        const focused = focusedId && tileById(focusedId);
+        if (focused) focusTile(focused);
+        return true;
     }
 
     on(document, EVENTS.photosRemoved, (event) => {
@@ -483,8 +546,16 @@ register('photo-grid', (root) => {
         removePhotos(ids);
     }, listen);
 
+    on(document, EVENTS.photosAdded, (event) => {
+        const { contextKey: addedTo } = event.detail;
+        if (addedTo && addedTo !== contextKey) return;
+        refresh();
+    }, listen);
+
     on(document, EVENTS.viewerClosed, (event) => {
-        scrollToPhoto(event.detail.photoId, event.detail.index);
+        const { photoId, index, contextKey: closedContext } = event.detail;
+        if (closedContext && closedContext !== contextKey) return;
+        scrollToPhoto(photoId, index);
     }, listen);
 
     // ---------- Setup ----------
@@ -516,6 +587,8 @@ register('photo-grid', (root) => {
         gridTop,
         scrollToPhoto,
         scrollToMonth,
+        /** Rebuilds the sections from the server (see `fp:photos-added`); resolves to whether it did */
+        refresh,
         /** Loads a section (element) until it has `count` tiles; resolves when done */
         ensureLoaded,
         sections: sectionElements,

@@ -358,16 +358,11 @@ pub async fn folder_page(
     else {
         return Ok(not_found_page(ctx));
     };
-    let grid = build_grid_view(
-        state,
-        &ctx.user_id,
-        &PhotoListContext::Folder(folder_id),
-        &ctx.prefs,
-    )
-    .await?;
+    let context = PhotoListContext::Folder(folder_id);
+    let grid = build_grid_view(state, &ctx.user_id, &context, &ctx.prefs).await?;
 
     FolderPageTemplate {
-        ctx,
+        ctx: ctx.viewer_context(&context),
         folder: FolderPageView::new(&card),
         grid,
     }

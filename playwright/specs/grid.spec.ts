@@ -818,7 +818,9 @@ test.describe('tiles', () => {
             document.addEventListener('fp:photo-activate', (event) => {
                 const { photoId, index, contextKey } = (event as CustomEvent).detail;
                 (window as any).activations.push({ photoId, index, contextKey, cancelable: event.cancelable });
-            });
+                // Keep the viewer closed (capturing runs before its listener), so the tile can be activated again
+                event.preventDefault();
+            }, true);
         });
         const expected = timeline('alice', 'all');
 

@@ -12,7 +12,7 @@ mod upload;
 mod users;
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 use axum::Router;
 use axum::http::StatusCode;
