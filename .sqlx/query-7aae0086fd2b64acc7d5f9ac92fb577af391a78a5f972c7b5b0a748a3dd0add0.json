@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "select p.* from photos p\n            left join folder_permissions fp\n                on fp.folder_id = p.folder_id and fp.grantee_id = $2\n            where p.id = $1 and (\n                p.user_id is null\n                or p.user_id = $2\n                or (\n                    fp.grantee_id is not null\n                    and (fp.expires_at is null or fp.expires_at > datetime('now'))\n                    and ($3 = 1 or ($3 = 2 and fp.can_delete = true))\n                )\n            )",
+  "query": "select p.* from photos p\n            left join folder_permissions fp\n                on fp.folder_id = p.folder_id and fp.grantee_id = $2\n            where p.id = $1 and (\n                p.user_id is null\n                or p.user_id = $2\n                or (\n                    fp.grantee_id is not null\n                    and (fp.expires_at is null or datetime(fp.expires_at) > datetime('now'))\n                    and ($3 = 1 or ($3 = 2 and fp.can_delete = true))\n                )\n            )",
   "describe": {
     "columns": [
       {
@@ -58,5 +58,5 @@
       true
     ]
   },
-  "hash": "503899a0d96d03814d6c68f8e416fe76decbb12224b4004924cc9304fc7b8d68"
+  "hash": "7aae0086fd2b64acc7d5f9ac92fb577af391a78a5f972c7b5b0a748a3dd0add0"
 }

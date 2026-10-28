@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "select f.id, f.owner_id, f.name,\n                (f.owner_id = $1 or f.owner_id is null or coalesce(fp.can_upload, false)) as \"can_upload!: bool\",\n                (f.owner_id = $1 or f.owner_id is null or coalesce(fp.can_delete, false)) as \"can_delete!: bool\"\n            from folders f\n            left join folder_permissions fp on f.id = fp.folder_id and fp.grantee_id = $1\n                and (fp.expires_at is null or fp.expires_at > datetime('now'))\n            where f.id = $2 and (f.owner_id = $1 or f.owner_id is null or fp.grantee_id is not null)",
+  "query": "select f.id, f.owner_id, f.name,\n                (f.owner_id = $1 or f.owner_id is null or coalesce(fp.can_upload, false)) as \"can_upload!: bool\",\n                (f.owner_id = $1 or f.owner_id is null or coalesce(fp.can_delete, false)) as \"can_delete!: bool\"\n            from folders f\n            left join folder_permissions fp on f.id = fp.folder_id and fp.grantee_id = $1\n                and (fp.expires_at is null or datetime(fp.expires_at) > datetime('now'))\n            where f.id = $2 and (f.owner_id = $1 or f.owner_id is null or fp.grantee_id is not null)",
   "describe": {
     "columns": [
       {
@@ -40,5 +40,5 @@
       false
     ]
   },
-  "hash": "57e690a79952d000851e99a8835c135d831788150ef89a36b654dd2b751e40ae"
+  "hash": "cf325fc6f1e04eb9d8725257cc654fe1e916d7f7033ef35f7931f6f8b08103dd"
 }

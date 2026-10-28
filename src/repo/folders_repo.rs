@@ -21,7 +21,7 @@ pub trait FoldersRepo<'c>: SqliteExecutor<'c> {
                 (f.owner_id = $1 or f.owner_id is null or coalesce(fp.can_delete, false)) as "can_delete!: bool"
             from folders f
             left join folder_permissions fp on f.id = fp.folder_id and fp.grantee_id = $1
-                and (fp.expires_at is null or fp.expires_at > datetime('now'))
+                and (fp.expires_at is null or datetime(fp.expires_at) > datetime('now'))
             where f.id = $2 and (f.owner_id = $1 or f.owner_id is null or fp.grantee_id is not null)"#,
             user_id,
             id
@@ -38,7 +38,7 @@ pub trait FoldersRepo<'c>: SqliteExecutor<'c> {
                 (f.owner_id = $1 or f.owner_id is null or coalesce(fp.can_delete, false)) as "can_delete!: bool"
             from folders f
             left join folder_permissions fp on f.id = fp.folder_id and fp.grantee_id = $1
-                and (fp.expires_at is null or fp.expires_at > datetime('now'))
+                and (fp.expires_at is null or datetime(fp.expires_at) > datetime('now'))
             where f.owner_id = $1 or f.owner_id is null or fp.grantee_id is not null
             order by f.name"#,
             user_id
@@ -108,7 +108,10 @@ impl<'c, E> FoldersRepo<'c> for E where E: SqliteExecutor<'c> {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::repo::tests::{create_test_folder, create_test_user, insert_test_user};
+    use crate::repo::tests::{
+        create_test_folder, create_test_user, earlier_same_utc_day, insert_test_share,
+        insert_test_user,
+    };
     use sqlx::SqlitePool;
 
     #[sqlx::test]
@@ -175,6 +178,42 @@ mod tests {
         assert!(names.contains(&"mine"));
         assert!(names.contains(&"shared"));
         assert!(!names.contains(&"theirs"));
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn test_accessible_folder_share_expiry(pool: SqlitePool) -> sqlx::Result<()> {
+        use time::{Duration, OffsetDateTime};
+
+        for id in ["owner", "expired", "valid", "forever"] {
+            insert_test_user(&pool, &create_test_user(id, id)).await?;
+        }
+        let folder = create_test_folder(&pool, Some("owner"), "shared").await;
+
+        let now = OffsetDateTime::now_utc();
+        let past = earlier_same_utc_day(now, Duration::hours(3));
+        insert_test_share(&pool, folder.id, "expired", true, Some(past)).await?;
+        insert_test_share(
+            &pool,
+            folder.id,
+            "valid",
+            true,
+            Some(now + Duration::hours(3)),
+        )
+        .await?;
+        insert_test_share(&pool, folder.id, "forever", true, None).await?;
+
+        for (user, expected) in [("expired", false), ("valid", true), ("forever", true)] {
+            let found = pool.get_accessible_folder(user, folder.id).await?;
+            assert_eq!(found.is_some(), expected, "{user}");
+            let found = pool.get_accessible_folders(user).await?;
+            assert_eq!(
+                found.iter().any(|f| f.id == folder.id),
+                expected,
+                "{user} in list"
+            );
+        }
 
         Ok(())
     }

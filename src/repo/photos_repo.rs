@@ -59,7 +59,7 @@ pub trait PhotosRepo<'c>: SqliteExecutor<'c> {
                 or p.user_id = $2
                 or (
                     fp.grantee_id is not null
-                    and (fp.expires_at is null or fp.expires_at > datetime('now'))
+                    and (fp.expires_at is null or datetime(fp.expires_at) > datetime('now'))
                     and ($3 = 1 or ($3 = 2 and fp.can_delete = true))
                 )
             )"#,
@@ -115,7 +115,7 @@ pub trait PhotosRepo<'c>: SqliteExecutor<'c> {
     }
 
     async fn get_expired_trash_photos(self) -> sqlx::Result<Vec<Photo>> {
-        query_as!(Photo, "select * from photos where trashed_on is not null and trashed_on <= datetime('now', '-30 days')")
+        query_as!(Photo, "select * from photos where trashed_on is not null and datetime(trashed_on) <= datetime('now', '-30 days')")
             .fetch_all(self)
             .await
     }
@@ -145,7 +145,7 @@ pub trait PhotosRepo<'c>: SqliteExecutor<'c> {
                 or p.user_id = $2
                 or (
                     fp.grantee_id is not null
-                    and (fp.expires_at is null or fp.expires_at > datetime('now'))
+                    and (fp.expires_at is null or datetime(fp.expires_at) > datetime('now'))
                     and ($3 = 1 or ($3 = 2 and fp.can_delete = true))
                 )
             )"#,
@@ -477,7 +477,7 @@ mod tests {
     use super::*;
     use crate::repo::tests::{
         create_test_folder, create_test_photo, create_test_photo_with_time, create_test_user,
-        insert_test_user,
+        earlier_same_utc_day, insert_test_share, insert_test_user,
     };
     use sqlx::SqlitePool;
     use time::macros::datetime;
@@ -699,6 +699,74 @@ mod tests {
         // Should include only the old one (> 30 days)
         assert_eq!(expired.len(), 1);
         assert_eq!(expired[0].name, "old.jpg");
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn test_get_expired_trash_photos_same_day_cutoff(pool: SqlitePool) -> sqlx::Result<()> {
+        use time::Duration;
+
+        let user = create_test_user("user1", "Test User");
+        insert_test_user(&pool, &user).await?;
+
+        // Trashed a few hours more than 30 days ago, on the same UTC day as the cutoff
+        let cutoff = OffsetDateTime::now_utc() - Duration::days(30);
+        let mut photo = create_test_photo(0, Some("user1"), None, "old.jpg");
+        photo.trashed_on = Some(earlier_same_utc_day(cutoff, Duration::hours(3)));
+        let mut tx = pool.begin().await?;
+        tx.insert_photo(&photo).await?;
+        tx.commit().await?;
+
+        let expired = pool.get_expired_trash_photos().await?;
+        assert_eq!(expired.len(), 1);
+        assert_eq!(expired[0].name, "old.jpg");
+
+        Ok(())
+    }
+
+    #[sqlx::test]
+    async fn test_get_accessible_photo_share_expiry(pool: SqlitePool) -> sqlx::Result<()> {
+        use time::Duration;
+
+        for id in ["owner", "expired", "valid", "forever"] {
+            insert_test_user(&pool, &create_test_user(id, id)).await?;
+        }
+        let folder = create_test_folder(&pool, Some("owner"), "shared").await;
+        let mut tx = pool.begin().await?;
+        let photo = tx
+            .insert_photo(&create_test_photo(
+                0,
+                Some("owner"),
+                Some(folder.id),
+                "p.jpg",
+            ))
+            .await?;
+        tx.commit().await?;
+
+        let now = OffsetDateTime::now_utc();
+        let past = earlier_same_utc_day(now, Duration::hours(3));
+        insert_test_share(&pool, folder.id, "expired", true, Some(past)).await?;
+        insert_test_share(
+            &pool,
+            folder.id,
+            "valid",
+            true,
+            Some(now + Duration::hours(3)),
+        )
+        .await?;
+        insert_test_share(&pool, folder.id, "forever", true, None).await?;
+
+        for access in [PhotoAccess::Read, PhotoAccess::Delete] {
+            for (user, expected) in [("expired", false), ("valid", true), ("forever", true)] {
+                let found = pool.get_accessible_photo(photo.id, user, access).await?;
+                assert_eq!(found.is_some(), expected, "{user} {access:?}");
+                let found = pool
+                    .get_accessible_photo_with_folder(photo.id, user, access)
+                    .await?;
+                assert_eq!(found.is_some(), expected, "{user} {access:?} with folder");
+            }
+        }
 
         Ok(())
     }

@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "select * from photos where trashed_on is not null and trashed_on <= datetime('now', '-30 days')",
+  "query": "select * from photos where trashed_on is not null and datetime(trashed_on) <= datetime('now', '-30 days')",
   "describe": {
     "columns": [
       {
@@ -58,5 +58,5 @@
       true
     ]
   },
-  "hash": "33b94902eff69080b148e650f7f1737d7675145addd8cc6cdcfdb5776a59b54f"
+  "hash": "07343983fdc498af0ed120bda840a1f1fd124ba644348098736f988e1b94e335"
 }

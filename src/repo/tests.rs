@@ -82,6 +82,37 @@ pub async fn create_test_folder(pool: &SqlitePool, owner_id: Option<&str>, name:
     pool.get_folder(id).await.unwrap().unwrap()
 }
 
+/// Insert a grantee share with an explicit expiry. `created_at` is set a day
+/// before the expiry so that past expiries satisfy the table's check constraint.
+pub async fn insert_test_share(
+    pool: &SqlitePool,
+    folder_id: i64,
+    grantee_id: &str,
+    can_delete: bool,
+    expires_at: Option<OffsetDateTime>,
+) -> sqlx::Result<()> {
+    let created_at = expires_at.unwrap_or_else(OffsetDateTime::now_utc) - time::Duration::days(1);
+    sqlx::query(
+        "insert into folder_permissions (folder_id, grantee_id, can_delete, created_at, expires_at)
+        values ($1, $2, $3, $4, $5)",
+    )
+    .bind(folder_id)
+    .bind(grantee_id)
+    .bind(can_delete)
+    .bind(created_at)
+    .bind(expires_at)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// `t - by`, clamped to midnight so the result stays on the same UTC day as `t`.
+/// Same-day comparisons are where mixing RFC 3339 and SQLite datetime text breaks.
+pub fn earlier_same_utc_day(t: OffsetDateTime, by: time::Duration) -> OffsetDateTime {
+    let t = t.to_offset(time::UtcOffset::UTC);
+    (t - by).max(t.replace_time(time::Time::MIDNIGHT))
+}
+
 /// Integration tests for cross-repo scenarios
 #[cfg(test)]
 mod integration {

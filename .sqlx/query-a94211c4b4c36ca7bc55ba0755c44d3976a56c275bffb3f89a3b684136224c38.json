@@ -1,0 +1,44 @@
+{
+  "db_name": "SQLite",
+  "query": "select distinct f.id, f.owner_id, f.name,\n                (f.owner_id = $1 or f.owner_id is null or coalesce(fp.can_upload, false)) as \"can_upload!: bool\",\n                (f.owner_id = $1 or f.owner_id is null or coalesce(fp.can_delete, false)) as \"can_delete!: bool\"\n            from folders f\n            left join folder_permissions fp on f.id = fp.folder_id and fp.grantee_id = $1\n                and (fp.expires_at is null or datetime(fp.expires_at) > datetime('now'))\n            where f.owner_id = $1 or f.owner_id is null or fp.grantee_id is not null\n            order by f.name",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "owner_id",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "name",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "can_upload!: bool",
+        "ordinal": 3,
+        "type_info": "Bool"
+      },
+      {
+        "name": "can_delete!: bool",
+        "ordinal": 4,
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "a94211c4b4c36ca7bc55ba0755c44d3976a56c275bffb3f89a3b684136224c38"
+}
