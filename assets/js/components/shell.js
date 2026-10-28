@@ -1,0 +1,78 @@
+// Components of the navigation shell and the login page.
+
+import { register } from '../core/registry.js';
+import { confirm } from '../core/dialog.js';
+import { api } from '../core/api.js';
+
+/** <details> menus: close on outside click, Escape, and after choosing an item. */
+register('dropdown', (details) => {
+    const close = () => details.removeAttribute('open');
+    const onDocumentClick = (event) => {
+        if (!details.contains(event.target)) close();
+    };
+    const onKeyDown = (event) => {
+        if (event.key === 'Escape' && details.open) {
+            close();
+            details.querySelector('summary').focus();
+        }
+    };
+    const onItemClick = (event) => {
+        if (event.target.closest('li a, li button')) close();
+    };
+
+    document.addEventListener('click', onDocumentClick);
+    details.addEventListener('keydown', onKeyDown);
+    details.addEventListener('click', onItemClick);
+    return () => {
+        document.removeEventListener('click', onDocumentClick);
+    };
+});
+
+async function signOut() {
+    await api('/api/logout', { method: 'POST' });
+    location.assign('/login');
+}
+
+register('sign-out', (button) => {
+    const template = document.getElementById('sign-out-dialog');
+    button.addEventListener('click', () => {
+        confirm({
+            title: template.content.querySelector('h2').textContent,
+            body: template.content.querySelector('p').textContent,
+            confirmLabel: button.textContent.trim(),
+            onConfirm: signOut,
+        });
+    });
+});
+
+register('password-toggle', (button) => {
+    const input = button.closest('.input').querySelector('input');
+    button.addEventListener('click', () => {
+        const visible = input.type === 'password';
+        input.type = visible ? 'text' : 'password';
+        button.setAttribute('aria-pressed', String(visible));
+        button.setAttribute('aria-label', visible ? button.dataset.labelHide : button.dataset.labelShow);
+    });
+});
+
+register('login-form', (form) => {
+    const username = form.elements.namedItem('user_id');
+    const password = form.elements.namedItem('password');
+    const submit = form.querySelector('button[type="submit"]');
+
+    const updateSubmit = () => {
+        submit.disabled = username.value.trim() === '' || password.value === '';
+    };
+    form.addEventListener('input', updateSubmit);
+    updateSubmit();
+
+    // Like the Android app, user names are trimmed and lowercased before logging in
+    form.addEventListener('htmx:configRequest', (event) => {
+        event.detail.parameters.set('user_id', username.value.trim().toLowerCase());
+    });
+
+    form.addEventListener('htmx:sendError', () => {
+        const error = form.querySelector('[data-slot="network-error"]').content.cloneNode(true);
+        document.getElementById('login-error').replaceWith(error);
+    });
+});

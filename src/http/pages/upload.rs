@@ -1,6 +1,6 @@
 use crate::http::AppStateRef;
-use crate::http::auth::AuthenticatedUser;
 use crate::http::error::HttpResult;
+use crate::http::page_context::{Nav, PageContext};
 use crate::http::template_into_response::TemplateIntoResponse;
 use crate::model::folder::AccessibleFolder;
 use crate::repo::FoldersRepo;
@@ -11,15 +11,16 @@ use axum::response::Response;
 #[derive(Template)]
 #[template(path = "upload/upload_page.html")]
 struct UploadPageTemplate {
+    ctx: PageContext,
     personal_folders: Vec<AccessibleFolder>,
     family_folders: Vec<AccessibleFolder>,
 }
 
 pub async fn upload_page(
-    AuthenticatedUser(user): AuthenticatedUser,
+    ctx: PageContext,
     State(state): State<AppStateRef>,
 ) -> HttpResult<Response> {
-    let folders = state.read_pool.get_accessible_folders(&user.id).await?;
+    let folders = state.read_pool.get_accessible_folders(&ctx.user_id).await?;
 
     let (personal_folders, family_folders) = folders
         .into_iter()
@@ -27,6 +28,7 @@ pub async fn upload_page(
         .partition(|f| f.owner_id.is_some());
 
     UploadPageTemplate {
+        ctx: ctx.nav(Nav::Upload),
         personal_folders,
         family_folders,
     }

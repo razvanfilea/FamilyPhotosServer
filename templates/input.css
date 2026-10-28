@@ -1,424 +1,632 @@
 @import 'tailwindcss';
 
+@source "./**/*.html";
+@source "../assets/js/**/*.js";
+
 @plugin "daisyui" {
-    themes: forest --default;
+    themes: false;
 }
 
-/*
-  The default border color has changed to `currentColor` in Tailwind CSS v4,
-  so we've added these compatibility styles to make sure everything still
-  looks the same as it did with Tailwind CSS v3.
-*/
+/* Dark theme built from the Android app's Material palette */
+@plugin "daisyui/theme" {
+    name: "familyphotos";
+    default: true;
+    prefersdark: true;
+    color-scheme: dark;
+
+    --color-base-100: #1A1C19;
+    --color-base-200: #222520;
+    --color-base-300: #2C302A;
+    --color-base-content: #E2E3DD;
+    --color-primary: #78DC77;
+    --color-primary-content: #00390A;
+    --color-secondary: #005313;
+    --color-secondary-content: #94F990;
+    --color-accent: #1F4D52;
+    --color-accent-content: #BCEBF0;
+    --color-neutral: #424940;
+    --color-neutral-content: #C2C9BD;
+    --color-info: #A0CFD4;
+    --color-info-content: #00363B;
+    --color-success: #78DC77;
+    --color-success-content: #00390A;
+    --color-warning: #DBC900;
+    --color-warning-content: #363100;
+    --color-error: #FFB4AB;
+    --color-error-content: #690005;
+
+    --radius-selector: 2rem;
+    --radius-field: 0.75rem;
+    --radius-box: 1rem;
+    --size-selector: 0.25rem;
+    --size-field: 0.25rem;
+    --border: 1px;
+    --depth: 0;
+    --noise: 0;
+}
+
+@theme {
+    --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial,
+        "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+}
+
+:root {
+    --fp-outline: #8C9388;
+    --fp-error-container: #93000A;
+    --fp-on-error-container: #FFDAD6;
+    --fp-inverse-surface: #E2E3DD;
+    --fp-inverse-on-surface: #1A1C19;
+
+    /* Shell dimensions, also used by the grid pages (fast scroller track, sticky offsets) */
+    --fp-topbar-height: 4rem;
+    --fp-bottom-nav-height: 4.5rem;
+    --fp-rail-width: 5.5rem;
+    --fp-sidebar-width: 16rem;
+}
+
 @layer base {
-    body {
-        font-family: 'Inter', system-ui, sans-serif;
+    html {
+        -webkit-tap-highlight-color: transparent;
     }
 
-    *,
-    ::after,
-    ::before,
-    ::backdrop,
-    ::file-selector-button {
-        border-color: var(--color-gray-200, currentColor);
+    :focus-visible {
+        outline: 2px solid var(--color-primary);
+        outline-offset: 2px;
+    }
+
+    kbd {
+        font-family: inherit;
     }
 }
 
 @layer components {
-    /* Material 3 style checkmark animation for segmented buttons */
-    .segment .segment-check {
-        font-size: 1rem;
-        width: 0;
-        opacity: 0;
-        transform: scale(0);
-        transition: all 0.2s ease;
-        overflow: hidden;
-        margin-right: 0;
+    .icon {
+        display: inline-block;
+        flex-shrink: 0;
+        width: 1.25em;
+        height: 1.25em;
+        fill: currentColor;
+        vertical-align: middle;
     }
 
-    .segment.btn-active .segment-check {
-        width: 1rem;
-        opacity: 1;
-        transform: scale(1);
-        margin-right: 0.25rem;
-    }
-
-    .photo-card {
-        @apply aspect-square overflow-hidden cursor-pointer bg-base-300 relative;
-        @apply hover:brightness-90 transition-all duration-150;
-    }
-
-    .photo-card img {
-        @apply w-full h-full object-cover;
-    }
-
-    .photo-card .favorite-indicator {
-        @apply absolute top-1 right-1 text-warning drop-shadow-md;
-        font-size: 16px;
-    }
-
-    .photo-grid {
-        @apply grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-7 xl:grid-cols-10 gap-px md:gap-0.5;
-    }
-
-    .month-header {
-        @apply col-span-full flex items-center gap-4 py-4 px-3 md:px-0;
-    }
-
-    .month-header h2 {
-        @apply text-sm font-medium text-base-content/70 whitespace-nowrap;
-    }
-
-    .month-header .line {
-        @apply flex-1 h-px bg-base-content/10;
-    }
-
+    /* HTMX's indicator styles (its injected <style> is disabled because of the CSP) */
     .htmx-indicator {
-        display: none;
+        opacity: 0;
     }
 
     .htmx-request .htmx-indicator,
     .htmx-request.htmx-indicator {
-        display: flex;
-    }
-
-    .folder-grid {
-        @apply grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 p-4;
-    }
-
-    .folder-card {
-        @apply flex flex-col cursor-pointer;
-        @apply hover:opacity-90 transition-opacity duration-200;
-    }
-
-    .folder-card-image {
-        @apply aspect-square rounded-xl overflow-hidden bg-base-300 shadow-sm;
-        @apply ring-1 ring-base-content/5;
-        @apply hover:ring-2 hover:ring-primary transition-all duration-200;
-    }
-
-    .folder-card-image img {
-        @apply w-full h-full object-cover;
-    }
-
-    .folder-card-info {
-        @apply flex flex-col mt-2.5 px-0.5;
-    }
-
-    /* Timeline Scrollbar */
-    .timeline-scrollbar {
-        position: fixed;
-        right: 0;
-        top: 80px;
-        bottom: 16px;
-        width: 48px;
-        z-index: 100;
-        opacity: 0;
-        transition: opacity 0.2s ease;
-        pointer-events: none;
-    }
-
-    .timeline-scrollbar.visible {
         opacity: 1;
-        pointer-events: auto;
+        transition: opacity 200ms ease-in;
     }
 
-    .timeline-scrollbar.hidden {
+    .fp-skip-link {
+        @apply btn btn-primary btn-sm;
+        position: fixed;
+        top: 0.5rem;
+        left: 0.5rem;
+        z-index: 100;
+        transform: translateY(-200%);
+    }
+
+    .fp-skip-link:focus {
+        transform: none;
+    }
+
+    /* ---------- Shell: bottom nav (< 768px), rail (≥ 768px), sidebar (≥ 1280px) ---------- */
+
+    .fp-shell {
+        min-height: 100dvh;
+        padding-bottom: calc(var(--fp-bottom-nav-height) + env(safe-area-inset-bottom));
+
+        @variant md {
+            padding-bottom: 0;
+            margin-left: calc(var(--fp-rail-width) + env(safe-area-inset-left));
+        }
+
+        @variant xl {
+            margin-left: calc(var(--fp-sidebar-width) + env(safe-area-inset-left));
+        }
+    }
+
+    .fp-topbar {
+        position: sticky;
+        top: 0;
+        z-index: 30;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        min-height: calc(var(--fp-topbar-height) + env(safe-area-inset-top));
+        padding: env(safe-area-inset-top) max(0.5rem, env(safe-area-inset-right)) 0 max(1rem, env(safe-area-inset-left));
+        background-color: var(--color-base-100);
+
+        @variant md {
+            padding-left: 1.5rem;
+        }
+    }
+
+    .fp-topbar__title {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .fp-topbar__heading {
+        @apply truncate text-xl font-semibold;
+    }
+
+    .fp-topbar__actions {
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+    }
+
+    .fp-main {
+        padding: 0 max(0.5rem, env(safe-area-inset-right)) 1.5rem max(0.5rem, env(safe-area-inset-left));
+        outline: none;
+
+        @variant md {
+            padding-left: 1.5rem;
+            padding-right: 1.5rem;
+        }
+    }
+
+    .fp-nav-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.25rem;
+        font-size: 0.75rem;
+        font-weight: 500;
+        color: var(--color-neutral-content);
+        text-decoration: none;
+        border-radius: var(--radius-box);
+    }
+
+    .fp-nav-item__icon {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 4rem;
+        height: 2rem;
+        border-radius: 1rem;
+        font-size: 1.2rem;
+        transition: background-color 150ms ease;
+    }
+
+    .fp-nav-item:hover .fp-nav-item__icon {
+        background-color: color-mix(in oklab, var(--color-base-content) 8%, transparent);
+    }
+
+    .fp-nav-item[aria-current="page"],
+    .fp-nav-item--parent {
+        color: var(--color-base-content);
+    }
+
+    .fp-nav-item[aria-current="page"] .fp-nav-item__icon,
+    .fp-nav-item--parent .fp-nav-item__icon {
+        background-color: var(--color-secondary);
+        color: var(--color-secondary-content);
+    }
+
+    .fp-bottom-nav {
+        position: fixed;
+        inset: auto 0 0 0;
+        z-index: 40;
+        display: flex;
+        justify-content: space-around;
+        align-items: center;
+        height: calc(var(--fp-bottom-nav-height) + env(safe-area-inset-bottom));
+        padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+        background-color: var(--color-base-200);
+
+        @variant md {
+            display: none;
+        }
+
+        .fp-nav-item {
+            flex: 1;
+        }
+    }
+
+    .fp-rail {
+        display: none;
+        position: fixed;
+        inset: 0 auto 0 0;
+        z-index: 40;
+        width: calc(var(--fp-rail-width) + env(safe-area-inset-left));
+        padding: calc(1rem + env(safe-area-inset-top)) 0 1rem env(safe-area-inset-left);
+        flex-direction: column;
+        align-items: center;
+        gap: 1.5rem;
+        background-color: var(--color-base-100);
+        overflow-y: auto;
+
+        @variant md {
+            display: flex;
+        }
+
+        @variant xl {
+            width: calc(var(--fp-sidebar-width) + env(safe-area-inset-left));
+            align-items: stretch;
+            padding-left: calc(0.75rem + env(safe-area-inset-left));
+            padding-right: 0.75rem;
+            gap: 0.5rem;
+            background-color: var(--color-base-200);
+        }
+    }
+
+    .fp-rail__brand {
+        display: none;
+
+        @variant xl {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0 0.75rem 1rem;
+            font-size: 1.125rem;
+            font-weight: 600;
+        }
+    }
+
+    .fp-rail__upload {
+        width: 3.5rem;
+        height: 3.5rem;
+        padding: 0;
+        border-radius: 1rem;
+        font-size: 1.25rem;
+
+        @variant xl {
+            width: auto;
+            justify-content: flex-start;
+            padding: 0 1.25rem;
+            font-size: 1rem;
+            margin-bottom: 0.75rem;
+        }
+    }
+
+    .fp-rail__upload-label {
+        @apply sr-only;
+
+        @variant xl {
+            position: static;
+            width: auto;
+            height: auto;
+            margin: 0;
+            overflow: visible;
+            clip-path: none;
+            white-space: nowrap;
+        }
+    }
+
+    .fp-rail__items,
+    .fp-rail__secondary {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+
+        @variant xl {
+            gap: 0.125rem;
+        }
+    }
+
+    .fp-rail__secondary {
+        display: none;
+
+        @variant xl {
+            display: flex;
+            padding-top: 0.75rem;
+            border-top: 1px solid color-mix(in oklab, var(--fp-outline) 30%, transparent);
+            margin-top: 0.75rem;
+        }
+    }
+
+    /* In the expanded sidebar items are rows: icon + label */
+    .fp-rail .fp-nav-item {
+        @variant xl {
+            flex-direction: row;
+            gap: 0.75rem;
+            height: 3rem;
+            padding: 0 1rem;
+            font-size: 0.875rem;
+            border-radius: 1.5rem;
+        }
+
+        .fp-nav-item__icon {
+            @variant xl {
+                width: auto;
+                height: auto;
+                background: none;
+            }
+        }
+    }
+
+    .fp-rail .fp-nav-item[aria-current="page"] {
+        @variant xl {
+            background-color: var(--color-secondary);
+            color: var(--color-secondary-content);
+        }
+    }
+
+    .fp-rail .fp-nav-item:hover {
+        @variant xl {
+            background-color: color-mix(in oklab, var(--color-base-content) 8%, transparent);
+        }
+    }
+
+    /* Favorites/Trash have their own sidebar items, so Utilities is only their parent in the rail */
+    .fp-rail .fp-nav-item--parent {
+        @variant xl {
+            color: var(--color-neutral-content);
+        }
+    }
+
+    .fp-menu {
+        @apply bg-base-300 rounded-box z-50 mt-2 p-2 shadow-lg;
+    }
+
+    .fp-user-menu > summary {
+        list-style: none;
+    }
+
+    .fp-user-menu > summary::-webkit-details-marker {
         display: none;
     }
 
-    .timeline-scrollbar-track {
-        position: absolute;
-        right: 16px;
-        top: 0;
-        bottom: 0;
-        width: 4px;
-        background: oklch(var(--bc) / 0.1);
-        border-radius: 2px;
-        cursor: default;
+    .fp-user-menu__name {
+        @apply truncate;
     }
 
-    .timeline-scrollbar-thumb {
-        position: absolute;
-        right: 12px;
-        width: 12px;
-        height: 48px;
-        background: oklch(var(--p));
-        border-radius: 6px;
-        cursor: grab;
-        transition: transform 0.1s ease;
-    }
+    /* ---------- Shared UI pieces ---------- */
 
-    .timeline-scrollbar-thumb:hover {
-        transform: scaleX(1.2);
-    }
-
-    .timeline-scrollbar-thumb:active {
-        cursor: grabbing;
-    }
-
-    .timeline-year-marker {
-        position: absolute;
-        right: 28px;
-        font-size: 12px;
+    .fp-avatar {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 2rem;
+        height: 2rem;
+        border-radius: 9999px;
         font-weight: 600;
-        color: oklch(1 0 0 / 0.9);
-        background: oklch(0 0 0 / 0.6);
-        padding: 2px 6px;
-        border-radius: 4px;
-        transform: translateY(-50%);
-        pointer-events: auto;
-        cursor: pointer;
+        font-size: 0.875rem;
+        background-color: hsl(var(--avatar-hue) 45% 35%);
+        color: hsl(var(--avatar-hue) 80% 92%);
         user-select: none;
     }
 
-    .timeline-year-marker:hover {
-        background: oklch(0 0 0 / 0.8);
+    .fp-empty {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 4rem 1rem 2rem;
+        text-align: center;
     }
 
-    .timeline-tooltip {
-        position: fixed;
-        right: 56px;
-        background: oklch(0 0 0 / 0.6);
-        color: oklch(1 0 0 / 0.95);
-        padding: 6px 12px;
-        border-radius: 6px;
-        font-size: 13px;
-        font-weight: 500;
-        white-space: nowrap;
-        transform: translateY(-50%);
-        opacity: 0;
-        pointer-events: none;
-        transition: opacity 0.15s ease;
-        box-shadow: 0 2px 8px oklch(0 0 0 / 0.3);
+    .fp-empty__icon {
+        font-size: 3.5rem;
+        color: var(--fp-outline);
+        margin-bottom: 0.5rem;
     }
 
-    .timeline-tooltip.visible {
-        opacity: 1;
+    .fp-empty__title {
+        @apply text-xl font-semibold;
     }
 
-    .timeline-loading-indicator {
-        position: fixed;
-        right: 56px;
-        bottom: 80px;
-        background: oklch(var(--b3));
-        color: oklch(var(--bc));
-        padding: 8px 16px;
-        border-radius: 8px;
-        font-size: 13px;
-        box-shadow: 0 2px 8px oklch(0 0 0 / 0.2);
+    .fp-empty__body {
+        color: var(--color-neutral-content);
+        max-width: 28rem;
     }
 
-    /* Photo Viewer - Fullscreen Google Photos-style viewer */
-    .photo-viewer-container {
-        position: fixed;
-        inset: 0;
+    .fp-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
+    .fp-chip {
+        @apply btn btn-sm rounded-lg font-medium;
+        border-color: var(--fp-outline);
+        background-color: transparent;
+        color: var(--color-neutral-content);
+    }
+
+    .fp-chip[aria-pressed="true"] {
+        border-color: transparent;
+        background-color: var(--color-secondary);
+        color: var(--color-secondary-content);
+    }
+
+    .fp-centered-page {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        min-height: 100dvh;
+        padding: 1rem;
+    }
+
+    .fp-shortcuts {
+        display: grid;
+        gap: 0.5rem;
+        padding-top: 1rem;
+
+        > div {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        dd {
+            color: var(--color-neutral-content);
+        }
+    }
+
+    /* ---------- Toasts (Android snackbar colours) ---------- */
+
+    #toasts {
         z-index: 1000;
+        padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+        pointer-events: none;
+    }
+
+    .fp-shell-body #toasts {
+        bottom: calc(var(--fp-bottom-nav-height) + env(safe-area-inset-bottom));
+
+        @variant md {
+            bottom: 0;
+        }
+    }
+
+    .fp-toast {
         display: flex;
         align-items: center;
-        justify-content: center;
+        gap: 0.5rem;
+        min-width: min(20rem, calc(100vw - 2rem));
+        max-width: min(36rem, calc(100vw - 2rem));
+        padding: 0.375rem 0.375rem 0.375rem 1rem;
+        border-radius: 0.5rem;
+        box-shadow: 0 4px 12px rgb(0 0 0 / 0.35);
+        pointer-events: auto;
+        animation: fp-toast-in 150ms ease-out;
+        background-color: var(--fp-inverse-surface);
+        color: var(--fp-inverse-on-surface);
     }
 
-    .photo-viewer-container.hidden {
+    .fp-toast--success {
+        background-color: var(--color-secondary);
+        color: var(--color-secondary-content);
+    }
+
+    .fp-toast--error {
+        background-color: var(--fp-error-container);
+        color: var(--fp-on-error-container);
+    }
+
+    .fp-toast__message {
+        flex: 1;
+        white-space: normal;
+    }
+
+    .fp-toast__action {
+        font-weight: 600;
+        color: inherit;
+    }
+
+    .fp-toast__close {
+        color: inherit;
+    }
+
+    /* ---------- Login ---------- */
+
+    .fp-login-body {
+        background:
+            radial-gradient(circle at 0% 0%, color-mix(in oklab, var(--color-secondary) 25%, transparent), transparent 60%),
+            radial-gradient(circle at 0% 100%, color-mix(in oklab, var(--color-accent) 20%, transparent), transparent 60%),
+            var(--color-base-100);
+        background-attachment: fixed;
+    }
+
+    .fp-login {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 2rem;
+        min-height: 100dvh;
+        padding: 1.5rem max(1rem, env(safe-area-inset-right)) 1.5rem max(1rem, env(safe-area-inset-left));
+    }
+
+    .fp-login__header {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+    }
+
+    .fp-login__logo {
+        border-radius: 9999px;
+        margin-bottom: 1rem;
+    }
+
+    .fp-login__title {
+        @apply text-3xl font-bold;
+    }
+
+    .fp-login__subtitle {
+        color: var(--color-neutral-content);
+        margin-top: 0.25rem;
+    }
+
+    .fp-login__card {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        width: 100%;
+        max-width: 30rem;
+        padding: 1.5rem;
+        border-radius: 1.5rem;
+        border: 1px solid color-mix(in oklab, var(--fp-outline) 40%, transparent);
+        background-color: color-mix(in oklab, var(--color-neutral) 30%, transparent);
+    }
+
+    .fp-field {
+        display: flex;
+        flex-direction: column;
+        gap: 0.375rem;
+    }
+
+    .fp-field__label {
+        font-size: 0.875rem;
+        font-weight: 500;
+        color: var(--color-neutral-content);
+    }
+
+    .fp-login__error {
+        padding: 0.75rem;
+        border-radius: 0.5rem;
+        background-color: var(--fp-error-container);
+        color: var(--fp-on-error-container);
+    }
+
+    .fp-login__submit {
+        margin-top: 0.5rem;
+    }
+
+    .fp-login__submit-busy,
+    .htmx-request .fp-login__submit-idle {
         display: none;
     }
 
-    .photo-viewer-backdrop {
-        position: absolute;
-        inset: 0;
-        background: oklch(0 0 0 / 0.95);
-    }
-
-    .photo-viewer-content {
-        position: relative;
-        width: 100%;
-        height: 100%;
-        display: flex;
-        flex-direction: column;
-    }
-
-    /* Top toolbar */
-    .photo-viewer-toolbar {
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        display: flex;
-        justify-content: flex-end;
-        padding: 1rem;
-        z-index: 10;
-        background: linear-gradient(to bottom, oklch(0 0 0 / 0.5), transparent);
-    }
-
-    .photo-viewer-toolbar button {
-        color: oklch(1 0 0 / 0.9);
-    }
-
-    .photo-viewer-toolbar button:hover {
-        background: oklch(1 0 0 / 0.1);
-    }
-
-    /* Media container */
-    .photo-viewer-media-container {
-        flex: 1;
-        display: flex;
+    .fp-login__submit-idle,
+    .htmx-request .fp-login__submit-busy {
+        display: inline-flex;
         align-items: center;
-        justify-content: center;
-        padding: 4rem 1rem;
-        overflow: hidden;
-    }
-
-    .photo-viewer-media {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        /* Fixed size container matching animation target */
-        width: calc(100vw - 2rem);
-        height: calc(100vh - 10rem);
-    }
-
-    .photo-viewer-image {
-        max-width: 100%;
-        max-height: 100%;
-        width: auto;
-        height: auto;
-        object-fit: contain;
-        background-size: cover;
-        background-position: center;
-        transform-origin: center center;
-        transition: transform 0.1s ease-out;
-        touch-action: none;
-    }
-
-    .photo-viewer-video {
-        max-width: 100%;
-        max-height: 100%;
-        width: auto;
-        height: auto;
-        background: oklch(0 0 0);
-        transform-origin: center center;
-        transition: transform 0.1s ease-out;
-        touch-action: none;
-    }
-
-    /* Navigation arrows */
-    .photo-viewer-nav {
-        position: absolute;
-        top: 50%;
-        transform: translateY(-50%);
-        z-index: 10;
-        color: oklch(1 0 0 / 0.8);
-        background: oklch(0 0 0 / 0.3);
-        opacity: 0;
-        transition: opacity 0.2s ease;
-    }
-
-    .photo-viewer-nav:hover {
-        background: oklch(0 0 0 / 0.5);
-        color: oklch(1 0 0);
-    }
-
-    .photo-viewer-content:hover .photo-viewer-nav {
-        opacity: 1;
-    }
-
-    .photo-viewer-nav-prev {
-        left: 1rem;
-    }
-
-    .photo-viewer-nav-next {
-        right: 1rem;
-    }
-
-    .photo-viewer-nav .material-symbols-outlined {
-        font-size: 2rem;
-    }
-
-    /* Bottom action bar */
-    .photo-viewer-actions {
-        position: absolute;
-        bottom: 0;
-        left: 0;
-        right: 0;
-        display: flex;
-        justify-content: center;
-        padding: 1rem;
-        background: linear-gradient(to top, oklch(0 0 0 / 0.7), transparent);
-        z-index: 10;
-    }
-
-    .photo-viewer-actions-inner {
-        display: flex;
         gap: 0.5rem;
-        padding: 0.5rem 1rem;
-        background: oklch(0 0 0 / 0.5);
-        border-radius: 2rem;
-        backdrop-filter: blur(8px);
     }
 
-    .photo-viewer-action {
-        color: oklch(1 0 0 / 0.9);
+    .fp-password-toggle__hide,
+    [aria-pressed="true"] > .fp-password-toggle__show {
+        display: none;
     }
 
-    .photo-viewer-action:hover {
-        background: oklch(1 0 0 / 0.1);
-        color: oklch(1 0 0);
+    [aria-pressed="true"] > .fp-password-toggle__hide {
+        display: inline;
     }
-
-    .photo-viewer-action.text-error {
-        color: oklch(var(--er));
-    }
-
-    .photo-viewer-action.text-error:hover {
-        background: oklch(var(--er) / 0.2);
-    }
-
-    /* Info panel */
-    .photo-viewer-info-panel {
-        position: absolute;
-        top: 0;
-        right: 0;
-        bottom: 0;
-        width: 320px;
-        max-width: 100%;
-        background-color: #1d232a;
-        transform: translateX(100%);
-        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        z-index: 20;
-        display: flex;
-        flex-direction: column;
-        box-shadow: -4px 0 16px oklch(0 0 0 / 0.3);
-    }
-
-    .photo-viewer-info-panel.open {
-        transform: translateX(0);
-    }
-
-    .photo-viewer-info-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 1rem;
-        border-bottom: 1px solid oklch(var(--bc) / 0.1);
-    }
-
-    .photo-viewer-info-header h3 {
-        font-size: 1rem;
-        font-weight: 600;
-        color: oklch(var(--bc));
-    }
-
-    .photo-viewer-info-content {
-        flex: 1;
-        padding: 1rem;
-        overflow-y: auto;
-        color: oklch(var(--bc));
-    }
-
 }
 
-/* Hide timeline on mobile */
-@media (max-width: 768px) {
-    .timeline-scrollbar {
-        display: none !important;
+@keyframes fp-toast-in {
+    from {
+        opacity: 0;
+        transform: translateY(0.5rem);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    ::before,
+    ::after {
+        animation-duration: 1ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 1ms !important;
+        scroll-behavior: auto !important;
     }
 }

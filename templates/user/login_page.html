@@ -1,42 +1,55 @@
 {% extends "base.html" %}
+{% import "macros/icons.html" as icons %}
 
 {% block title %}Login - Family Photos{% endblock %}
+{% block body_class %}fp-login-body{% endblock %}
 
-{% block sidebar_content %}{% endblock %}
+{% block body %}
+<main class="fp-login">
+    <div class="fp-login__header">
+        <img src="/assets/fav/icon-192.png" alt="" width="80" height="80" class="fp-login__logo">
+        <h1 class="fp-login__title">Family Photos</h1>
+        <p class="fp-login__subtitle">Your self-hosted photo library</p>
+    </div>
 
-{% block content %}
-<div class="flex w-full justify-center items-center min-h-[70vh]">
-    <form class="flex flex-col gap-6 w-full max-w-sm" hx-post="/api/login" hx-target="#error" hx-swap="outerHTML">
-        <h1 class="text-3xl font-bold text-center mb-2">Login</h1>
+    <form class="fp-login__card" data-component="login-form" data-silent-errors data-testid="login-form"
+          hx-post="/api/login" hx-target="#login-error" hx-swap="outerHTML"
+          hx-disabled-elt="find button[type=submit]">
+        <input type="hidden" name="next" value="{{ next }}">
 
-        <label class="input input-bordered w-full flex items-center gap-2">
-            <span class="material-symbols-outlined">person</span>
-            <input type="text" class="grow" placeholder="User ID" name="user_id" required autocomplete="username"/>
+        <label class="fp-field">
+            <span class="fp-field__label">Username</span>
+            <span class="input w-full">
+                {% call icons::icon("person") %}{% endcall %}
+                <input type="text" name="user_id" required autocomplete="username" autocapitalize="none"
+                       spellcheck="false" autofocus data-testid="login-username">
+            </span>
         </label>
 
-        <label class="input input-bordered w-full flex items-center gap-2">
-            <span class="material-symbols-outlined">key</span>
-            <input type="password" class="grow" placeholder="Password" name="password" id="password" required autocomplete="current-password"/>
+        <label class="fp-field">
+            <span class="fp-field__label">Password</span>
+            <span class="input w-full">
+                {% call icons::icon("lock") %}{% endcall %}
+                <input type="password" name="password" required autocomplete="current-password"
+                       data-testid="login-password">
+                <button type="button" class="btn btn-ghost btn-circle btn-sm" data-component="password-toggle"
+                        aria-label="Show password" aria-pressed="false" data-label-show="Show password"
+                        data-label-hide="Hide password" data-testid="login-password-toggle">
+                    <span class="fp-password-toggle__show">{% call icons::icon("visibility") %}{% endcall %}</span>
+                    <span class="fp-password-toggle__hide">{% call icons::icon("visibility_off") %}{% endcall %}</span>
+                </button>
+            </span>
         </label>
 
-        <label class="cursor-pointer label justify-start gap-3">
-            <input type="checkbox" class="checkbox checkbox-primary" autocomplete="off" onclick="togglePassword()"/>
-            <span class="label-text">Show password</span>
-        </label>
+        <div id="login-error" hidden></div>
+        <template data-slot="network-error">
+            <div id="login-error" class="fp-login__error" role="alert" data-testid="login-error">Cannot connect to the server.</div>
+        </template>
 
-        <div id="error"></div>
-
-        <button class="btn btn-primary w-full" type="submit">
-            <span class="material-symbols-outlined">login</span>
-            Login
+        <button type="submit" class="btn btn-primary w-full fp-login__submit" disabled data-testid="login-submit">
+            <span class="fp-login__submit-idle">{% call icons::icon("login") %}{% endcall %} Login</span>
+            <span class="fp-login__submit-busy"><span class="loading loading-spinner loading-sm"></span> Logging in…</span>
         </button>
     </form>
-</div>
-
-<script>
-    function togglePassword() {
-        const password = document.getElementById("password");
-        password.type = (password.type === "password" ? "text" : "password");
-    }
-</script>
+</main>
 {% endblock %}

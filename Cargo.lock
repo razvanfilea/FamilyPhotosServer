@@ -676,6 +676,7 @@ dependencies = [
  "clap",
  "dotenvy",
  "fast-thumbhash",
+ "form_urlencoded",
  "imagesize",
  "kamadak-exif",
  "mimalloc",

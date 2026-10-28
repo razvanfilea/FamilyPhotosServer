@@ -1,0 +1,46 @@
+{% import "macros/icons.html" as icons %}
+
+{# Photo filter chips (All / Personal / Family / Shared). `current` is a `PhotoFilter::as_str()` value.
+   Each chip carries `data-filter` and `data-href`; the page wires the behaviour. #}
+{% macro filter_chips(current, base_url) -%}
+<div class="fp-chips" role="group" aria-label="Filter photos" data-testid="filter-chips">
+    {%- for (key, label, chip_icon) in [("all", "All", "photo_library"), ("personal", "Personal", "person"), ("family", "Family", "family_restroom"), ("shared", "Shared", "group")] %}
+    {%- let selected = crate::http::views::str_eq(key, current) %}
+    <button type="button" class="fp-chip" data-filter="{{ key }}" data-href="{{ base_url }}?filter={{ key }}"
+            data-testid="filter-chip-{{ key }}" aria-pressed="{{ selected }}">
+        {%- if selected %}{% call icons::icon("check") %}{% endcall %}{% else %}{% call icons::icon(chip_icon) %}{% endcall %}{% endif -%}
+        <span>{{ label }}</span>
+    </button>
+    {%- endfor %}
+</div>
+{%- endmacro %}
+
+{% macro empty_state(icon, title, body) -%}
+<div class="fp-empty" data-testid="empty-state">
+    {% call icons::icon(icon, false, "fp-empty__icon") %}{% endcall %}
+    <h2 class="fp-empty__title">{{ title }}</h2>
+    {%- if body != "" %}<p class="fp-empty__body">{{ body }}</p>{% endif %}
+</div>
+{%- endmacro %}
+
+{# `kind` is a DaisyUI badge colour: "", "primary", "error", "warning", … #}
+{% macro badge(text, kind="") -%}
+<span class="badge badge-sm{% if kind != "" %} badge-{{ kind }}{% endif %}">{{ text }}</span>
+{%- endmacro %}
+
+{# A circle with the name's initial, coloured from a hash of the name #}
+{% macro avatar(name, class="") -%}
+<span class="fp-avatar {{ class }}" style="--avatar-hue: {{ crate::http::views::avatar_hue(name) }}" aria-hidden="true">
+    {{- crate::http::views::avatar_initial(name) -}}
+</span>
+{%- endmacro %}
+
+{# A segmented control of radio buttons. `options` is a list of (value, label) pairs. #}
+{% macro segmented(name, options, current) -%}
+<div class="join fp-segmented" role="radiogroup">
+    {%- for (value, label) in options %}
+    <input type="radio" class="join-item btn btn-sm" name="{{ name }}" value="{{ value }}" aria-label="{{ label }}"
+           data-testid="{{ name }}-{{ value }}" {% if crate::http::views::str_eq(value, current) %}checked{% endif %}>
+    {%- endfor %}
+</div>
+{%- endmacro %}

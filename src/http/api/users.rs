@@ -1,15 +1,17 @@
 use crate::http::AppStateRef;
 use crate::http::auth::AuthenticatedUser;
 use crate::http::error::{HttpError, HttpResult};
+use crate::http::fragments::safe_redirect_path;
 use crate::http::template_into_response::TemplateIntoResponse;
 use crate::http::utils::{AuthSession, WantsHtml};
 use crate::model::user::{SimpleUser, UserCredentials};
 use askama::Template;
 use axum::extract::State;
-use axum::http::StatusCode;
+use axum::http::{HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use axum::{Form, Json, Router};
+use serde::Deserialize;
 use tracing::{debug, error, warn};
 
 pub fn public_router() -> Router<AppStateRef> {
@@ -24,11 +26,25 @@ pub fn protected_router() -> Router<AppStateRef> {
         .route("/members", get(members_list))
 }
 
+#[derive(Deserialize)]
+struct LoginForm {
+    user_id: String,
+    password: String,
+    /// Web only: where to redirect after logging in
+    next: Option<String>,
+}
+
 async fn login_handler(
     auth: AuthSession,
     WantsHtml(wants_html): WantsHtml,
-    Form(credentials): Form<UserCredentials>,
+    Form(form): Form<LoginForm>,
 ) -> Response {
+    // User ids are always lowercase; the Android app normalizes them the same way
+    let credentials = UserCredentials {
+        user_id: form.user_id.trim().to_lowercase(),
+        password: form.password,
+    };
+
     let error_response = |message: &str| -> Response {
         if wants_html {
             login_error(message)
@@ -58,7 +74,7 @@ async fn login_handler(
         Ok(None) => {
             warn!("Wrong credentials for user: {}", credentials.user_id);
             return if wants_html {
-                login_error("Invalid user ID or password")
+                login_error("Invalid username or password.")
             } else {
                 HttpError::Unauthorized.into_response()
             };
@@ -80,7 +96,13 @@ async fn login_handler(
     debug!("User has been logged in: {}", user.id);
 
     if wants_html {
-        [("HX-Refresh", "true"), ("HX-Replace-Url", "/")].into_response()
+        let next = form
+            .next
+            .as_deref()
+            .and_then(safe_redirect_path)
+            .and_then(|next| HeaderValue::from_str(next).ok())
+            .unwrap_or(HeaderValue::from_static("/"));
+        [("HX-Redirect", next)].into_response()
     } else {
         Json(SimpleUser::from(user)).into_response()
     }

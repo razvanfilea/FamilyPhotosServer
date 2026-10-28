@@ -32,34 +32,27 @@ jobs:
           sqlx migrate run
       - run: cargo test --all-features
 
-  # TODO: Enable e2e tests once sample test data is added
-  # Requires: test user (test_user/test_password_123) and sample photos in playwright/fixtures/images/
-  # e2e:
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v6
-  #     - uses: dtolnay/rust-toolchain@stable
-  #     - uses: Swatinem/rust-cache@v2
-  #     - uses: actions/setup-node@v4
-  #       with:
-  #         node-version: 20
-  #         cache: npm
-  #     - run: npm ci
-  #     - run: npx playwright install --with-deps chromium
-  #     - name: Setup test data
-  #       run: |
-  #         mkdir -p /tmp/familyphotos-test
-  #         ./target/release/familyphotos users create -u test_user -n "Test User" -p test_password_123
-  #         cp -r playwright/fixtures/images/* /tmp/familyphotos-test/
-  #       env:
-  #         STORAGE_PATH: /tmp/familyphotos-test
-  #         DATABASE_URL: /tmp/familyphotos-test/.familyphotos.db
-  #     - name: Build and start server
-  #       run: |
-  #         cargo build --release
-  #         ./target/release/familyphotos &
-  #         sleep 3
-  #       env:
-  #         SERVER_PORT: 3000
-  #         STORAGE_PATH: /tmp/familyphotos-test
-  #     - run: npm run test
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          # node:sqlite (used by the harness to create databases) needs Node 22.13+
+          node-version: 24
+      - name: Install ImageMagick and ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y imagemagick ffmpeg
+      # Ubuntu's ImageMagick 6 has no `magick` binary
+      - name: Provide the magick command
+        run: command -v magick || sudo ln -s "$(command -v convert)" /usr/local/bin/magick
+      - run: npm install
+      - run: npx playwright install-deps chromium
+      - run: npm run prod
+      - run: npm run test
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: playwright/playwright-report

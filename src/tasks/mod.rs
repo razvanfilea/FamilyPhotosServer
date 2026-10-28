@@ -18,7 +18,7 @@ use crate::repo::{
     EventLogRepo, FolderEventLogRepo, FoldersRepo, PhotosRepo, PhotosTransactionRepo,
 };
 pub use crate::tasks::hash::compute_photos_hash;
-use crate::tasks::thumb_hash::generate_thumb_hashes;
+pub use crate::tasks::thumb_hash::generate_thumb_hashes;
 use crate::tasks::trash::cleanup_trash;
 
 pub fn start_periodic_tasks(
