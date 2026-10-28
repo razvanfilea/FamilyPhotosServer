@@ -1,0 +1,7 @@
+{% import "macros/photo.html" as photo %}
+{%- for tile in tiles %}
+{% call photo::photo_tile(tile.photo, tile.index, tile.badge, tile.badge_kind) %}{% endcall %}
+{%- endfor %}
+{%- if let Some(next_offset) = next_offset %}
+<div class="month__more" data-next-offset="{{ next_offset }}"></div>
+{%- endif %}

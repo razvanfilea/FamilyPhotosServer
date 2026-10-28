@@ -56,7 +56,6 @@ pub struct PageContext {
     #[expect(dead_code, reason = "Read by the pages of later packages")]
     pub asset_version: &'static str,
     pub nav_active: Nav,
-    #[expect(dead_code, reason = "Read by the pages of later packages")]
     pub prefs: Prefs,
 }
 

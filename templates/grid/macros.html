@@ -1,0 +1,80 @@
+{% import "macros/icons.html" as icons %}
+{% import "macros/photo.html" as photo %}
+{% import "macros/ui.html" as ui %}
+
+{# Photo grid with month sections and the fast scroller. `grid` is a `pages::grid::GridView`
+   (see `build_grid_view`). The behaviour comes from `assets/js/grid/index.js`, which the page must
+   load. #}
+{% macro photo_grid(grid) -%}
+<div id="photo-grid" class="photo-grid" data-component="photo-grid" data-context="{{ grid.context_key }}"
+     data-zoom="{{ grid.zoom }}" data-total="{{ grid.total }}" data-testid="photo-grid">
+    {%- for section in grid.sections %}
+    {%- if grid.flat %}
+    <section class="month month--flat" id="m-flat" data-count="{{ section.count }}" data-start-index="{{ section.start_index }}"
+             data-loaded="{{ !section.tiles.is_empty() }}" data-testid="month-section">
+    {%- else %}
+    {%- let month = section.month.as_deref().unwrap_or_default() %}
+    <section class="month" id="m-{{ month }}" data-month="{{ month }}" data-count="{{ section.count }}"
+             data-cover="{{ section.cover_photo_id }}" data-start-index="{{ section.start_index }}"
+             data-label="{{ section.label_with_year }}" data-loaded="{{ !section.tiles.is_empty() }}"
+             aria-labelledby="m-{{ month }}-h" data-testid="month-section">
+        <header class="month__header">
+            <h2 id="m-{{ month }}-h" class="month__title" data-testid="month-title">{{ section.label }}</h2>
+            <button type="button" class="month__button month__select" data-action="month-select" data-testid="month-select"
+                    aria-pressed="false" aria-label="Select all photos from {{ section.label_with_year }}">
+                <span class="month__select-off">{% call icons::icon("radio_button_unchecked") %}{% endcall %}</span>
+                <span class="month__select-on">{% call icons::icon("check_circle", true) %}{% endcall %}</span>
+            </button>
+            {%- if grid.sections.len() > 2 %}
+            <button type="button" class="month__button" data-action="month-picker" data-testid="month-picker-open"
+                    aria-label="Choose a month" aria-haspopup="dialog"
+                    hx-get="/ui/grid/month-picker?ctx={{ grid.context_key }}" hx-target="#app-dialog-content" hx-swap="innerHTML">
+                {% call icons::icon("calendar_month") %}{% endcall %}
+            </button>
+            {%- endif %}
+        </header>
+    {%- endif %}
+        <div class="month__grid" style="--count: {{ section.count }}">
+            {%- for tile in section.tiles %}
+            {% call photo::photo_tile(tile.photo, tile.index, tile.badge, tile.badge_kind) %}{% endcall %}
+            {%- endfor %}
+            {%- if let Some(next_offset) = section.next_offset() %}
+            <div class="month__more" data-next-offset="{{ next_offset }}"></div>
+            {%- endif %}
+        </div>
+    </section>
+    {%- endfor %}
+</div>
+<div class="fast-scroller" data-component="fast-scroller" data-grid="photo-grid" data-visible="false"
+     {% if grid.sections.len() < 2 %}hidden{% endif %}>
+    <div class="fast-scroller__thumb" role="scrollbar" aria-orientation="vertical" aria-controls="photo-grid"
+         aria-label="Scroll through the timeline" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"
+         data-testid="fast-scroller-thumb">{% call icons::icon("unfold_more") %}{% endcall %}</div>
+    <div class="fast-scroller__label" data-testid="fast-scroller-label" aria-hidden="true"></div>
+</div>
+{%- endmacro %}
+
+{# What to show instead of the grid when the context has no photos. The grid's script reveals it
+   when the last photo is removed. `upload_href` adds an Upload button. #}
+{% macro grid_empty(grid, icon, title, body, upload_href="") -%}
+<div data-grid-empty{% if grid.total > 0 %} hidden{% endif %} data-testid="grid-empty">
+    {% call ui::empty_state(icon, title, body) %}{% endcall %}
+    {%- if upload_href != "" %}
+    <div class="flex justify-center">
+        <a href="{{ upload_href }}" class="btn btn-primary" hx-boost="false" data-testid="grid-empty-upload">
+            {% call icons::icon("cloud_upload") %}{% endcall %} Upload
+        </a>
+    </div>
+    {%- endif %}
+</div>
+{%- endmacro %}
+
+{# The − / + buttons changing the zoom level of the page's grid; put them in `topbar_actions` #}
+{% macro zoom_controls(zoom) -%}
+<div class="fp-zoom hidden md:flex" data-component="zoom-controls" data-zoom="{{ zoom }}" role="group" aria-label="Zoom">
+    <button type="button" class="btn btn-ghost btn-circle" data-action="zoom-out" data-testid="zoom-out"
+            aria-label="Zoom out"{% if zoom >= 3 %} disabled{% endif %}>{% call icons::icon("zoom_out") %}{% endcall %}</button>
+    <button type="button" class="btn btn-ghost btn-circle" data-action="zoom-in" data-testid="zoom-in"
+            aria-label="Zoom in"{% if zoom == 0 %} disabled{% endif %}>{% call icons::icon("zoom_in") %}{% endcall %}</button>
+</div>
+{%- endmacro %}

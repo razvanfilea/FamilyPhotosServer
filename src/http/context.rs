@@ -34,13 +34,11 @@ pub enum PhotoListContext {
 impl PhotoListContext {
     /// The `contextKey`: `timeline:all`, `folder:12`, `favorites`, `trash`, `large-files`,
     /// `memories:3` (filter `all`) or `memories:3:personal`.
-    #[allow(dead_code)] // TODO: used by the grid pages
     pub fn key(&self) -> String {
         self.to_string()
     }
 
     /// Whether the context is displayed as month sections (and month queries apply).
-    #[allow(dead_code)] // TODO: used by the grid pages
     pub fn is_month_sectioned(&self) -> bool {
         matches!(
             self,

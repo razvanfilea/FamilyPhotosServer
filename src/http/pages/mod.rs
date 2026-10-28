@@ -10,6 +10,7 @@ mod duplicates;
 mod errors;
 mod favorites;
 mod folders;
+pub mod grid;
 mod large_files;
 mod placeholder;
 mod settings;
@@ -40,6 +41,8 @@ pub fn router(app_state: AppStateRef) -> Router {
     // HTML fragments for HTMX/JS: 401 + HX-Redirect when logged out
     let fragments_router = Router::new()
         .route("/ui/dialogs/shortcuts", get(shortcuts::shortcuts_dialog))
+        .route("/ui/grid/month", get(grid::month_page))
+        .route("/ui/grid/month-picker", get(grid::month_picker))
         .route_layer(middleware::from_fn(fragments::require_login));
 
     let unauthenticated_router = Router::new()

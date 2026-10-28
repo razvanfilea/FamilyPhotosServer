@@ -36,7 +36,6 @@ pub struct ContextPhoto {
     pub deletable: bool,
 }
 
-#[allow(dead_code)] // TODO: used by the grid pages
 #[derive(Debug, Clone, PartialEq, Eq, FromRow)]
 pub struct MonthSummary {
     /// `YYYY-MM`
@@ -46,7 +45,6 @@ pub struct MonthSummary {
     pub cover_photo_id: i64,
 }
 
-#[allow(dead_code)] // TODO: used by the memories row
 #[derive(Debug, Clone, PartialEq, Eq, FromRow)]
 pub struct MemorySummary {
     pub years_ago: u32,
@@ -209,7 +207,6 @@ fn month_page_query(
 
 pub trait ContextRepo<'c>: SqliteExecutor<'c> {
     /// Month sections of the context, newest month first.
-    #[allow(dead_code)] // TODO: used by the grid pages
     async fn context_month_summaries(
         self,
         me: &str,
@@ -238,7 +235,6 @@ pub trait ContextRepo<'c>: SqliteExecutor<'c> {
 
     /// A page of photos within one month (`YYYY-MM`, validated by the caller), or within the
     /// whole context when `month` is `None` (flat contexts).
-    #[allow(dead_code)] // TODO: used by the grid pages
     async fn context_month_page(
         self,
         me: &str,
@@ -320,7 +316,6 @@ pub trait ContextRepo<'c>: SqliteExecutor<'c> {
     }
 
     /// "On this day" groups for the timeline filter, ordered by `years_ago` ascending.
-    #[allow(dead_code)] // TODO: used by the memories row
     async fn memories_summary(
         self,
         me: &str,

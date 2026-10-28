@@ -1,0 +1,24 @@
+{% extends "shell.html" %}
+{% import "grid/macros.html" as grids %}
+{% import "macros/ui.html" as ui %}
+
+{% block title %}Photos - Family Photos{% endblock %}
+{% block page_title %}Photos{% endblock %}
+
+{% block topbar_actions %}{% call grids::zoom_controls(grid.zoom) %}{% endcall %}{% endblock %}
+
+{% block content %}
+<div id="timeline-content" data-testid="timeline-content">
+    <div class="timeline-filters" data-component="timeline-filters" hx-target="#timeline-content"
+         hx-select="#timeline-content" hx-swap="outerHTML show:window:top" hx-push-url="true">
+        {% call ui::filter_chips(filter.as_str(), "/") %}{% endcall %}
+    </div>
+    {% include "timeline/memories.html" %}
+    {% call grids::grid_empty(grid, "photo_library", "No photos yet", "Photos you upload will show up here.", "/upload") %}{% endcall %}
+    {% call grids::photo_grid(grid) %}{% endcall %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script type="module" src="/assets/js/pages/timeline.js"></script>
+{% endblock %}
