@@ -62,19 +62,15 @@ impl<'c, E> StatsRepo<'c> for E where E: SqliteExecutor<'c> {}
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::photo::Photo;
     use crate::repo::FolderPermissionsRepo;
-    use crate::repo::PhotosTransactionRepo;
-    use crate::repo::tests::{
-        create_test_folder, create_test_photo, create_test_user, insert_test_user,
-    };
+    use crate::repo::tests::{create_test_folder, insert_photo, insert_users, photo};
     use sqlx::SqlitePool;
     use time::OffsetDateTime;
 
     #[sqlx::test]
     async fn test_photo_statistics(pool: SqlitePool) -> sqlx::Result<()> {
-        insert_test_user(&pool, &create_test_user("alice", "Alice")).await?;
-        insert_test_user(&pool, &create_test_user("bob", "Bob")).await?;
-
+        insert_users(&pool).await;
         assert_eq!(
             pool.photo_statistics("alice").await?,
             PhotoStatistics::default()
@@ -94,62 +90,29 @@ mod tests {
             // Shared with alice, but statistics only count own + public photos
             (Some("bob"), Some(bobs_folder.id), "bob.jpg", 9, false),
         ];
-
-        let mut tx = pool.begin().await?;
-        for (user_id, folder_id, name, size, trashed) in photos {
-            let mut photo = create_test_photo(0, user_id, folder_id, name);
-            photo.file_size = size;
-            photo.trashed_on = trashed.then(OffsetDateTime::now_utc);
-            tx.insert_photo(&photo).await?;
+        for (user_id, folder_id, name, file_size, trashed) in photos {
+            let photo = Photo {
+                folder_id,
+                file_size,
+                trashed_on: trashed.then(OffsetDateTime::now_utc),
+                ..photo(user_id, name)
+            };
+            insert_photo(&pool, photo).await;
         }
-        tx.commit().await?;
 
-        let stats = pool.photo_statistics("alice").await?;
+        let cs = |count, size| CountSize { count, size };
         assert_eq!(
-            stats.personal,
-            CountSize {
-                count: 2,
-                size: 1100
+            pool.photo_statistics("alice").await?,
+            PhotoStatistics {
+                personal: cs(2, 1100),
+                family: cs(2, 2200),
+                images: cs(2, 300),
+                videos: cs(2, 3000),
+                total: cs(4, 3300),
             }
         );
-        assert_eq!(
-            stats.family,
-            CountSize {
-                count: 2,
-                size: 2200
-            }
-        );
-        assert_eq!(
-            stats.images,
-            CountSize {
-                count: 2,
-                size: 300
-            }
-        );
-        assert_eq!(
-            stats.videos,
-            CountSize {
-                count: 2,
-                size: 3000
-            }
-        );
-        assert_eq!(
-            stats.total,
-            CountSize {
-                count: 4,
-                size: 3300
-            }
-        );
-
         let stats = pool.photo_statistics("bob").await?;
-        assert_eq!(stats.personal, CountSize { count: 1, size: 9 });
-        assert_eq!(
-            stats.family,
-            CountSize {
-                count: 2,
-                size: 2200
-            }
-        );
+        assert_eq!((stats.personal, stats.family), (cs(1, 9), cs(2, 2200)));
 
         Ok(())
     }

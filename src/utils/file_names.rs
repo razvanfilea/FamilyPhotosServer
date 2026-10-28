@@ -61,36 +61,43 @@ mod tests {
 
     #[test]
     fn test_validate_folder_name() {
-        assert_eq!(
-            validate_folder_name("  Vacation 2024 "),
-            Ok("Vacation 2024".to_string())
-        );
-        assert_eq!(validate_folder_name("Plajă"), Ok("Plajă".to_string()));
-        assert_eq!(validate_folder_name("a.b"), Ok("a.b".to_string()));
-
-        for name in [
-            "",
-            "   ",
-            ".",
-            "..",
-            ".previews",
-            "a/b",
-            "a\\b",
-            "/",
-            "a\0b",
-            "a\nb",
-        ] {
-            assert!(validate_folder_name(name).is_err(), "{name:?}");
+        let ok = [
+            ("  Vacation 2024 ", "Vacation 2024"),
+            ("Plajă", "Plajă"),
+            ("a.b", "a.b"),
+        ];
+        for (name, expected) in ok {
+            assert_eq!(
+                validate_folder_name(name),
+                Ok(expected.to_string()),
+                "{name:?}"
+            );
         }
 
-        assert_eq!(
-            validate_folder_name("a/b"),
-            Err("Folder names can't contain / or \\")
-        );
-        assert!(validate_folder_name(&"a".repeat(100)).is_ok());
-        assert!(validate_folder_name(&"a".repeat(101)).is_err());
-        // Length is in characters, not bytes
-        assert!(validate_folder_name(&"ă".repeat(100)).is_ok());
+        let err = [
+            ("", "Folder name cannot be empty"),
+            ("   ", "Folder name cannot be empty"),
+            ("a/b", "Folder names can't contain / or \\"),
+            ("a\\b", "Folder names can't contain / or \\"),
+            ("/", "Folder names can't contain / or \\"),
+            ("a\0b", "Folder names can't contain control characters"),
+            ("a\nb", "Folder names can't contain control characters"),
+            (".", "Folder names can't start with a dot"),
+            ("..", "Folder names can't start with a dot"),
+            (".previews", "Folder names can't start with a dot"),
+        ];
+        for (name, message) in err {
+            assert_eq!(validate_folder_name(name), Err(message), "{name:?}");
+        }
+
+        // The length is in characters, not bytes
+        for (name, valid) in [
+            ("a".repeat(100), true),
+            ("a".repeat(101), false),
+            ("ă".repeat(100), true),
+        ] {
+            assert_eq!(validate_folder_name(&name).is_ok(), valid, "{}", name.len());
+        }
     }
 
     #[test]

@@ -42,31 +42,28 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_is_video() {
-        assert!(is_video("clip.mp4"));
-        assert!(is_video("CLIP.MOV"));
-        assert!(is_video("a.b.MkV"));
-        assert!(is_video("old.3gp"));
-        assert!(!is_video("photo.jpg"));
-        assert!(!is_video("photo.heic"));
-        assert!(!is_video("mp4"));
-        assert!(!is_video(""));
-    }
-
-    #[test]
-    fn test_is_gif_or_webp() {
-        assert!(is_gif_or_webp("anim.GIF"));
-        assert!(is_gif_or_webp("a.webp"));
-        assert!(!is_gif_or_webp("a.jpg"));
-        assert!(!is_gif_or_webp("a.heic"));
-        assert!(!is_gif_or_webp("a.mp4"));
-    }
-
-    #[test]
-    fn test_media_label() {
-        assert_eq!(media_label("IMG_1.jpg"), "Image (JPG)");
-        assert_eq!(media_label("VID_1.Mp4"), "Video (MP4)");
-        assert_eq!(media_label("photo.heic"), "Image (HEIC)");
-        assert_eq!(media_label("noextension"), "Image");
+    fn test_media_kind() {
+        // (name, is video, is GIF or WebP, label)
+        let cases = [
+            ("clip.mp4", true, false, "Video (MP4)"),
+            ("CLIP.MOV", true, false, "Video (MOV)"),
+            ("a.b.MkV", true, false, "Video (MKV)"),
+            ("old.3gp", true, false, "Video (3GP)"),
+            ("IMG_1.jpg", false, false, "Image (JPG)"),
+            ("a.JPG", false, false, "Image (JPG)"),
+            ("a.webp", false, true, "Image (WEBP)"),
+            ("anim.GIF", false, true, "Image (GIF)"),
+            ("a.svg", false, false, "Image (SVG)"),
+            ("photo.heic", false, false, "Image (HEIC)"),
+            ("a.dng", false, false, "Image (DNG)"),
+            ("mp4", false, false, "Image"),
+            ("noextension", false, false, "Image"),
+            ("", false, false, "Image"),
+        ];
+        for (name, video, gif_or_webp, label) in cases {
+            assert_eq!(is_video(name), video, "{name}");
+            assert_eq!(is_gif_or_webp(name), gif_or_webp, "{name}");
+            assert_eq!(media_label(name), label, "{name}");
+        }
     }
 }

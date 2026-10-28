@@ -487,567 +487,269 @@ pub enum UserEventLogError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::repo::FavoritesRepo;
     use crate::repo::tests::{
-        create_test_folder, create_test_photo, create_test_photo_with_time, create_test_user,
-        earlier_same_utc_day, insert_test_share, insert_test_user,
+        Dataset, create_test_folder, earlier_same_utc_day, insert_photo, insert_users, photo,
     };
     use sqlx::SqlitePool;
-    use time::macros::datetime;
-
-    // ==================== PhotosRepo trait tests ====================
+    use std::collections::HashSet;
+    use time::Duration;
 
     #[sqlx::test]
-    async fn test_get_accessible_photo(pool: SqlitePool) -> sqlx::Result<()> {
-        let user = create_test_user("user1", "Test User");
-        let user2 = create_test_user("user2", "Other User");
-        insert_test_user(&pool, &user).await?;
-        insert_test_user(&pool, &user2).await?;
+    async fn test_photo_access_matrix(pool: SqlitePool) -> sqlx::Result<()> {
+        insert_users(&pool).await;
+        let data = Dataset::create(&pool).await;
 
-        // Non-existent ID → None
-        let result = pool
-            .get_accessible_photo(999, "user1", PhotoAccess::Own)
-            .await?;
-        assert!(result.is_none());
+        // (photo, [Own, Read, Delete]) from alice's point of view. Trashed photos stay accessible.
+        #[rustfmt::skip]
+        let cases = [
+            ("own_1", [true, true, true]),
+            ("own_2", [true, true, true]),
+            ("own_trashed", [true, true, true]),
+            ("public_a", [true, true, true]),
+            ("public_trashed", [true, true, true]),
+            ("shared_1", [false, true, false]),
+            ("shared_trashed", [false, true, false]),
+            ("shared_delete_1", [false, true, true]),
+            ("expired_1", [false, false, false]),
+            ("unshared_1", [false, false, false]),
+            ("bob_root", [false, false, false]),
+            ("carol_root", [false, false, false]),
+        ];
+        let levels = [PhotoAccess::Own, PhotoAccess::Read, PhotoAccess::Delete];
+        for (name, expected) in cases {
+            let id = data.id(name);
+            for (access, expected) in levels.into_iter().zip(expected) {
+                let photo = pool.get_accessible_photo(id, "alice", access).await?;
+                assert_eq!(
+                    photo.map(|p| p.id),
+                    expected.then_some(id),
+                    "{name} {access:?}"
+                );
 
-        let mut tx = pool.begin().await?;
-        let private_photo = create_test_photo(0, Some("user1"), None, "private.jpg");
-        let public_photo = create_test_photo(0, None, None, "public.jpg");
-        let other_private = create_test_photo(0, Some("user2"), None, "other_private.jpg");
+                let with_folder = pool
+                    .get_accessible_photo_with_folder(id, "alice", access)
+                    .await?;
+                assert_eq!(with_folder.is_some(), expected, "{name} {access:?}");
+            }
+        }
 
-        let private = tx.insert_photo(&private_photo).await?;
-        let public = tx.insert_photo(&public_photo).await?;
-        let other = tx.insert_photo(&other_private).await?;
-        tx.commit().await?;
+        // The owner has full access to their shared photos
+        let shared_1 = data.id("shared_1");
+        let photo = pool
+            .get_accessible_photo_with_folder(shared_1, "bob", PhotoAccess::Own)
+            .await?
+            .unwrap();
+        assert_eq!(photo.folder_name.as_deref(), Some("shared"));
+        assert_eq!(photo.partial_path(), "bob/shared/shared_1");
 
-        // Photo owned by requesting user → Some(photo)
-        let result = pool
-            .get_accessible_photo(private.id, "user1", PhotoAccess::Own)
-            .await?;
-        assert!(result.is_some());
-        assert_eq!(result.unwrap().name, "private.jpg");
-
-        // Public photo (user_id=NULL) → accessible by any user
-        let result = pool
-            .get_accessible_photo(public.id, "user1", PhotoAccess::Own)
-            .await?;
-        assert!(result.is_some());
-        assert_eq!(result.unwrap().name, "public.jpg");
-
-        let result = pool
-            .get_accessible_photo(public.id, "user2", PhotoAccess::Own)
-            .await?;
-        assert!(result.is_some());
-
-        // Private photo owned by different user → None (denied)
-        let result = pool
-            .get_accessible_photo(other.id, "user1", PhotoAccess::Own)
-            .await?;
-        assert!(result.is_none());
-
-        // Test get_photo: bypasses user ownership check
-        // Non-existent → None
-        let result = pool.get_photo(999).await?;
-        assert!(result.is_none());
-
-        // Any existing photo → Some(photo) regardless of ownership
-        let result = pool.get_photo(other.id).await?;
-        assert!(result.is_some());
-        assert_eq!(result.unwrap().name, "other_private.jpg");
+        let missing = pool.get_accessible_photo(999, "alice", PhotoAccess::Own);
+        assert!(missing.await?.is_none());
+        // `get_photo` doesn't check access
+        let carol_root = pool.get_photo(data.id("carol_root")).await?.unwrap();
+        assert_eq!(carol_root.name, "carol_root");
+        assert!(pool.get_photo(999).await?.is_none());
 
         Ok(())
     }
 
     #[sqlx::test]
-    async fn test_get_all_photo_ids(pool: SqlitePool) -> sqlx::Result<()> {
-        let user = create_test_user("user1", "Test User");
-        insert_test_user(&pool, &user).await?;
-
-        // Empty DB → empty vec
-        let ids = pool.get_all_photo_ids().await?;
-        assert!(ids.is_empty());
+    async fn test_photo_lists(pool: SqlitePool) -> sqlx::Result<()> {
+        insert_users(&pool).await;
 
         let mut tx = pool.begin().await?;
-        let photos = vec![
-            create_test_photo(0, Some("user1"), None, "p1.jpg"),
-            create_test_photo(0, None, None, "public.jpg"),
-        ];
-        tx.insert_photos(&photos).await?;
-
-        // Trash one photo
-        let mut trashed = create_test_photo(0, Some("user1"), None, "trashed.jpg");
-        trashed.trashed_on = Some(OffsetDateTime::now_utc());
-        tx.insert_photo(&trashed).await?;
+        let empty = tx.get_photos_by_user_and_public("alice").await?;
         tx.commit().await?;
+        assert_eq!(empty.event_log_id, 0);
+        assert!(empty.photos.is_empty());
+        assert!(pool.get_all_photo_ids().await?.is_empty());
+        assert!(pool.get_expired_trash_photos().await?.is_empty());
 
-        // Multiple photos (public + private + trashed) → all IDs returned
-        let ids = pool.get_all_photo_ids().await?;
-        assert_eq!(ids.len(), 3);
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn test_get_photos_by_user(pool: SqlitePool) -> sqlx::Result<()> {
-        let user = create_test_user("user1", "Test User");
-        insert_test_user(&pool, &user).await?;
-
-        // Empty result when no matches
-        let photos = pool.get_photos_by_user(Some("user1")).await?;
-        assert!(photos.is_empty());
+        let data = Dataset::create(&pool).await;
+        let names = |photos: &[Photo]| data.names(photos.iter().map(|p| p.id));
+        let name_set = |photos: &[Photo]| names(photos).into_iter().collect::<HashSet<_>>();
 
         let mut tx = pool.begin().await?;
-        let photos_to_insert = vec![
-            create_test_photo_with_time(
-                0,
-                Some("user1"),
-                None,
-                "p1.jpg",
-                datetime!(2024-01-15 10:00:00 UTC),
-            ),
-            create_test_photo_with_time(
-                0,
-                Some("user1"),
-                None,
-                "p2.jpg",
-                datetime!(2024-01-14 10:00:00 UTC),
-            ),
-            create_test_photo_with_time(
-                0,
-                None,
-                None,
-                "public.jpg",
-                datetime!(2024-01-13 10:00:00 UTC),
-            ),
-        ];
-        tx.insert_photos(&photos_to_insert).await?;
+        let full = tx.get_photos_by_user_and_public("alice").await?;
         tx.commit().await?;
+        let latest_event: i64 = sqlx::query_scalar("select max(event_id) from photos_event_log")
+            .fetch_one(&pool)
+            .await?;
+        assert_eq!(full.event_log_id, latest_event);
+        // Own and public photos, trashed included, no shared ones
+        assert_eq!(
+            name_set(&full.photos),
+            HashSet::from([
+                "own_1",
+                "own_2",
+                "own_old",
+                "own_trashed",
+                "own_big",
+                "public_a",
+                "public_b",
+                "public_trashed",
+                "public_big",
+            ])
+        );
 
-        // user_id=Some → only that user's photos
-        let photos = pool.get_photos_by_user(Some("user1")).await?;
-        assert_eq!(photos.len(), 2);
-        // Verify ordering by created_at DESC
-        assert_eq!(photos[0].name, "p1.jpg");
-        assert_eq!(photos[1].name, "p2.jpg");
+        assert_eq!(pool.get_all_photo_ids().await?.len(), 17);
+        // Newest first
+        assert_eq!(
+            names(&pool.get_photos_by_user(Some("alice")).await?),
+            ["own_1", "own_trashed", "own_2", "own_big", "own_old"]
+        );
+        assert_eq!(
+            name_set(&pool.get_photos_by_user(None).await?),
+            HashSet::from(["public_a", "public_b", "public_trashed", "public_big"])
+        );
+        assert_eq!(
+            names(&pool.get_photos_in_folder(data.shared_folder).await?),
+            ["shared_1"]
+        );
 
-        // user_id=None → only public photos
-        let photos = pool.get_photos_by_user(None).await?;
-        assert_eq!(photos.len(), 1);
-        assert_eq!(photos[0].name, "public.jpg");
+        // Trashed 15 days ago: not expired yet
+        let recent = Photo {
+            trashed_on: Some(OffsetDateTime::now_utc() - Duration::days(15)),
+            ..photo(Some("alice"), "recent")
+        };
+        insert_photo(&pool, recent).await;
+        // Trashed a few hours more than 30 days ago, on the same UTC day as the cutoff: expired
+        let cutoff = OffsetDateTime::now_utc() - Duration::days(30);
+        let same_day = Photo {
+            trashed_on: Some(earlier_same_utc_day(cutoff, Duration::hours(3))),
+            ..photo(Some("alice"), "same_day")
+        };
+        let same_day = insert_photo(&pool, same_day).await.id;
+        let mut expired = pool.get_expired_trash_photos().await?;
+        let before = expired.len();
+        expired.retain(|p| p.id != same_day);
+        assert_eq!(expired.len(), before - 1, "same_day is expired");
+        assert_eq!(
+            name_set(&expired),
+            HashSet::from([
+                "own_trashed",
+                "public_trashed",
+                "shared_trashed",
+                "shared_delete_trashed",
+            ])
+        );
 
         Ok(())
     }
 
     #[sqlx::test]
     async fn test_get_photos_with_same_location(pool: SqlitePool) -> sqlx::Result<()> {
-        let user = create_test_user("user1", "Test User");
-        let user2 = create_test_user("user2", "Other User");
-        insert_test_user(&pool, &user).await?;
-        insert_test_user(&pool, &user2).await?;
+        insert_users(&pool).await;
+        let folder = create_test_folder(&pool, Some("alice"), "folder").await;
+        let bobs_folder = create_test_folder(&pool, Some("bob"), "folder").await;
+        let in_folder = |user_id, folder_id, name| Photo {
+            folder_id: Some(folder_id),
+            ..photo(user_id, name)
+        };
 
-        let folder1 = create_test_folder(&pool, Some("user1"), "folder").await;
-        let folder2 = create_test_folder(&pool, Some("user2"), "folder").await;
+        insert_photo(&pool, in_folder(Some("alice"), folder.id, "a.jpg")).await;
+        insert_photo(&pool, in_folder(Some("alice"), folder.id, "b.jpg")).await;
+        // Same name, but another user's folder
+        insert_photo(&pool, in_folder(Some("bob"), bobs_folder.id, "a.jpg")).await;
+        assert!(pool.get_photos_with_same_location().await?.is_empty());
 
-        // No duplicates → empty vec
-        let mut tx = pool.begin().await?;
-        let photos = vec![
-            create_test_photo(0, Some("user1"), Some(folder1.id), "unique1.jpg"),
-            create_test_photo(0, Some("user1"), Some(folder1.id), "unique2.jpg"),
-        ];
-        tx.insert_photos(&photos).await?;
-        tx.commit().await?;
-
-        let dupes = pool.get_photos_with_same_location().await?;
-        assert!(dupes.is_empty());
-
-        // Duplicates (same user_id+folder_id+name) → returns all but first
-        let mut tx = pool.begin().await?;
-        let photo = create_test_photo(0, Some("user1"), Some(folder1.id), "unique1.jpg");
-        tx.insert_photo(&photo).await?;
-        tx.commit().await?;
-
-        let dupes = pool.get_photos_with_same_location().await?;
-        assert_eq!(dupes.len(), 1);
-        assert_eq!(dupes[0].name, "unique1.jpg");
-
-        // Duplicates across different users → treated separately (not duplicates)
-        let mut tx = pool.begin().await?;
-        let photo = create_test_photo(0, Some("user2"), Some(folder2.id), "unique1.jpg");
-        tx.insert_photo(&photo).await?;
-        tx.commit().await?;
-
-        let dupes = pool.get_photos_with_same_location().await?;
-        assert_eq!(dupes.len(), 1); // Still just 1, user2's photo is separate
+        // All but the first photo with the same user, folder and name
+        let duplicate = insert_photo(&pool, in_folder(Some("alice"), folder.id, "a.jpg")).await;
+        assert_eq!(pool.get_photos_with_same_location().await?, [duplicate]);
 
         Ok(())
     }
 
     #[sqlx::test]
-    async fn test_get_expired_trash_photos(pool: SqlitePool) -> sqlx::Result<()> {
-        use time::Duration;
+    async fn test_insert_update_delete(pool: SqlitePool) -> sqlx::Result<()> {
+        insert_users(&pool).await;
+        let folder = create_test_folder(&pool, Some("alice"), "original").await;
+        let other_folder = create_test_folder(&pool, Some("alice"), "other").await;
 
-        let user = create_test_user("user1", "Test User");
-        insert_test_user(&pool, &user).await?;
+        let public = insert_photo(&pool, photo(None, "public.jpg")).await;
+        assert!(public.id > 0);
+        assert_eq!(public.user_id, None);
 
-        // No trashed photos → empty
-        let expired = pool.get_expired_trash_photos().await?;
-        assert!(expired.is_empty());
-
-        let now = OffsetDateTime::now_utc();
-        let mut tx = pool.begin().await?;
-
-        // Photo trashed < 30 days ago → should NOT be returned
-        let mut recent_trash = create_test_photo(0, Some("user1"), None, "recent.jpg");
-        recent_trash.trashed_on = Some(now - Duration::days(15));
-        tx.insert_photo(&recent_trash).await?;
-
-        // Photo trashed > 30 days ago → SHOULD be returned
-        let mut old_trash = create_test_photo(0, Some("user1"), None, "old.jpg");
-        old_trash.trashed_on = Some(now - Duration::days(35));
-        tx.insert_photo(&old_trash).await?;
-
-        tx.commit().await?;
-
-        let expired = pool.get_expired_trash_photos().await?;
-        // Should include only the old one (> 30 days)
-        assert_eq!(expired.len(), 1);
-        assert_eq!(expired[0].name, "old.jpg");
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn test_get_expired_trash_photos_same_day_cutoff(pool: SqlitePool) -> sqlx::Result<()> {
-        use time::Duration;
-
-        let user = create_test_user("user1", "Test User");
-        insert_test_user(&pool, &user).await?;
-
-        // Trashed a few hours more than 30 days ago, on the same UTC day as the cutoff
-        let cutoff = OffsetDateTime::now_utc() - Duration::days(30);
-        let mut photo = create_test_photo(0, Some("user1"), None, "old.jpg");
-        photo.trashed_on = Some(earlier_same_utc_day(cutoff, Duration::hours(3)));
-        let mut tx = pool.begin().await?;
-        tx.insert_photo(&photo).await?;
-        tx.commit().await?;
-
-        let expired = pool.get_expired_trash_photos().await?;
-        assert_eq!(expired.len(), 1);
-        assert_eq!(expired[0].name, "old.jpg");
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn test_get_accessible_photo_share_expiry(pool: SqlitePool) -> sqlx::Result<()> {
-        use time::Duration;
-
-        for id in ["owner", "expired", "valid", "forever"] {
-            insert_test_user(&pool, &create_test_user(id, id)).await?;
-        }
-        let folder = create_test_folder(&pool, Some("owner"), "shared").await;
-        let mut tx = pool.begin().await?;
-        let photo = tx
-            .insert_photo(&create_test_photo(
-                0,
-                Some("owner"),
-                Some(folder.id),
-                "p.jpg",
-            ))
-            .await?;
-        tx.commit().await?;
-
-        let now = OffsetDateTime::now_utc();
-        let past = earlier_same_utc_day(now, Duration::hours(3));
-        insert_test_share(&pool, folder.id, "expired", true, Some(past)).await?;
-        insert_test_share(
+        let inserted = insert_photo(
             &pool,
-            folder.id,
-            "valid",
-            true,
-            Some(now + Duration::hours(3)),
+            Photo {
+                folder_id: Some(folder.id),
+                ..photo(Some("alice"), "a.jpg")
+            },
         )
-        .await?;
-        insert_test_share(&pool, folder.id, "forever", true, None).await?;
+        .await;
+        assert_eq!(inserted.user_id.as_deref(), Some("alice"));
+        assert_eq!(pool.get_photo(inserted.id).await?, Some(inserted.clone()));
 
-        for access in [PhotoAccess::Read, PhotoAccess::Delete] {
-            for (user, expected) in [("expired", false), ("valid", true), ("forever", true)] {
-                let found = pool.get_accessible_photo(photo.id, user, access).await?;
-                assert_eq!(found.is_some(), expected, "{user} {access:?}");
-                let found = pool
-                    .get_accessible_photo_with_folder(photo.id, user, access)
-                    .await?;
-                assert_eq!(found.is_some(), expected, "{user} {access:?} with folder");
-            }
-        }
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn test_get_photos_without_thumb_hash(pool: SqlitePool) -> sqlx::Result<()> {
-        let user = create_test_user("user1", "Test User");
-        insert_test_user(&pool, &user).await?;
-
-        // Insert photos using insert_photos which includes thumb_hash
+        // Every column but the thumb hash is updated
+        let updated = Photo {
+            name: "renamed.jpg".to_string(),
+            folder_id: Some(other_folder.id),
+            created_at: OffsetDateTime::UNIX_EPOCH,
+            file_size: 5,
+            trashed_on: Some(OffsetDateTime::UNIX_EPOCH),
+            thumb_hash: Some(vec![1]),
+            ..inserted.clone()
+        };
         let mut tx = pool.begin().await?;
+        tx.update_photo(&updated).await?;
+        tx.commit().await?;
+        assert_eq!(
+            pool.get_photo(inserted.id).await?,
+            Some(Photo {
+                thumb_hash: None,
+                ..updated.clone()
+            })
+        );
 
-        // Photo without thumb_hash
-        let photo_no_hash = create_test_photo(0, Some("user1"), None, "no_hash.jpg");
-
-        // Photo with thumb_hash (use insert_photos to include thumb_hash)
-        let mut photo_with_hash = create_test_photo(0, Some("user1"), None, "with_hash.jpg");
-        photo_with_hash.thumb_hash = Some(vec![1, 2, 3, 4]);
-
-        tx.insert_photos(&[photo_no_hash, photo_with_hash]).await?;
+        // Batches: empty ones are no-ops, `insert_photos` also stores the thumb hash
+        let mut tx = pool.begin().await?;
+        tx.insert_photos(&[]).await?;
+        tx.update_thumb_hashes(&[]).await?;
+        assert_eq!(tx.delete_photos(&[]).await?, 0);
+        tx.insert_photos(&[
+            Photo {
+                thumb_hash: Some(vec![9]),
+                ..photo(Some("alice"), "hashed.jpg")
+            },
+            photo(Some("alice"), "b.jpg"),
+        ])
+        .await?;
         tx.commit().await?;
 
         let without_hash = pool.get_photos_without_thumb_hash(0, 100).await?;
-        assert_eq!(without_hash.len(), 1);
-        assert_eq!(without_hash[0].name, "no_hash.jpg");
-
-        Ok(())
-    }
-
-    // ==================== PhotosTransactionRepo tests ====================
-
-    #[sqlx::test]
-    async fn test_get_photos_by_user_and_public(pool: SqlitePool) -> sqlx::Result<()> {
-        let user = create_test_user("user1", "Test User");
-        let user2 = create_test_user("user2", "Other User");
-        insert_test_user(&pool, &user).await?;
-        insert_test_user(&pool, &user2).await?;
-
-        // Empty DB → event_log_id=0, empty photos
-        let mut tx = pool.begin().await?;
-        let result = tx.get_photos_by_user_and_public("user1").await?;
-        tx.commit().await?;
-        assert_eq!(result.event_log_id, 0);
-        assert!(result.photos.is_empty());
+        let without_hash: Vec<_> = without_hash.iter().map(|p| p.name.as_str()).collect();
+        assert_eq!(without_hash, ["public.jpg", "renamed.jpg", "b.jpg"]);
 
         let mut tx = pool.begin().await?;
-        let photos = vec![
-            create_test_photo(0, Some("user1"), None, "user1_photo.jpg"),
-            create_test_photo(0, None, None, "public.jpg"),
-            create_test_photo(0, Some("user2"), None, "user2_private.jpg"),
-        ];
-        tx.insert_photos(&photos).await?;
+        tx.update_thumb_hashes(&[(public.id, vec![1, 2]), (inserted.id, vec![3, 4])])
+            .await?;
         tx.commit().await?;
+        let thumb_hash = |id| pool.get_photo(id);
+        assert_eq!(
+            thumb_hash(public.id).await?.unwrap().thumb_hash,
+            Some(vec![1, 2])
+        );
+        assert_eq!(
+            thumb_hash(inserted.id).await?.unwrap().thumb_hash,
+            Some(vec![3, 4])
+        );
 
-        // user's photos + public → both included, other user's private → excluded
+        // Deleting also removes the favourites
+        pool.insert_favorite(inserted.id, "alice").await?;
         let mut tx = pool.begin().await?;
-        let result = tx.get_photos_by_user_and_public("user1").await?;
+        assert_eq!(tx.delete_photo(&updated).await?, 1);
         tx.commit().await?;
-
-        assert_eq!(result.photos.len(), 2);
-        assert!(result.event_log_id > 0);
-
-        let names: Vec<&str> = result.photos.iter().map(|p| p.name.as_str()).collect();
-        assert!(names.contains(&"user1_photo.jpg"));
-        assert!(names.contains(&"public.jpg"));
-        assert!(!names.contains(&"user2_private.jpg"));
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn test_insert_photo(pool: SqlitePool) -> sqlx::Result<()> {
-        let user = create_test_user("user1", "Test User");
-        insert_test_user(&pool, &user).await?;
-
-        // Public photo → inserted with NULL user_id, event created
-        let mut tx = pool.begin().await?;
-        let public_photo = create_test_photo(0, None, None, "public.jpg");
-        let inserted = tx.insert_photo(&public_photo).await?;
-        tx.commit().await?;
-
-        assert!(inserted.id > 0);
-        assert!(inserted.user_id.is_none());
-
-        // Private photo → inserted with user_id, event created
-        let mut tx = pool.begin().await?;
-        let private_photo = create_test_photo(0, Some("user1"), None, "private.jpg");
-        let inserted = tx.insert_photo(&private_photo).await?;
-        tx.commit().await?;
-
-        assert!(inserted.id > 0);
-        assert_eq!(inserted.user_id, Some("user1".to_string()));
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn test_insert_photos(pool: SqlitePool) -> sqlx::Result<()> {
-        let user = create_test_user("user1", "Test User");
-        insert_test_user(&pool, &user).await?;
-
-        // Empty vec → Ok, no events created
-        let mut tx = pool.begin().await?;
-        tx.insert_photos(&[]).await?;
-        tx.commit().await?;
-
-        // Multiple photos → all inserted
-        let mut tx = pool.begin().await?;
-        let photos = vec![
-            create_test_photo(0, Some("user1"), None, "p1.jpg"),
-            create_test_photo(0, None, None, "public.jpg"),
-        ];
-        tx.insert_photos(&photos).await?;
-        tx.commit().await?;
-
-        let all_ids = pool.get_all_photo_ids().await?;
-        assert_eq!(all_ids.len(), 2);
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn test_update_photo(pool: SqlitePool) -> sqlx::Result<()> {
-        let user = create_test_user("user1", "Test User");
-        insert_test_user(&pool, &user).await?;
-
-        let folder1 = create_test_folder(&pool, Some("user1"), "original").await;
-        let folder2 = create_test_folder(&pool, Some("user1"), "new_folder").await;
-
-        let mut tx = pool.begin().await?;
-        let photo = create_test_photo(0, Some("user1"), Some(folder1.id), "test.jpg");
-        let inserted = tx.insert_photo(&photo).await?;
-        tx.commit().await?;
-
-        // Update name → persisted, event created
-        let mut tx = pool.begin().await?;
-        let mut updated = inserted.clone();
-        updated.name = "renamed.jpg".to_string();
-        tx.update_photo(&updated).await?;
-        tx.commit().await?;
-
-        let fetched = pool
-            .get_accessible_photo(inserted.id, "user1", PhotoAccess::Own)
-            .await?
-            .unwrap();
-        assert_eq!(fetched.name, "renamed.jpg");
-
-        // Update folder_id → persisted, event created
-        let mut tx = pool.begin().await?;
-        updated.folder_id = Some(folder2.id);
-        tx.update_photo(&updated).await?;
-        tx.commit().await?;
-
-        let fetched = pool
-            .get_accessible_photo(inserted.id, "user1", PhotoAccess::Own)
-            .await?
-            .unwrap();
-        assert_eq!(fetched.folder_id, Some(folder2.id));
-
-        // Set trashed_on → moves to trash, event created
-        let mut tx = pool.begin().await?;
-        updated.trashed_on = Some(OffsetDateTime::now_utc());
-        tx.update_photo(&updated).await?;
-        tx.commit().await?;
-
-        let fetched = pool
-            .get_accessible_photo(inserted.id, "user1", PhotoAccess::Own)
-            .await?
-            .unwrap();
-        assert!(fetched.trashed_on.is_some());
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn test_update_thumb_hashes(pool: SqlitePool) -> sqlx::Result<()> {
-        let user = create_test_user("user1", "Test User");
-        insert_test_user(&pool, &user).await?;
-
-        // Empty vec → Ok, no events
-        let mut tx = pool.begin().await?;
-        tx.update_thumb_hashes(&[]).await?;
-        tx.commit().await?;
-
-        let mut tx = pool.begin().await?;
-        let photos = vec![
-            create_test_photo(0, Some("user1"), None, "p1.jpg"),
-            create_test_photo(0, Some("user1"), None, "p2.jpg"),
-        ];
-        tx.insert_photos(&photos).await?;
-        tx.commit().await?;
+        assert!(pool.get_photo(inserted.id).await?.is_none());
+        assert!(pool.get_favorite_photos("alice").await?.is_empty());
 
         let ids = pool.get_all_photo_ids().await?;
-
-        // Update thumb hashes
+        assert_eq!(ids.len(), 3);
         let mut tx = pool.begin().await?;
-        let updates = vec![(ids[0], vec![1, 2, 3, 4]), (ids[1], vec![5, 6, 7, 8])];
-        tx.update_thumb_hashes(&updates).await?;
+        // Only existing photos count
+        assert_eq!(tx.delete_photos(&[ids[0], ids[1], 9999]).await?, 2);
         tx.commit().await?;
-
-        // Verify thumb_hash actually changed
-        let p1 = pool.get_photo(ids[0]).await?.unwrap();
-        let p2 = pool.get_photo(ids[1]).await?.unwrap();
-        assert_eq!(p1.thumb_hash, Some(vec![1, 2, 3, 4]));
-        assert_eq!(p2.thumb_hash, Some(vec![5, 6, 7, 8]));
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn test_delete_photo(pool: SqlitePool) -> sqlx::Result<()> {
-        let user = create_test_user("user1", "Test User");
-        insert_test_user(&pool, &user).await?;
-
-        let mut tx = pool.begin().await?;
-        let photo = create_test_photo(0, Some("user1"), None, "to_delete.jpg");
-        let inserted = tx.insert_photo(&photo).await?;
-        tx.commit().await?;
-
-        // Existing photo → deleted, returns 1
-        let mut tx = pool.begin().await?;
-        let deleted = tx.delete_photo(&inserted).await?;
-        tx.commit().await?;
-        assert_eq!(deleted, 1);
-
-        // Verify deleted
-        let fetched = pool.get_photo(inserted.id).await?;
-        assert!(fetched.is_none());
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn test_delete_photos(pool: SqlitePool) -> sqlx::Result<()> {
-        let user = create_test_user("user1", "Test User");
-        insert_test_user(&pool, &user).await?;
-
-        // Empty vec → Ok, returns 0
-        let mut tx = pool.begin().await?;
-        let deleted = tx.delete_photos(&[]).await?;
-        tx.commit().await?;
-        assert_eq!(deleted, 0);
-
-        let mut tx = pool.begin().await?;
-        let photos = vec![
-            create_test_photo(0, Some("user1"), None, "p1.jpg"),
-            create_test_photo(0, Some("user1"), None, "p2.jpg"),
-            create_test_photo(0, Some("user1"), None, "p3.jpg"),
-        ];
-        tx.insert_photos(&photos).await?;
-        tx.commit().await?;
-
-        let ids = pool.get_all_photo_ids().await?;
-
-        // Multiple existing → all deleted, correct count
-        let mut tx = pool.begin().await?;
-        let deleted = tx.delete_photos(&[ids[0], ids[1]]).await?;
-        tx.commit().await?;
-        assert_eq!(deleted, 2);
-
-        let remaining = pool.get_all_photo_ids().await?;
-        assert_eq!(remaining.len(), 1);
-        assert_eq!(remaining[0], ids[2]);
-
-        // Mix of existing/non-existent → only existing deleted
-        let mut tx = pool.begin().await?;
-        let deleted = tx.delete_photos(&[ids[2], 9999]).await?;
-        tx.commit().await?;
-        assert_eq!(deleted, 1);
+        assert_eq!(pool.get_all_photo_ids().await?, [ids[2]]);
 
         Ok(())
     }

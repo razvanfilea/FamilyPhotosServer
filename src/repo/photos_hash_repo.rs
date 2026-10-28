@@ -114,265 +114,87 @@ impl<'c, E> PhotosHashRepo<'c> for E where E: SqliteExecutor<'c> {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::repo::PhotosTransactionRepo;
-    use crate::repo::tests::{create_test_photo, create_test_user, insert_test_user};
+    use crate::repo::tests::{insert_photo, insert_users, photo};
     use sqlx::SqlitePool;
     use time::OffsetDateTime;
 
-    #[sqlx::test]
-    async fn test_get_photos_without_hash(pool: SqlitePool) -> sqlx::Result<()> {
-        let user = create_test_user("user1", "Test User");
-        insert_test_user(&pool, &user).await?;
-
-        // All have hash → empty
-        // (but first we need photos)
-
-        let mut tx = pool.begin().await?;
-        let photos = vec![
-            create_test_photo(0, Some("user1"), None, "p1.jpg"),
-            create_test_photo(0, Some("user1"), None, "p2.jpg"),
-        ];
-        tx.insert_photos(&photos).await?;
-        tx.commit().await?;
-
-        let ids: Vec<i64> = sqlx::query_scalar!("select id from photos order by id")
-            .fetch_all(&pool)
-            .await?;
-
-        // Without any hashes, both should be returned
-        let without_hash = pool.get_photos_without_hash(0, 100).await?;
-        assert_eq!(without_hash.len(), 2);
-
-        // Keyset pagination: limit and last_id are respected
-        let page = pool.get_photos_without_hash(0, 1).await?;
-        assert_eq!(page.len(), 1);
-        assert_eq!(page[0].id, ids[0]);
-        let page = pool.get_photos_without_hash(ids[0], 1).await?;
-        assert_eq!(page.len(), 1);
-        assert_eq!(page[0].id, ids[1]);
-        assert!(pool.get_photos_without_hash(ids[1], 1).await?.is_empty());
-
-        // Insert hash for one photo
-        let hashes = vec![PhotoHash {
-            id: ids[0],
-            hash: vec![1, 2, 3, 4],
-        }];
-        pool.insert_hashes(&hashes).await?;
-
-        // Some without → those returned
-        let without_hash = pool.get_photos_without_hash(0, 100).await?;
-        assert_eq!(without_hash.len(), 1);
-        assert_eq!(without_hash[0].id, ids[1]);
-
-        // Insert hash for the other
-        let hashes = vec![PhotoHash {
-            id: ids[1],
-            hash: vec![5, 6, 7, 8],
-        }];
-        pool.insert_hashes(&hashes).await?;
-
-        // All have hash → empty
-        let without_hash = pool.get_photos_without_hash(0, 100).await?;
-        assert!(without_hash.is_empty());
-
-        // Trashed photo without hash → excluded (trashed_on IS NULL)
-        let mut tx = pool.begin().await?;
-        let mut trashed = create_test_photo(0, Some("user1"), None, "trashed.jpg");
-        trashed.trashed_on = Some(OffsetDateTime::now_utc());
-        tx.insert_photo(&trashed).await?;
-        tx.commit().await?;
-
-        // The trashed photo has no hash but should be excluded
-        let without_hash = pool.get_photos_without_hash(0, 100).await?;
-        assert!(without_hash.is_empty());
-
-        Ok(())
+    fn hash(id: i64, hash: u8) -> PhotoHash {
+        PhotoHash {
+            id,
+            hash: vec![hash; 4],
+        }
     }
 
     #[sqlx::test]
-    async fn test_get_photo_with_hash(pool: SqlitePool) -> sqlx::Result<()> {
-        let user = create_test_user("user1", "Test User");
-        insert_test_user(&pool, &user).await?;
+    async fn test_photo_hashes(pool: SqlitePool) -> sqlx::Result<()> {
+        insert_users(&pool).await;
+        let own = insert_photo(&pool, photo(Some("alice"), "own.jpg")).await;
+        let public = insert_photo(&pool, photo(None, "public.jpg")).await;
+        let bobs = insert_photo(&pool, photo(Some("bob"), "bob.jpg")).await;
+        let trashed = Photo {
+            trashed_on: Some(OffsetDateTime::now_utc()),
+            ..photo(Some("alice"), "trashed.jpg")
+        };
+        let trashed = insert_photo(&pool, trashed).await;
+        let without_hash = async || {
+            let photos = pool.get_photos_without_hash(0, 100).await.unwrap();
+            let mut ids: Vec<i64> = photos.into_iter().map(|p| p.id).collect();
+            ids.sort();
+            ids
+        };
 
-        let mut tx = pool.begin().await?;
-        let photos = vec![
-            create_test_photo(0, Some("user1"), None, "user1_photo.jpg"),
-            create_test_photo(0, None, None, "public_photo.jpg"),
-        ];
-        tx.insert_photos(&photos).await?;
-        tx.commit().await?;
+        // Trashed photos are never hashed
+        assert_eq!(without_hash().await, [own.id, public.id, bobs.id]);
 
-        // Get photos with specific user_id to ensure correct ID mapping
-        let user1_photo =
-            sqlx::query_as!(Photo, "select * from photos where name = 'user1_photo.jpg'")
-                .fetch_one(&pool)
-                .await?;
-        let public_photo = sqlx::query_as!(
-            Photo,
-            "select * from photos where name = 'public_photo.jpg'"
-        )
-        .fetch_one(&pool)
-        .await?;
-
-        // Insert hashes
-        let hashes = vec![
-            PhotoHash {
-                id: user1_photo.id,
-                hash: vec![1, 2, 3, 4],
-            },
-            PhotoHash {
-                id: public_photo.id,
-                hash: vec![5, 6, 7, 8],
-            },
-        ];
-        pool.insert_hashes(&hashes).await?;
-
-        // Hash doesn't exist → None
-        let result = pool
-            .get_photo_with_hash(&[99, 99, 99], Some("user1"))
-            .await?;
-        assert!(result.is_none());
-
-        // Hash exists for user → Some(photo)
-        let result = pool
-            .get_photo_with_hash(&[1, 2, 3, 4], Some("user1"))
-            .await?;
-        assert!(result.is_some());
-        assert_eq!(result.unwrap().name, "user1_photo.jpg");
-
-        // Hash exists for different user → None
-        let result = pool
-            .get_photo_with_hash(&[1, 2, 3, 4], Some("other_user"))
-            .await?;
-        assert!(result.is_none());
-
-        // user_id=None → matches only public photos
-        let result = pool.get_photo_with_hash(&[5, 6, 7, 8], None).await?;
-        assert!(result.is_some());
-        assert_eq!(result.unwrap().name, "public_photo.jpg");
-
-        // user_id=None but hash is for private photo → None
-        let result = pool.get_photo_with_hash(&[1, 2, 3, 4], None).await?;
-        assert!(result.is_none());
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn test_get_duplicates_for_user(pool: SqlitePool) -> sqlx::Result<()> {
-        let user = create_test_user("user1", "Test User");
-        insert_test_user(&pool, &user).await?;
-
-        let mut tx = pool.begin().await?;
-        let photos = vec![
-            create_test_photo(0, Some("user1"), None, "p1.jpg"),
-            create_test_photo(0, Some("user1"), None, "p2.jpg"),
-            create_test_photo(0, None, None, "public.jpg"),
-        ];
-        tx.insert_photos(&photos).await?;
-        tx.commit().await?;
-
-        let ids: Vec<i64> = sqlx::query_scalar!("select id from photos")
-            .fetch_all(&pool)
-            .await?;
-
-        // No duplicates → empty vec
-        let hashes = vec![
-            PhotoHash {
-                id: ids[0],
-                hash: vec![1, 2, 3, 4],
-            },
-            PhotoHash {
-                id: ids[1],
-                hash: vec![5, 6, 7, 8],
-            },
-            PhotoHash {
-                id: ids[2],
-                hash: vec![9, 10, 11, 12],
-            },
-        ];
-        pool.insert_hashes(&hashes).await?;
-
-        let duplicates = pool.get_duplicates_for_user("user1").await?;
-        assert!(duplicates.is_empty());
-
-        // Create duplicates: p1 and public have same hash
-        pool.insert_hashes(&[PhotoHash {
-            id: ids[2],
-            hash: vec![1, 2, 3, 4],
-        }])
-        .await?;
-
-        // 2 photos with same hash → Vec containing [id1, id2]
-        let duplicates = pool.get_duplicates_for_user("user1").await?;
-        assert_eq!(duplicates.len(), 1);
-        assert_eq!(duplicates[0].len(), 2);
-        assert!(duplicates[0].contains(&ids[0]));
-        assert!(duplicates[0].contains(&ids[2]));
-
-        // Add another photo with same hash
-        let mut tx = pool.begin().await?;
-        let another = create_test_photo(0, Some("user1"), None, "p3.jpg");
-        let inserted = tx.insert_photo(&another).await?;
-        tx.commit().await?;
-
-        pool.insert_hashes(&[PhotoHash {
-            id: inserted.id,
-            hash: vec![1, 2, 3, 4],
-        }])
-        .await?;
-
-        // 3+ with same hash → all IDs grouped
-        let duplicates = pool.get_duplicates_for_user("user1").await?;
-        assert_eq!(duplicates.len(), 1);
-        assert_eq!(duplicates[0].len(), 3);
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn test_insert_hashes(pool: SqlitePool) -> sqlx::Result<()> {
-        let user = create_test_user("user1", "Test User");
-        insert_test_user(&pool, &user).await?;
-
-        // Empty vec → Ok (no-op)
+        // Keyset pagination: `limit` and `last_id` are respected, ordered by id
+        let page = async |last_id, limit| {
+            let photos = pool.get_photos_without_hash(last_id, limit).await.unwrap();
+            photos.into_iter().map(|p| p.id).collect::<Vec<_>>()
+        };
+        assert_eq!(page(0, 1).await, [own.id]);
+        assert_eq!(page(own.id, 1).await, [public.id]);
+        assert_eq!(page(own.id, 100).await, [public.id, bobs.id]);
+        assert!(page(bobs.id, 1).await.is_empty());
         pool.insert_hashes(&[]).await?;
-
-        let mut tx = pool.begin().await?;
-        let photo = create_test_photo(0, Some("user1"), None, "test.jpg");
-        let inserted = tx.insert_photo(&photo).await?;
-        tx.commit().await?;
-
-        // New hashes → inserted
-        let hashes = vec![PhotoHash {
-            id: inserted.id,
-            hash: vec![1, 2, 3, 4],
-        }];
-        pool.insert_hashes(&hashes).await?;
-
-        let result = pool
-            .get_photo_with_hash(&[1, 2, 3, 4], Some("user1"))
+        pool.insert_hashes(&[hash(own.id, 1), hash(public.id, 2)])
             .await?;
-        assert!(result.is_some());
+        pool.insert_hash(hash(bobs.id, 1)).await?;
+        assert!(without_hash().await.is_empty());
 
-        // Existing hash → replaced (INSERT OR REPLACE)
-        let hashes = vec![PhotoHash {
-            id: inserted.id,
-            hash: vec![5, 6, 7, 8],
-        }];
-        pool.insert_hashes(&hashes).await?;
+        // Matches the owner exactly: `None` means public
+        let find = async |value: u8, user_id| {
+            let photo = pool
+                .get_photo_with_hash(&[value; 4], user_id)
+                .await
+                .unwrap();
+            photo.map(|p| p.id)
+        };
+        assert_eq!(find(1, Some("alice")).await, Some(own.id));
+        assert_eq!(find(1, Some("bob")).await, Some(bobs.id));
+        assert_eq!(find(1, Some("carol")).await, None);
+        assert_eq!(find(2, None).await, Some(public.id));
+        assert_eq!(find(1, None).await, None);
+        assert_eq!(find(9, Some("alice")).await, None);
 
-        // Old hash no longer works
-        let result = pool
-            .get_photo_with_hash(&[1, 2, 3, 4], Some("user1"))
+        // Replacing a hash
+        pool.insert_hashes(&[hash(own.id, 3)]).await?;
+        assert_eq!(find(1, Some("alice")).await, None);
+        assert_eq!(find(3, Some("alice")).await, Some(own.id));
+
+        // Duplicates among own + public, non-trashed photos
+        assert!(pool.get_duplicates_for_user("alice").await?.is_empty());
+        pool.insert_hashes(&[hash(public.id, 3), hash(trashed.id, 3)])
             .await?;
-        assert!(result.is_none());
-
-        // New hash works
-        let result = pool
-            .get_photo_with_hash(&[5, 6, 7, 8], Some("user1"))
-            .await?;
-        assert!(result.is_some());
+        let other = insert_photo(&pool, photo(Some("alice"), "other.jpg")).await;
+        pool.insert_hash(hash(other.id, 3)).await?;
+        let mut duplicates = pool.get_duplicates_for_user("alice").await?;
+        duplicates.iter_mut().for_each(|group| group.sort());
+        assert_eq!(duplicates, [vec![own.id, public.id, other.id]]);
+        // Bob's photo only duplicates the public one for him
+        pool.insert_hash(hash(bobs.id, 3)).await?;
+        let mut duplicates = pool.get_duplicates_for_user("bob").await?;
+        duplicates.iter_mut().for_each(|group| group.sort());
+        assert_eq!(duplicates, [vec![public.id, bobs.id]]);
 
         Ok(())
     }

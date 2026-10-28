@@ -180,104 +180,53 @@ mod tests {
 
     #[test]
     fn test_regex_timestamp() {
-        let expected_date = Some(datetime!(2016-09-22 16:04:30 UTC));
-        assert_eq!(
-            get_regex_timestamp("IMG_20160922_160430.jpg"),
-            expected_date
-        );
-
-        assert_eq!(
-            get_regex_timestamp("IMG_2016-09-22-16-04-30.jpg"),
-            expected_date
-        );
-
-        assert_eq!(
-            get_regex_timestamp("20160922.jpg"),
-            Some(datetime!(2016-09-22 00:00:00 UTC))
-        );
-
-        assert_eq!(
-            get_regex_timestamp("2016_09_22.jpg"),
-            Some(datetime!(2016-09-22 00:00:00 UTC))
-        );
-
-        assert_eq!(get_regex_timestamp("2016__09_22.jpg"), None);
-
-        assert_eq!(
-            get_regex_timestamp("random-1474560270000.jpg"),
-            expected_date
-        );
-
-        assert_eq!(
-            get_regex_timestamp("random-IMG_2016-09-22-160430 (5).jpg"),
-            expected_date
-        );
+        let full = Some(datetime!(2016-09-22 16:04:30 UTC));
+        let date_only = Some(datetime!(2016-09-22 00:00:00 UTC));
+        let cases = [
+            ("IMG_20160922_160430.jpg", full),
+            ("IMG_2016-09-22-16-04-30.jpg", full),
+            ("random-IMG_2016-09-22-160430 (5).jpg", full),
+            ("random-1474560270000.jpg", full),
+            ("20160922.jpg", date_only),
+            ("2016_09_22.jpg", date_only),
+            (
+                "random-0000000000000.jpg",
+                Some(datetime!(1970-01-01 00:00:00 UTC)),
+            ),
+            // Not enough separators-free digits, or not a date
+            ("2016__09_22.jpg", None),
+            ("random-147456027000.jpg", None),
+            ("IMG_20161322_160430.jpg", None),
+            ("IMG_20160932_160430.jpg", None),
+            ("IMG_20160230_120000.jpg", None),
+        ];
+        for (name, expected) in cases {
+            assert_eq!(get_regex_timestamp(name), expected, "{name}");
+        }
     }
 
     #[test]
-    fn json_parsing() {
-        let json = r#"{
-            "creationTime": {
-                "timestamp": "1437327811",
-                "formatted": "19 iul. 2015, 17:43:31 UTC"
-            },
-            "photoTakenTime": {
-                "timestamp": "1435786122",
-                "formatted": "1 iul. 2015, 21:28:42 UTC"
-            }
-        }"#;
-
-        let data: GooglePhotoJsonData = serde_json::from_str(json).unwrap();
-        assert_eq!(data.u64_creation_time(), Some(1437327811));
-        assert_eq!(data.u64_photo_taken_time(), Some(1435786122));
-    }
-
-    #[test]
-    fn test_regex_invalid_dates() {
-        assert_eq!(get_regex_timestamp("IMG_20161322_160430.jpg"), None);
-        assert_eq!(get_regex_timestamp("IMG_20160932_160430.jpg"), None);
-        assert_eq!(get_regex_timestamp("IMG_20160230_120000.jpg"), None);
-    }
-
-    #[test]
-    fn test_regex_millis_boundaries() {
-        assert_eq!(get_regex_timestamp("random-147456027000.jpg"), None);
-
-        assert_eq!(
-            get_regex_timestamp("random-0000000000000.jpg"),
-            Some(datetime!(1970-01-01 00:00:00 UTC))
-        );
-    }
-
-    #[test]
-    fn test_json_priority() {
-        let json = r#"{
-            "creationTime": { "timestamp": "1000000000" },
-            "photoTakenTime": { "timestamp": "2000000000" }
-        }"#;
-
-        let data: GooglePhotoJsonData = serde_json::from_str(json).unwrap();
-        let result = data.u64_photo_taken_time().or(data.u64_creation_time());
-        assert_eq!(result, Some(2000000000));
-    }
-
-    #[test]
-    fn test_json_fallback_to_creation_time() {
-        let json = r#"{
-            "creationTime": { "timestamp": "1000000000" }
-        }"#;
-
-        let data: GooglePhotoJsonData = serde_json::from_str(json).unwrap();
-        let result = data.u64_photo_taken_time().or(data.u64_creation_time());
-        assert_eq!(result, Some(1000000000));
-    }
-
-    #[test]
-    fn test_json_missing_timestamps() {
-        let json = r#"{}"#;
-
-        let data: GooglePhotoJsonData = serde_json::from_str(json).unwrap();
-        let result = data.u64_photo_taken_time().or(data.u64_creation_time());
-        assert_eq!(result, None);
+    fn test_google_json_timestamps() {
+        // (json, photo taken time, creation time): the taken time has priority
+        let cases = [
+            (
+                r#"{"creationTime": {"timestamp": "1437327811", "formatted": "x"},
+                    "photoTakenTime": {"timestamp": "1435786122", "formatted": "y"}}"#,
+                Some(1435786122),
+                Some(1437327811),
+            ),
+            (
+                r#"{"creationTime": {"timestamp": "1000000000"}}"#,
+                None,
+                Some(1000000000),
+            ),
+            (r#"{"photoTakenTime": {"timestamp": "nope"}}"#, None, None),
+            (r#"{}"#, None, None),
+        ];
+        for (json, taken, created) in cases {
+            let data: GooglePhotoJsonData = serde_json::from_str(json).unwrap();
+            assert_eq!(data.u64_photo_taken_time(), taken, "{json}");
+            assert_eq!(data.u64_creation_time(), created, "{json}");
+        }
     }
 }

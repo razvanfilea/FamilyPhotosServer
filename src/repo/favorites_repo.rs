@@ -76,168 +76,52 @@ impl<'c, E> FavoritesRepo<'c> for E where E: SqliteExecutor<'c> {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::repo::PhotosTransactionRepo;
-    use crate::repo::tests::{create_test_photo, create_test_user, insert_test_user};
+    use crate::repo::tests::{insert_photo, insert_users, photo};
     use sqlx::SqlitePool;
 
     #[sqlx::test]
-    async fn test_get_favorite_photos(pool: SqlitePool) -> sqlx::Result<()> {
-        let user1 = create_test_user("user1", "User One");
-        let user2 = create_test_user("user2", "User Two");
-        insert_test_user(&pool, &user1).await?;
-        insert_test_user(&pool, &user2).await?;
+    async fn test_favorites(pool: SqlitePool) -> sqlx::Result<()> {
+        insert_users(&pool).await;
+        let mut ids = Vec::new();
+        for name in ["a.jpg", "b.jpg", "c.jpg"] {
+            ids.push(insert_photo(&pool, photo(Some("alice"), name)).await.id);
+        }
+        assert!(pool.get_favorite_photos("alice").await?.is_empty());
+        assert!(!pool.check_favorite(ids[0], "alice").await?);
 
-        // No favorites → empty HashSet
-        let favs = pool.get_favorite_photos("user1").await?;
-        assert!(favs.is_empty());
+        pool.insert_favorite(ids[0], "alice").await?;
+        pool.insert_favorite(ids[2], "alice").await?;
+        // Idempotent
+        pool.insert_favorite(ids[2], "alice").await?;
+        pool.insert_favorite(ids[1], "bob").await?;
 
-        // Insert some photos
-        let mut tx = pool.begin().await?;
-        let photos = vec![
-            create_test_photo(0, Some("user1"), None, "p1.jpg"),
-            create_test_photo(0, Some("user1"), None, "p2.jpg"),
-            create_test_photo(0, Some("user1"), None, "p3.jpg"),
-        ];
-        tx.insert_photos(&photos).await?;
-        tx.commit().await?;
+        // Per user
+        assert_eq!(
+            pool.get_favorite_photos("alice").await?,
+            HashSet::from([ids[0], ids[2]])
+        );
+        assert_eq!(
+            pool.get_favorite_photos("bob").await?,
+            HashSet::from([ids[1]])
+        );
+        assert!(pool.check_favorite(ids[0], "alice").await?);
+        assert!(!pool.check_favorite(ids[0], "bob").await?);
+        assert!(pool.check_favorites_for_ids("alice", &[]).await?.is_empty());
+        assert_eq!(
+            pool.check_favorites_for_ids("alice", &[ids[0], ids[1]])
+                .await?,
+            HashSet::from([ids[0]])
+        );
 
-        let ids: Vec<i64> = sqlx::query_scalar!("select id from photos")
-            .fetch_all(&pool)
-            .await?;
-
-        // Add favorites for user1
-        pool.insert_favorite(ids[0], "user1").await?;
-        pool.insert_favorite(ids[2], "user1").await?;
-
-        // Add favorite for user2
-        pool.insert_favorite(ids[1], "user2").await?;
-
-        // User has favorites → HashSet contains those IDs
-        let favs = pool.get_favorite_photos("user1").await?;
-        assert_eq!(favs.len(), 2);
-        assert!(favs.contains(&ids[0]));
-        assert!(favs.contains(&ids[2]));
-
-        // Other user's favorites not included
-        assert!(!favs.contains(&ids[1]));
-
-        // User2's favorites
-        let favs = pool.get_favorite_photos("user2").await?;
-        assert_eq!(favs.len(), 1);
-        assert!(favs.contains(&ids[1]));
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn test_check_favorite(pool: SqlitePool) -> sqlx::Result<()> {
-        let user1 = create_test_user("user1", "User One");
-        let user2 = create_test_user("user2", "User Two");
-        insert_test_user(&pool, &user1).await?;
-        insert_test_user(&pool, &user2).await?;
-
-        let mut tx = pool.begin().await?;
-        let photo = create_test_photo(0, Some("user1"), None, "test.jpg");
-        let inserted = tx.insert_photo(&photo).await?;
-        tx.commit().await?;
-
-        // Photo not favorite → false
-        let is_fav = pool.check_favorite(inserted.id, "user1").await?;
-        assert!(!is_fav);
-
-        // Add to favorites
-        pool.insert_favorite(inserted.id, "user1").await?;
-
-        // Photo is favorite → true
-        let is_fav = pool.check_favorite(inserted.id, "user1").await?;
-        assert!(is_fav);
-
-        // Same photo for different user → false (independent)
-        let is_fav = pool.check_favorite(inserted.id, "user2").await?;
-        assert!(!is_fav);
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn test_insert_delete_favorite(pool: SqlitePool) -> sqlx::Result<()> {
-        let user = create_test_user("user1", "Test User");
-        insert_test_user(&pool, &user).await?;
-
-        let mut tx = pool.begin().await?;
-        let photo = create_test_photo(0, Some("user1"), None, "test.jpg");
-        let inserted = tx.insert_photo(&photo).await?;
-        tx.commit().await?;
-
-        // Insert new → success
-        pool.insert_favorite(inserted.id, "user1").await?;
-        let is_fav = pool.check_favorite(inserted.id, "user1").await?;
-        assert!(is_fav);
-
-        // Insert duplicate → no-op
-        pool.insert_favorite(inserted.id, "user1").await?;
-        assert_eq!(pool.get_favorite_photos("user1").await?.len(), 1);
-
-        // Delete existing → success
-        pool.delete_favorite(inserted.id, "user1").await?;
-        let is_fav = pool.check_favorite(inserted.id, "user1").await?;
-        assert!(!is_fav);
-
-        // Delete non-existent → Ok (0 rows, no error)
-        let result = pool.delete_favorite(inserted.id, "user1").await;
-        assert!(result.is_ok());
-
-        // Delete then re-insert → works
-        pool.insert_favorite(inserted.id, "user1").await?;
-        let is_fav = pool.check_favorite(inserted.id, "user1").await?;
-        assert!(is_fav);
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn test_check_favorites_for_ids(pool: SqlitePool) -> sqlx::Result<()> {
-        let user = create_test_user("user1", "Test User");
-        insert_test_user(&pool, &user).await?;
-
-        let mut tx = pool.begin().await?;
-        let photos = vec![
-            create_test_photo(0, Some("user1"), None, "p1.jpg"),
-            create_test_photo(0, Some("user1"), None, "p2.jpg"),
-            create_test_photo(0, Some("user1"), None, "p3.jpg"),
-        ];
-        tx.insert_photos(&photos).await?;
-        tx.commit().await?;
-
-        let ids: Vec<i64> = sqlx::query_scalar!("select id from photos order by id")
-            .fetch_all(&pool)
-            .await?;
-
-        // Empty input → empty result
-        let result = pool.check_favorites_for_ids("user1", &[]).await?;
-        assert!(result.is_empty());
-
-        // No favorites → empty result
-        let result = pool.check_favorites_for_ids("user1", &ids).await?;
-        assert!(result.is_empty());
-
-        // Add some favorites
-        pool.insert_favorite(ids[0], "user1").await?;
-        pool.insert_favorite(ids[2], "user1").await?;
-
-        // Check specific IDs → only favorited ones returned
-        let result = pool.check_favorites_for_ids("user1", &ids).await?;
-        assert_eq!(result.len(), 2);
-        assert!(result.contains(&ids[0]));
-        assert!(result.contains(&ids[2]));
-        assert!(!result.contains(&ids[1]));
-
-        // Check subset of IDs
-        let result = pool
-            .check_favorites_for_ids("user1", &[ids[0], ids[1]])
-            .await?;
-        assert_eq!(result.len(), 1);
-        assert!(result.contains(&ids[0]));
+        pool.delete_favorite(ids[0], "alice").await?;
+        // Deleting a missing favourite isn't an error
+        pool.delete_favorite(ids[0], "alice").await?;
+        assert_eq!(
+            pool.get_favorite_photos("alice").await?,
+            HashSet::from([ids[2]])
+        );
+        pool.insert_favorite(ids[0], "alice").await?;
+        assert!(pool.check_favorite(ids[0], "alice").await?);
 
         Ok(())
     }

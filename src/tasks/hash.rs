@@ -110,7 +110,7 @@ mod tests {
     use crate::http::AppState;
     use crate::model::user::PUBLIC_USER_FOLDER;
     use crate::repo::PhotosTransactionRepo;
-    use crate::repo::tests::create_test_photo;
+    use crate::repo::tests::photo;
     use crate::utils::storage_resolver::StorageResolver;
     use sqlx::SqlitePool;
     use sqlx::migrate::MigrateDatabase;
@@ -127,7 +127,7 @@ mod tests {
         std::fs::create_dir_all(storage.storage_folder.join(PUBLIC_USER_FOLDER)).unwrap();
 
         let photos: Vec<_> = (0..count)
-            .map(|i| create_test_photo(0, None, None, &format!("{i}.jpg")))
+            .map(|i| photo(None, &format!("{i}.jpg")))
             .collect();
         for i in (0..count).filter(|i| !missing.contains(i)) {
             let path = storage.resolve_photo(format!("{PUBLIC_USER_FOLDER}/{i}.jpg"));

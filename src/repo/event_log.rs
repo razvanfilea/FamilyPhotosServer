@@ -224,272 +224,351 @@ impl FolderEventLogTransactionRepo for SqliteTransaction<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::repo::PhotosTransactionRepo;
-    use crate::repo::tests::{
-        create_test_folder, create_test_photo, create_test_user, insert_test_user,
-    };
+    use crate::repo::tests::{create_test_folder, insert_photo, insert_users, photo};
+    use crate::repo::{PhotosRepo, PhotosTransactionRepo, UserEventLogError};
+    use serde_json::Value;
     use sqlx::SqlitePool;
+    use time::OffsetDateTime;
 
+    fn json(photo: &Photo) -> Value {
+        serde_json::to_value(photo).unwrap()
+    }
+
+    fn parse(data: Option<Vec<u8>>) -> Option<Value> {
+        data.map(|data| serde_json::from_slice(&data).unwrap())
+    }
+
+    /// Reads both event logs incrementally
+    #[derive(Default)]
+    struct EventReader {
+        photo_cursor: i64,
+        folder_cursor: i64,
+    }
+
+    impl EventReader {
+        /// Asserts the events logged since the last call: `(photo_id, user_id, data)` in
+        /// `photos_event_log` and `(folder_id, photo_id, data)` in `folder_event_log`
+        async fn expect(
+            &mut self,
+            pool: &SqlitePool,
+            photo_events: &[(i64, Option<&str>, Option<&Photo>)],
+            folder_events: &[(i64, i64, Option<&Photo>)],
+        ) {
+            let rows = query!(
+                "select event_id, photo_id, user_id, data from photos_event_log where event_id > $1 order by event_id",
+                self.photo_cursor
+            )
+            .fetch_all(pool)
+            .await
+            .unwrap();
+            self.photo_cursor = rows.last().map_or(self.photo_cursor, |r| r.event_id);
+            let actual: Vec<_> = rows
+                .into_iter()
+                .map(|r| (r.photo_id, r.user_id, parse(r.data)))
+                .collect();
+            let expected: Vec<_> = photo_events
+                .iter()
+                .map(|(id, user_id, photo)| (*id, user_id.map(String::from), photo.map(json)))
+                .collect();
+            assert_eq!(actual, expected, "photos_event_log");
+
+            let rows = query!(
+                "select event_id, folder_id, photo_id, data from folder_event_log where event_id > $1 order by event_id",
+                self.folder_cursor
+            )
+            .fetch_all(pool)
+            .await
+            .unwrap();
+            self.folder_cursor = rows.last().map_or(self.folder_cursor, |r| r.event_id);
+            let actual: Vec<_> = rows
+                .into_iter()
+                .map(|r| (r.folder_id, r.photo_id, parse(r.data)))
+                .collect();
+            let expected: Vec<_> = folder_events
+                .iter()
+                .map(|(folder_id, id, photo)| (*folder_id, *id, photo.map(json)))
+                .collect();
+            assert_eq!(actual, expected, "folder_event_log");
+        }
+    }
+
+    async fn update(pool: &SqlitePool, photo: &Photo) {
+        let mut tx = pool.begin().await.unwrap();
+        tx.update_photo(photo).await.unwrap();
+        tx.commit().await.unwrap();
+    }
+
+    /// The logging rules of `CLAUDE.md`, for every mutation of `PhotosTransactionRepo`
     #[sqlx::test]
-    async fn test_insert_event_log(pool: SqlitePool) -> sqlx::Result<()> {
-        let user = create_test_user("user1", "Test User");
-        insert_test_user(&pool, &user).await?;
+    async fn test_event_logging_rules(pool: SqlitePool) {
+        insert_users(&pool).await;
+        let a = create_test_folder(&pool, Some("alice"), "a").await.id;
+        let b = create_test_folder(&pool, Some("alice"), "b").await.id;
+        let alice = Some("alice");
+        let mut log = EventReader::default();
 
-        let mut tx = pool.begin().await?;
-        let photo = create_test_photo(0, Some("user1"), None, "test.jpg");
-        let inserted = tx.insert_photo(&photo).await?;
-        tx.commit().await?;
+        // Insert outside a folder: only the photo log
+        let root = insert_photo(&pool, photo(alice, "root.jpg")).await;
+        log.expect(&pool, &[(root.id, alice, Some(&root))], &[])
+            .await;
 
-        // Verify event was created with data
-        let event = sqlx::query!(
-            "select event_id, photo_id, user_id, data from photos_event_log where photo_id = $1",
-            inserted.id
+        // Insert into a folder
+        let mut p = insert_photo(
+            &pool,
+            Photo {
+                folder_id: Some(a),
+                ..photo(alice, "p.jpg")
+            },
         )
-        .fetch_one(&pool)
-        .await?;
+        .await;
+        log.expect(&pool, &[(p.id, alice, Some(&p))], &[(a, p.id, Some(&p))])
+            .await;
 
-        assert_eq!(event.photo_id, inserted.id);
-        assert_eq!(event.user_id, Some("user1".to_string()));
-        assert!(event.data.is_some()); // data contains JSON
+        // Update inside the folder
+        p.name = "renamed.jpg".to_string();
+        update(&pool, &p).await;
+        log.expect(&pool, &[(p.id, alice, Some(&p))], &[(a, p.id, Some(&p))])
+            .await;
 
-        // Insert deletion event (no photo data)
-        pool.insert_event_log(inserted.id, Some("user1"), None)
-            .await?;
-
-        let events = sqlx::query!(
-            "select event_id, data from photos_event_log where photo_id = $1 order by event_id",
-            inserted.id
+        // Move: leaves a, enters b
+        p.folder_id = Some(b);
+        update(&pool, &p).await;
+        log.expect(
+            &pool,
+            &[(p.id, alice, Some(&p))],
+            &[(a, p.id, None), (b, p.id, Some(&p))],
         )
-        .fetch_all(&pool)
-        .await?;
+        .await;
 
-        assert_eq!(events.len(), 2);
-        assert!(events[0].data.is_some()); // creation event has data
-        assert!(events[1].data.is_none()); // deletion event has NULL data
+        // Trash: leaves b
+        p.trashed_on = Some(OffsetDateTime::now_utc());
+        update(&pool, &p).await;
+        log.expect(&pool, &[(p.id, alice, Some(&p))], &[(b, p.id, None)])
+            .await;
 
-        // Public photo → user_id is NULL in event
-        let mut tx = pool.begin().await?;
-        let public_photo = create_test_photo(0, None, None, "public.jpg");
-        let public_inserted = tx.insert_photo(&public_photo).await?;
-        tx.commit().await?;
+        // Updating a trashed photo does not log it into its folder again
+        p.name = "trashed.jpg".to_string();
+        update(&pool, &p).await;
+        log.expect(&pool, &[(p.id, alice, Some(&p))], &[]).await;
+        let mut tx = pool.begin().await.unwrap();
+        tx.update_thumb_hashes(&[(p.id, vec![1])]).await.unwrap();
+        tx.commit().await.unwrap();
+        p = pool.get_photo(p.id).await.unwrap().unwrap();
+        log.expect(&pool, &[(p.id, alice, Some(&p))], &[]).await;
 
-        let event = sqlx::query!(
-            "select user_id from photos_event_log where photo_id = $1",
-            public_inserted.id
+        // Restore: enters b again
+        p.trashed_on = None;
+        update(&pool, &p).await;
+        log.expect(&pool, &[(p.id, alice, Some(&p))], &[(b, p.id, Some(&p))])
+            .await;
+
+        // Made public, out of the folder: public events have no user
+        p.user_id = None;
+        p.folder_id = None;
+        update(&pool, &p).await;
+        log.expect(&pool, &[(p.id, None, Some(&p))], &[(b, p.id, None)])
+            .await;
+
+        // Permanent deletion
+        let q = insert_photo(
+            &pool,
+            Photo {
+                folder_id: Some(a),
+                ..photo(alice, "q.jpg")
+            },
         )
-        .fetch_one(&pool)
-        .await?;
+        .await;
+        log.expect(&pool, &[(q.id, alice, Some(&q))], &[(a, q.id, Some(&q))])
+            .await;
+        let mut tx = pool.begin().await.unwrap();
+        tx.delete_photo(&q).await.unwrap();
+        tx.commit().await.unwrap();
+        log.expect(&pool, &[(q.id, alice, None)], &[(a, q.id, None)])
+            .await;
 
-        assert!(event.user_id.is_none());
+        // Batches
+        let mut tx = pool.begin().await.unwrap();
+        tx.insert_photos(&[
+            photo(alice, "batch_root.jpg"),
+            Photo {
+                folder_id: Some(a),
+                ..photo(alice, "batch_a.jpg")
+            },
+        ])
+        .await
+        .unwrap();
+        tx.commit().await.unwrap();
+        let mut ids = pool.get_all_photo_ids().await.unwrap();
+        ids.sort();
+        let (x, y) = (ids[ids.len() - 2], ids[ids.len() - 1]);
+        let get = async |id| pool.get_photo(id).await.unwrap().unwrap();
+        let (px, py) = (get(x).await, get(y).await);
+        log.expect(
+            &pool,
+            &[(x, alice, Some(&px)), (y, alice, Some(&py))],
+            &[(a, y, Some(&py))],
+        )
+        .await;
 
-        Ok(())
+        let mut tx = pool.begin().await.unwrap();
+        tx.update_thumb_hashes(&[(x, vec![1]), (y, vec![2])])
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+        let (px, py) = (get(x).await, get(y).await);
+        log.expect(
+            &pool,
+            &[(x, alice, Some(&px)), (y, alice, Some(&py))],
+            &[(a, y, Some(&py))],
+        )
+        .await;
+
+        // Batch deletions have no user
+        let mut tx = pool.begin().await.unwrap();
+        tx.delete_photos(&[x, y]).await.unwrap();
+        tx.commit().await.unwrap();
+        log.expect(&pool, &[(x, None, None), (y, None, None)], &[(a, y, None)])
+            .await;
     }
 
     #[sqlx::test]
-    async fn test_batch_event_logs(pool: SqlitePool) -> sqlx::Result<()> {
-        let user = create_test_user("user1", "Test User");
-        insert_test_user(&pool, &user).await?;
+    async fn test_user_events(pool: SqlitePool) -> sqlx::Result<()> {
+        insert_users(&pool).await;
 
-        // insert_creation_event_logs empty → Ok
-        pool.insert_creation_event_logs(&[]).await?;
-
-        // Count events
-        let count: i32 =
-            sqlx::query_scalar!("select count(*) as 'count!: i32' from photos_event_log")
-                .fetch_one(&pool)
-                .await?;
-        assert_eq!(count, 0);
-
-        // Insert photos (which creates events)
+        // An empty log is in sync with cursor 0
         let mut tx = pool.begin().await?;
-        let photos = vec![
-            create_test_photo(0, Some("user1"), None, "p1.jpg"),
-            create_test_photo(0, Some("user1"), None, "p2.jpg"),
-        ];
-        tx.insert_photos(&photos).await?;
+        let events = tx.get_events_for_user(0, "alice").await.unwrap();
+        assert_eq!((events.event_log_id, events.events.len()), (0, 0));
+        // Any other cursor is outside the (empty) log
+        let result = tx.get_events_for_user(5, "alice").await;
+        assert!(
+            matches!(result, Err(UserEventLogError::InvalidEventId)),
+            "{result:?}"
+        );
         tx.commit().await?;
 
-        let count: i32 =
-            sqlx::query_scalar!("select count(*) as 'count!: i32' from photos_event_log")
-                .fetch_one(&pool)
-                .await?;
-        assert_eq!(count, 2);
-
-        // insert_deletion_event_logs → NULL data for each
-        let ids: Vec<i64> = sqlx::query_scalar!("select id from photos")
-            .fetch_all(&pool)
-            .await?;
-
-        pool.insert_deletion_event_logs(&ids).await?;
-
-        let deletion_events = sqlx::query!("select data from photos_event_log where data is null")
-            .fetch_all(&pool)
-            .await?;
-
-        assert_eq!(deletion_events.len(), 2);
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn test_delete_old_events(pool: SqlitePool) -> sqlx::Result<()> {
-        let user = create_test_user("user1", "Test User");
-        insert_test_user(&pool, &user).await?;
-
-        // Empty table → Ok
-        pool.delete_old_events(10).await?;
-
-        // Insert some photos to create events
+        let mine = insert_photo(&pool, photo(Some("alice"), "mine.jpg")).await;
         let mut tx = pool.begin().await?;
-        let photos = vec![
-            create_test_photo(0, Some("user1"), None, "p1.jpg"),
-            create_test_photo(0, Some("user1"), None, "p2.jpg"),
-            create_test_photo(0, Some("user1"), None, "p3.jpg"),
-            create_test_photo(0, Some("user1"), None, "p4.jpg"),
-            create_test_photo(0, Some("user1"), None, "p5.jpg"),
-        ];
-        tx.insert_photos(&photos).await?;
+        let cursor = tx
+            .get_photos_by_user_and_public("alice")
+            .await?
+            .event_log_id;
         tx.commit().await?;
 
-        let count: i32 =
-            sqlx::query_scalar!("select count(*) as 'count!: i32' from photos_event_log")
-                .fetch_one(&pool)
-                .await?;
-        assert_eq!(count, 5);
+        let public = insert_photo(&pool, photo(None, "public.jpg")).await;
+        insert_photo(&pool, photo(Some("bob"), "bob.jpg")).await;
+        let renamed = Photo {
+            name: "renamed.jpg".to_string(),
+            ..mine.clone()
+        };
+        update(&pool, &renamed).await;
 
-        // last_rows_to_keep >= total → nothing deleted
+        let mut tx = pool.begin().await?;
+        // Own and public events after the cursor, with the photo JSON in base64
+        let events = tx.get_events_for_user(cursor, "alice").await.unwrap();
+        let decoded: Vec<_> = events
+            .events
+            .iter()
+            .map(|e| {
+                (
+                    e.photo_id,
+                    e.data.as_ref().map(|d| STANDARD.decode(d).unwrap()),
+                )
+            })
+            .map(|(id, data)| (id, parse(data)))
+            .collect();
+        assert_eq!(
+            decoded,
+            [
+                (public.id, Some(json(&public))),
+                (renamed.id, Some(json(&renamed))),
+            ]
+        );
+        assert_eq!(events.event_log_id, cursor + 3);
+
+        // Up to date
+        let events = tx.get_events_for_user(cursor + 3, "alice").await.unwrap();
+        assert!(events.events.is_empty());
+        assert_eq!(events.event_log_id, cursor + 3);
+
+        // Outside the logged range: the client must do a full sync
+        for invalid in [cursor - 100, cursor + 4] {
+            let result = tx.get_events_for_user(invalid, "alice").await;
+            assert!(
+                matches!(result, Err(UserEventLogError::InvalidEventId)),
+                "{invalid}"
+            );
+        }
+        tx.commit().await?;
+
+        // Cleaned up events make older cursors stale
         pool.delete_old_events(10).await?;
-
-        let count: i32 =
-            sqlx::query_scalar!("select count(*) as 'count!: i32' from photos_event_log")
-                .fetch_one(&pool)
-                .await?;
-        assert_eq!(count, 5);
-
-        // last_rows_to_keep < total → old events deleted
+        let mut tx = pool.begin().await?;
+        assert!(tx.get_events_for_user(cursor, "alice").await.is_ok());
+        tx.commit().await?;
         pool.delete_old_events(2).await?;
-
-        let count: i32 =
-            sqlx::query_scalar!("select count(*) as 'count!: i32' from photos_event_log")
-                .fetch_one(&pool)
-                .await?;
-        assert_eq!(count, 2);
-
-        // Verify the kept events are the most recent
-        let max_id: i64 =
-            sqlx::query_scalar!("select max(event_id) as 'max!: i64' from photos_event_log")
-                .fetch_one(&pool)
-                .await?;
-
-        let min_id: i64 =
-            sqlx::query_scalar!("select min(event_id) as 'min!: i64' from photos_event_log")
-                .fetch_one(&pool)
-                .await?;
-
-        // The two remaining should be consecutive and at the end
-        assert_eq!(max_id - min_id, 1);
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn test_insert_folder_event(pool: SqlitePool) -> sqlx::Result<()> {
-        let user = create_test_user("user1", "Test User");
-        insert_test_user(&pool, &user).await?;
-
-        let folder = create_test_folder(&pool, Some("user1"), "vacation").await;
-
         let mut tx = pool.begin().await?;
-        let photo = create_test_photo(0, Some("user1"), Some(folder.id), "test.jpg");
-        let inserted = tx.insert_photo(&photo).await?;
+        let result = tx.get_events_for_user(cursor, "alice").await;
+        assert!(
+            matches!(result, Err(UserEventLogError::InvalidEventId)),
+            "{result:?}"
+        );
+        let remaining: Vec<i64> = query_scalar!("select event_id from photos_event_log")
+            .fetch_all(tx.as_mut())
+            .await?;
+        assert_eq!(remaining, [cursor + 2, cursor + 3]);
+        // The cursor at the oldest remaining event is still valid
+        let events = tx.get_events_for_user(cursor + 2, "alice").await.unwrap();
+        assert_eq!((events.event_log_id, events.events.len()), (cursor + 3, 1));
         tx.commit().await?;
 
-        // Verify folder event was created with data
-        let event = sqlx::query!(
-            "select event_id, folder_id, photo_id, data from folder_event_log where photo_id = $1",
-            inserted.id
-        )
-        .fetch_one(&pool)
-        .await?;
-
-        assert_eq!(event.folder_id, folder.id);
-        assert_eq!(event.photo_id, inserted.id);
-        assert!(event.data.is_some());
-
         Ok(())
     }
 
     #[sqlx::test]
-    async fn test_no_folder_event_without_folder(pool: SqlitePool) -> sqlx::Result<()> {
-        let user = create_test_user("user1", "Test User");
-        insert_test_user(&pool, &user).await?;
+    async fn test_folder_events(pool: SqlitePool) -> sqlx::Result<()> {
+        insert_users(&pool).await;
+        let a = create_test_folder(&pool, Some("alice"), "a").await.id;
+        let b = create_test_folder(&pool, Some("alice"), "b").await.id;
+        assert_eq!(pool.get_latest_folder_event_id(a).await?, 0);
 
+        let mut photos = Vec::new();
+        for (folder_id, name) in [(a, "a1"), (a, "a2"), (a, "a3"), (b, "b1"), (b, "b2")] {
+            let photo = Photo {
+                folder_id: Some(folder_id),
+                ..photo(Some("alice"), name)
+            };
+            photos.push(insert_photo(&pool, photo).await);
+        }
+        let latest_a = pool.get_latest_folder_event_id(a).await?;
+
+        // Only the folder's own events after the cursor
         let mut tx = pool.begin().await?;
-        let photo = create_test_photo(0, Some("user1"), None, "test.jpg");
-        tx.insert_photo(&photo).await?;
+        let a_ids = folder_event_ids(&pool, a).await?;
+        let after_first = tx.get_folder_events(a, a_ids[0]).await?.unwrap();
+        let ids: Vec<i64> = after_first.events.iter().map(|e| e.photo_id).collect();
+        assert_eq!(ids, [photos[1].id, photos[2].id]);
+        assert_eq!(after_first.event_log_id, latest_a);
+        let decoded = STANDARD
+            .decode(after_first.events[0].data.as_ref().unwrap())
+            .unwrap();
+        assert_eq!(parse(Some(decoded)), Some(json(&photos[1])));
+
+        let after = tx.get_folder_events(a, latest_a).await?.unwrap();
+        assert!(after.events.is_empty());
+        assert_eq!(after.event_log_id, latest_a);
         tx.commit().await?;
 
-        let count: i32 =
-            sqlx::query_scalar!("select count(*) as 'count!: i32' from folder_event_log")
-                .fetch_one(&pool)
-                .await?;
-        assert_eq!(count, 0);
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn test_deletion_folder_event(pool: SqlitePool) -> sqlx::Result<()> {
-        let user = create_test_user("user1", "Test User");
-        insert_test_user(&pool, &user).await?;
-
-        let folder = create_test_folder(&pool, Some("user1"), "vacation").await;
-
-        pool.insert_folder_event(folder.id, 1, None).await?;
-
-        let event = sqlx::query!(
-            "select data from folder_event_log where folder_id = $1",
-            folder.id
-        )
-        .fetch_one(&pool)
-        .await?;
-
-        assert!(event.data.is_none());
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn test_delete_old_folder_events(pool: SqlitePool) -> sqlx::Result<()> {
-        let user = create_test_user("user1", "Test User");
-        insert_test_user(&pool, &user).await?;
-
-        let folder = create_test_folder(&pool, Some("user1"), "vacation").await;
-
-        let mut tx = pool.begin().await?;
-        let photos = vec![
-            create_test_photo(0, Some("user1"), Some(folder.id), "p1.jpg"),
-            create_test_photo(0, Some("user1"), Some(folder.id), "p2.jpg"),
-            create_test_photo(0, Some("user1"), Some(folder.id), "p3.jpg"),
-            create_test_photo(0, Some("user1"), Some(folder.id), "p4.jpg"),
-            create_test_photo(0, Some("user1"), Some(folder.id), "p5.jpg"),
-        ];
-        tx.insert_photos(&photos).await?;
-        tx.commit().await?;
-
-        let count: i32 =
-            sqlx::query_scalar!("select count(*) as 'count!: i32' from folder_event_log")
-                .fetch_one(&pool)
-                .await?;
-        assert_eq!(count, 5);
-
+        // Keeps the latest events of each folder
         pool.delete_old_folder_events(2).await?;
-
-        let count: i32 =
-            sqlx::query_scalar!("select count(*) as 'count!: i32' from folder_event_log")
-                .fetch_one(&pool)
+        let remaining: Vec<i64> =
+            query_scalar!("select photo_id from folder_event_log order by event_id")
+                .fetch_all(&pool)
                 .await?;
-        assert_eq!(count, 2);
+        assert_eq!(
+            remaining,
+            photos[1..].iter().map(|p| p.id).collect::<Vec<_>>()
+        );
 
         Ok(())
     }
@@ -503,40 +582,35 @@ mod tests {
         .await
     }
 
+    /// The cleanup keeps the last n events of each folder, however far they are behind the
+    /// global (cross-folder) event ids
     #[sqlx::test]
     async fn test_delete_old_folder_events_is_per_folder(pool: SqlitePool) -> sqlx::Result<()> {
-        let user = create_test_user("user1", "Test User");
-        insert_test_user(&pool, &user).await?;
+        insert_users(&pool).await;
+        let quiet = create_test_folder(&pool, Some("alice"), "quiet").await.id;
+        let busy = create_test_folder(&pool, Some("alice"), "busy").await.id;
 
-        let quiet = create_test_folder(&pool, Some("user1"), "quiet").await;
-        let busy = create_test_folder(&pool, Some("user1"), "busy").await;
-
-        // Interleave: 3 events in the quiet folder among 10 in the busy one
+        // Interleave: 3 events in the quiet folder among 7 in the busy one
         for i in 0..10 {
-            let folder_id = if i % 4 == 0 { quiet.id } else { busy.id };
-            let mut tx = pool.begin().await?;
-            tx.insert_photo(&create_test_photo(
-                0,
-                Some("user1"),
-                Some(folder_id),
-                &format!("p{i}.jpg"),
-            ))
-            .await?;
-            tx.commit().await?;
+            let folder_id = if i % 4 == 0 { quiet } else { busy };
+            let photo = Photo {
+                folder_id: Some(folder_id),
+                ..photo(Some("alice"), &format!("p{i}.jpg"))
+            };
+            insert_photo(&pool, photo).await;
         }
 
-        let quiet_before = folder_event_ids(&pool, quiet.id).await?;
-        let busy_before = folder_event_ids(&pool, busy.id).await?;
+        let quiet_before = folder_event_ids(&pool, quiet).await?;
+        let busy_before = folder_event_ids(&pool, busy).await?;
         assert_eq!((quiet_before.len(), busy_before.len()), (3, 7));
 
         pool.delete_old_folder_events(3).await?;
-
-        assert_eq!(folder_event_ids(&pool, quiet.id).await?, quiet_before);
-        assert_eq!(folder_event_ids(&pool, busy.id).await?, &busy_before[4..]);
+        assert_eq!(folder_event_ids(&pool, quiet).await?, quiet_before);
+        assert_eq!(folder_event_ids(&pool, busy).await?, &busy_before[4..]);
 
         pool.delete_old_folder_events(1).await?;
-        assert_eq!(folder_event_ids(&pool, quiet.id).await?, &quiet_before[2..]);
-        assert_eq!(folder_event_ids(&pool, busy.id).await?, &busy_before[6..]);
+        assert_eq!(folder_event_ids(&pool, quiet).await?, &quiet_before[2..]);
+        assert_eq!(folder_event_ids(&pool, busy).await?, &busy_before[6..]);
 
         Ok(())
     }

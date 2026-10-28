@@ -115,144 +115,98 @@ impl<'c, E> FoldersRepo<'c> for E where E: SqliteExecutor<'c> {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::repo::tests::{
-        create_test_folder, create_test_user, earlier_same_utc_day, insert_test_share,
-        insert_test_user,
-    };
+    use crate::repo::tests::{Dataset, create_test_folder, insert_users};
     use sqlx::SqlitePool;
 
     #[sqlx::test]
-    async fn test_upsert_folder(pool: SqlitePool) -> sqlx::Result<()> {
-        let user = create_test_user("user1", "Test User");
-        insert_test_user(&pool, &user).await?;
+    async fn test_folder_crud(pool: SqlitePool) -> sqlx::Result<()> {
+        insert_users(&pool).await;
 
-        let folder = create_test_folder(&pool, Some("user1"), "vacation").await;
+        let folder = create_test_folder(&pool, Some("alice"), "vacation").await;
         assert_eq!(folder.name, "vacation");
-        assert_eq!(folder.owner_id, Some("user1".to_string()));
-        assert!(folder.id > 0);
+        assert_eq!(folder.owner_id.as_deref(), Some("alice"));
+        // Upsert: the same owner and name is the same folder
+        let upsert = |owner_id, name| pool.upsert_folder(owner_id, name);
+        assert_eq!(
+            upsert(Some("alice"), Some("vacation")).await?,
+            Some(folder.id)
+        );
+        let others = [
+            upsert(Some("alice"), Some("work")).await?,
+            upsert(Some("bob"), Some("vacation")).await?,
+            upsert(None, Some("vacation")).await?,
+        ];
+        assert!(others.iter().all(|id| id.is_some_and(|id| id != folder.id)));
+        assert_ne!(others[0], others[1]);
+        assert_ne!(others[1], others[2]);
+        let public = others[2].unwrap();
+        assert_eq!(upsert(None, Some("vacation")).await?, Some(public));
+        assert_eq!(upsert(Some("alice"), Some("")).await?, None);
+        assert_eq!(upsert(Some("alice"), None).await?, None);
 
-        let same_folder = create_test_folder(&pool, Some("user1"), "vacation").await;
-        assert_eq!(same_folder.id, folder.id);
+        assert!(pool.get_folder(99999).await?.is_none());
+        assert_eq!(
+            pool.get_folder_name(Some(folder.id)).await?.as_deref(),
+            Some("vacation")
+        );
+        assert_eq!(pool.get_folder_name(Some(99999)).await?, None);
+        assert_eq!(pool.get_folder_name(None).await?, None);
 
-        let different_folder = create_test_folder(&pool, Some("user1"), "work").await;
-        assert_ne!(different_folder.id, folder.id);
+        pool.rename_folder(folder.id, "renamed").await?;
+        pool.update_folder_owner(folder.id, None).await?;
+        let updated = pool.get_folder(folder.id).await?.unwrap();
+        assert_eq!((updated.name.as_str(), updated.owner_id), ("renamed", None));
 
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn test_public_folder(pool: SqlitePool) -> sqlx::Result<()> {
-        let folder = create_test_folder(&pool, None, "family").await;
-        assert_eq!(folder.name, "family");
-        assert_eq!(folder.owner_id, None);
-
-        let same = create_test_folder(&pool, None, "family").await;
-        assert_eq!(same.id, folder.id);
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn test_get_folder(pool: SqlitePool) -> sqlx::Result<()> {
-        let user = create_test_user("user1", "Test User");
-        insert_test_user(&pool, &user).await?;
-
-        let folder = create_test_folder(&pool, Some("user1"), "photos").await;
-        let fetched = pool.get_folder(folder.id).await?;
-        assert!(fetched.is_some());
-        assert_eq!(fetched.unwrap().name, "photos");
-
-        let missing = pool.get_folder(99999).await?;
-        assert!(missing.is_none());
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn test_get_accessible_folders(pool: SqlitePool) -> sqlx::Result<()> {
-        let user1 = create_test_user("user1", "User One");
-        let user2 = create_test_user("user2", "User Two");
-        insert_test_user(&pool, &user1).await?;
-        insert_test_user(&pool, &user2).await?;
-
-        create_test_folder(&pool, Some("user1"), "mine").await;
-        create_test_folder(&pool, Some("user2"), "theirs").await;
-        create_test_folder(&pool, None, "shared").await;
-
-        let accessible = pool.get_accessible_folders("user1").await?;
-        assert_eq!(accessible.len(), 2);
-        let names: Vec<&str> = accessible.iter().map(|f| f.name.as_str()).collect();
-        assert!(names.contains(&"mine"));
-        assert!(names.contains(&"shared"));
-        assert!(!names.contains(&"theirs"));
+        let names = pool.get_folder_name_map().await?;
+        assert_eq!(names.len(), 4);
+        assert_eq!(names[&folder.id], "renamed");
 
         Ok(())
     }
 
     #[sqlx::test]
-    async fn test_accessible_folder_share_expiry(pool: SqlitePool) -> sqlx::Result<()> {
-        use time::{Duration, OffsetDateTime};
+    async fn test_accessible_folders(pool: SqlitePool) -> sqlx::Result<()> {
+        insert_users(&pool).await;
+        let data = Dataset::create(&pool).await;
+        let public = create_test_folder(&pool, None, "family").await.id;
 
-        for id in ["owner", "expired", "valid", "forever"] {
-            insert_test_user(&pool, &create_test_user(id, id)).await?;
-        }
-        let folder = create_test_folder(&pool, Some("owner"), "shared").await;
-
-        let now = OffsetDateTime::now_utc();
-        let past = earlier_same_utc_day(now, Duration::hours(3));
-        insert_test_share(&pool, folder.id, "expired", true, Some(past)).await?;
-        insert_test_share(
-            &pool,
-            folder.id,
-            "valid",
-            true,
-            Some(now + Duration::hours(3)),
-        )
-        .await?;
-        insert_test_share(&pool, folder.id, "forever", true, None).await?;
-
-        for (user, expected) in [("expired", false), ("valid", true), ("forever", true)] {
-            let found = pool.get_accessible_folder(user, folder.id).await?;
-            assert_eq!(found.is_some(), expected, "{user}");
-            let found = pool.get_accessible_folders(user).await?;
+        // (folder, alice's (can_upload, can_delete))
+        let cases = [
+            (public, Some((true, true))),
+            (data.own_folder, Some((true, true))),
+            (data.shared_folder, Some((false, false))),
+            (data.shared_delete_folder, Some((true, true))),
+            (data.expired_folder, None),
+            (data.unshared_folder, None),
+        ];
+        for (id, expected) in cases {
+            let folder = pool.get_accessible_folder("alice", id).await?;
             assert_eq!(
-                found.iter().any(|f| f.id == folder.id),
+                folder.map(|f| (f.can_upload, f.can_delete)),
                 expected,
-                "{user} in list"
+                "{id}"
             );
         }
 
-        Ok(())
-    }
+        // By name
+        let folders = pool.get_accessible_folders("alice").await?;
+        let folders: Vec<_> = folders
+            .iter()
+            .map(|f| (f.id, f.can_upload, f.can_delete))
+            .collect();
+        assert_eq!(
+            folders,
+            [
+                (public, true, true),
+                (data.own_folder, true, true),
+                (data.shared_folder, false, false),
+                (data.shared_delete_folder, true, true),
+            ]
+        );
 
-    #[sqlx::test]
-    async fn test_rename_folder(pool: SqlitePool) -> sqlx::Result<()> {
-        let user = create_test_user("user1", "Test User");
-        insert_test_user(&pool, &user).await?;
-
-        let folder = create_test_folder(&pool, Some("user1"), "old_name").await;
-        pool.rename_folder(folder.id, "new_name").await?;
-
-        let renamed = pool.get_folder(folder.id).await?.unwrap();
-        assert_eq!(renamed.name, "new_name");
-
-        Ok(())
-    }
-
-    #[sqlx::test]
-    async fn test_get_folder_name(pool: SqlitePool) -> sqlx::Result<()> {
-        let user = create_test_user("user1", "Test User");
-        insert_test_user(&pool, &user).await?;
-
-        let folder = create_test_folder(&pool, Some("user1"), "vacation").await;
-        let name = pool.get_folder_name(Some(folder.id)).await?;
-        assert_eq!(name, Some("vacation".to_string()));
-
-        let missing = pool.get_folder_name(Some(99999)).await?;
-        assert_eq!(missing, None);
-
-        let none = pool.get_folder_name(None).await?;
-        assert_eq!(none, None);
+        // Carol only sees the public folder
+        let folders = pool.get_accessible_folders("carol").await?;
+        assert_eq!(folders.iter().map(|f| f.id).collect::<Vec<_>>(), [public]);
 
         Ok(())
     }
