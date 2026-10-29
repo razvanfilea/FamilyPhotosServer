@@ -123,7 +123,7 @@ async fn test_pages_and_fragments_render_when_logged_in(pool: SqlitePool) {
         ("/duplicates", "Duplicates"),
         ("/large-files", "Large Files"),
         ("/settings", "Settings"),
-        ("/upload", "Upload Photos"),
+        ("/upload", "Upload"),
     ] {
         let request = Request::get(uri)
             .header(header::COOKIE, &cookie)
@@ -291,4 +291,49 @@ fn test_asset_cache_control() {
         asset_cache_control("/css/main.css", Some("v=dev"), "dev"),
         "no-cache"
     );
+}
+
+#[sqlx::test]
+async fn test_wasm_csp_only_on_upload_page_and_hash_worker(pool: SqlitePool) {
+    let router = test_router(pool).await;
+    let cookie = login(&router).await;
+    let with_cookie = |uri: &str| {
+        Request::get(uri)
+            .header(header::COOKIE, &cookie)
+            .body(Body::empty())
+            .unwrap()
+    };
+
+    for uri in ["/upload", "/assets/js/upload/hash-worker.js"] {
+        let response = send(&router, with_cookie(uri)).await;
+        assert_eq!(response.status(), StatusCode::OK, "{uri}");
+        assert_eq!(
+            header_value(&response, "content-security-policy"),
+            crate::http::UPLOAD_CONTENT_SECURITY_POLICY,
+            "{uri}"
+        );
+        assert!(
+            header_value(&response, "content-security-policy").contains("'wasm-unsafe-eval'"),
+            "{uri}"
+        );
+    }
+
+    for uri in [
+        "/",
+        "/login",
+        "/folders",
+        "/api/profile",
+        "/assets/js/app.js",
+        "/missing",
+        "/assets/js/upload/missing.js",
+    ] {
+        let response = send(&router, with_cookie(uri)).await;
+        let csp = header_value(&response, "content-security-policy");
+        assert!(csp.contains("script-src 'self';"), "{uri}: {csp}");
+        assert!(!csp.contains("wasm-unsafe-eval"), "{uri}: {csp}");
+    }
+
+    // Logged out: the redirect away from /upload stays strict
+    let response = send(&router, get("/upload")).await;
+    assert!(!header_value(&response, "content-security-policy").contains("wasm-unsafe-eval"));
 }

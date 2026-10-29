@@ -1,0 +1,364 @@
+/* Upload page. The root has `data-state` (idle | running | done), and each row
+   `data-status`. */
+
+@layer components {
+    .fp-upload {
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+        max-width: 72rem;
+        margin-inline: auto;
+        padding-bottom: 2rem;
+    }
+
+    .fp-upload__step {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        padding: 1rem;
+        border-radius: 1rem;
+        background-color: var(--color-base-200);
+
+        @variant sm {
+            padding: 1.25rem 1.5rem;
+        }
+    }
+
+    .fp-upload__step-title {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        @apply text-lg font-semibold;
+    }
+
+    .fp-upload__step-number {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 1.75rem;
+        height: 1.75rem;
+        border-radius: 9999px;
+        font-size: 0.875rem;
+        background-color: var(--color-secondary);
+        color: var(--color-secondary-content);
+    }
+
+    /* The destination can't change while uploading */
+    .fp-upload[data-state="running"] [data-role="destination"] {
+        opacity: 0.6;
+    }
+
+    /* A new run starts with "Upload more" */
+    .fp-upload[data-state="done"] [data-role="files"] {
+        display: none;
+    }
+
+    /* ---------- Files ---------- */
+
+    .fp-upload__dropzone {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.25rem;
+        width: 100%;
+        padding: 2rem 1rem;
+        border: 2px dashed var(--fp-outline);
+        border-radius: 1rem;
+        text-align: center;
+        cursor: pointer;
+        transition: border-color 150ms, background-color 150ms;
+
+        &:hover,
+        &:focus-visible {
+            border-color: var(--color-primary);
+            background-color: var(--color-base-300);
+        }
+
+        @variant sm {
+            padding-block: 3rem;
+        }
+    }
+
+    .fp-upload__dropzone-icon {
+        font-size: 3rem;
+        color: var(--color-primary);
+    }
+
+    .fp-upload__dropzone-title {
+        @apply text-base font-medium;
+    }
+
+    .fp-upload__dropzone-hint {
+        @apply text-sm;
+        color: var(--color-neutral-content);
+    }
+
+    .fp-upload__choosers {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
+    .fp-upload__notices {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+
+        &:empty {
+            display: none;
+        }
+    }
+
+    .fp-upload__notice {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 0.5rem 0.5rem 0.75rem;
+        border-radius: 0.75rem;
+        @apply text-sm;
+        background-color: var(--color-base-300);
+        color: var(--color-warning);
+
+        > span {
+            flex: 1;
+        }
+    }
+
+    .fp-upload__overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 900;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        border: 3px dashed var(--color-primary);
+        background-color: color-mix(in oklab, var(--color-base-100) 85%, transparent);
+        @apply text-xl font-semibold;
+        pointer-events: none;
+    }
+
+    /* ---------- Queue: summary bar, done panel, rows ---------- */
+
+    .fp-upload__bar,
+    .fp-upload__done {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.75rem;
+    }
+
+    .fp-upload__bar-text {
+        display: flex;
+        flex: 1 1 12rem;
+        flex-direction: column;
+    }
+
+    .fp-upload__progress-text {
+        @apply text-sm;
+        color: var(--color-neutral-content);
+    }
+
+    .fp-upload__progress {
+        order: 10;
+        width: 100%;
+    }
+
+    .fp-upload__hint {
+        order: 11;
+        width: 100%;
+        @apply text-sm;
+        color: var(--color-warning);
+    }
+
+    .fp-upload__actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin-left: auto;
+    }
+
+    .fp-upload__done-icon {
+        font-size: 2.5rem;
+        color: var(--color-primary);
+    }
+
+    .fp-upload__done-text {
+        flex: 1 1 12rem;
+    }
+
+    .fp-upload__done-title {
+        @apply font-semibold;
+    }
+
+    /* (DaisyUI's buttons and progress bars are in the utilities layer, so page.js toggles their
+       `hidden` attribute instead) */
+    .fp-upload:not([data-state="done"]) .fp-upload__done,
+    .fp-upload[data-state="done"] .fp-upload__bar {
+        display: none;
+    }
+
+    /* A list on phones, a grid of cards from tablets up */
+    .fp-upload__list {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 0.5rem;
+
+        @variant md {
+            grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
+            gap: 0.75rem;
+        }
+    }
+
+    .fp-upload-row {
+        position: relative;
+        display: grid;
+        grid-template-columns: 3.5rem minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.5rem;
+        border-radius: 0.75rem;
+        background-color: var(--color-base-300);
+        overflow: hidden;
+
+        @variant md {
+            grid-template-columns: minmax(0, 1fr);
+            align-items: stretch;
+            gap: 0.5rem;
+        }
+    }
+
+    .fp-upload-row__thumb {
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        aspect-ratio: 1;
+        border-radius: 0.5rem;
+        background-color: var(--color-base-100);
+        overflow: hidden;
+    }
+
+    .fp-upload-row__img {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+
+    .fp-upload-row__icon {
+        font-size: 1.75rem;
+        color: var(--fp-outline);
+    }
+
+    .fp-upload-row[data-kind="image"] .fp-upload-row__icon--video,
+    .fp-upload-row[data-kind="video"] .fp-upload-row__icon--image {
+        display: none;
+    }
+
+    .fp-upload-row__info {
+        display: flex;
+        flex-direction: column;
+        gap: 0.125rem;
+        min-width: 0;
+    }
+
+    .fp-upload-row__name {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        @apply text-sm font-medium;
+    }
+
+    .fp-upload-row__meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.25rem 0.5rem;
+        align-items: center;
+        @apply text-xs;
+        color: var(--color-neutral-content);
+    }
+
+    .fp-upload-row__status {
+        padding: 0.0625rem 0.5rem;
+        border-radius: 9999px;
+        background-color: var(--color-base-100);
+    }
+
+    .fp-upload-row[data-status="existing"] .fp-upload-row__status,
+    .fp-upload-row[data-status="uploaded"] .fp-upload-row__status {
+        background-color: var(--color-secondary);
+        color: var(--color-secondary-content);
+    }
+
+    .fp-upload-row[data-status="failed"] .fp-upload-row__status {
+        background-color: var(--fp-error-container);
+        color: var(--fp-on-error-container);
+    }
+
+    .fp-upload-row[data-status="uploading"] .fp-upload-row__status,
+    .fp-upload-row[data-status="retrying"] .fp-upload-row__status {
+        background-color: var(--color-accent);
+        color: var(--color-accent-content);
+    }
+
+    .fp-upload-row__error {
+        @apply text-xs;
+        color: var(--color-error);
+
+        &:empty {
+            display: none;
+        }
+    }
+
+    /* Per-file upload progress, along the bottom edge of the row */
+    .fp-upload-row__progress {
+        position: absolute;
+        inset: auto 0 0 0;
+        height: 3px;
+
+        > span {
+            display: block;
+            width: calc(var(--progress, 0) * 100%);
+            height: 100%;
+            background-color: var(--color-primary);
+            transition: width 150ms linear;
+        }
+    }
+
+    .fp-upload-row__remove,
+    .fp-upload-row__retry {
+        @variant md {
+            position: absolute;
+            top: 0.75rem;
+            right: 0.75rem;
+            background-color: color-mix(in oklab, var(--color-base-100) 70%, transparent);
+        }
+    }
+
+    /* ---------- The picker's showcase ---------- */
+
+    .fp-upload-showcase {
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+        padding-bottom: 0.5rem;
+        overflow: hidden;
+
+        img {
+            flex: none;
+            width: 2.5rem;
+            height: 2.5rem;
+            border-radius: 0.5rem;
+            object-fit: cover;
+        }
+    }
+
+    .fp-upload-showcase__count {
+        padding-left: 0.5rem;
+        @apply text-sm;
+        color: var(--color-neutral-content);
+    }
+}

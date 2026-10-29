@@ -1,10 +1,13 @@
 use crate::http::AppStateRef;
+use crate::http::UPLOAD_CONTENT_SECURITY_POLICY;
 use crate::http::fragments;
 use crate::repo::users_repo::UsersRepository;
 use axum::Router;
+use axum::http::{HeaderValue, header};
 use axum::middleware;
 use axum::routing::get;
 use axum_login::login_required;
+use tower_http::set_header::SetResponseHeaderLayer;
 
 mod destination_picker;
 mod duplicates;
@@ -41,7 +44,13 @@ pub fn router(app_state: AppStateRef) -> Router {
         .route("/duplicates", get(duplicates::duplicates_page))
         .route("/large-files", get(large_files::large_files_page))
         .route("/settings", get(settings::settings_page))
-        .route("/upload", get(upload::upload_page))
+        .route(
+            "/upload",
+            get(upload::upload_page).layer(SetResponseHeaderLayer::overriding(
+                header::CONTENT_SECURITY_POLICY,
+                HeaderValue::from_static(UPLOAD_CONTENT_SECURITY_POLICY),
+            )),
+        )
         .route_layer(login_required!(UsersRepository, login_url = "/login"));
 
     // HTML fragments for HTMX/JS: 401 + HX-Redirect when logged out

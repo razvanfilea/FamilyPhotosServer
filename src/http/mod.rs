@@ -36,9 +36,27 @@ mod views;
 #[cfg(test)]
 mod tests;
 
-const CONTENT_SECURITY_POLICY: &str = "default-src 'self'; img-src 'self' data: blob:; \
-    media-src 'self' blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; \
-    connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
+macro_rules! content_security_policy {
+    ($script_src:literal) => {
+        concat!(
+            "default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; ",
+            "style-src 'self' 'unsafe-inline'; script-src ",
+            $script_src,
+            "; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+        )
+    };
+}
+
+/// The policy of every response unless a route sets its own
+const CONTENT_SECURITY_POLICY: &str = content_security_policy!("'self'");
+
+/// Only for the upload page and its hash worker script: BLAKE3 hashing compiles WebAssembly. A
+/// dedicated worker takes its policy from its own script response, so both need it.
+pub(super) const UPLOAD_CONTENT_SECURITY_POLICY: &str =
+    content_security_policy!("'self' 'wasm-unsafe-eval'");
+
+/// Path of the hash worker relative to the assets directory
+const HASH_WORKER_PATH: &str = "/js/upload/hash-worker.js";
 
 pub fn router(
     app_state: AppStateRef,
@@ -74,7 +92,8 @@ pub fn router(
         )
         .fallback(pages::not_found)
         .layer(middleware::from_fn(session_activity::mark_session_active))
-        .layer(SetResponseHeaderLayer::overriding(
+        // `if_not_present`: routes with their own policy (the upload page and its worker) keep it
+        .layer(SetResponseHeaderLayer::if_not_present(
             header::CONTENT_SECURITY_POLICY,
             HeaderValue::from_static(CONTENT_SECURITY_POLICY),
         ))
@@ -105,7 +124,15 @@ async fn asset_cache_headers(request: Request, next: Next) -> Response {
         AppState::ASSET_VERSION,
     );
 
+    let is_hash_worker = request.uri().path() == HASH_WORKER_PATH;
+
     let mut response = next.run(request).await;
+    if is_hash_worker {
+        response.headers_mut().insert(
+            header::CONTENT_SECURITY_POLICY,
+            HeaderValue::from_static(UPLOAD_CONTENT_SECURITY_POLICY),
+        );
+    }
     // Never cache errors (e.g. a CSS file that isn't built yet) for a year
     let cache_control = if response.status().is_success() {
         cache_control

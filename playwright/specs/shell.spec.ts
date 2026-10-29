@@ -23,7 +23,7 @@ function destinations(): Destination[] {
         { path: '/duplicates', heading: 'Duplicates', nav: 'utilities', tab: 'utilities' },
         { path: '/large-files', heading: 'Large Files', nav: 'utilities', tab: 'utilities' },
         { path: '/settings', heading: 'Settings', nav: 'utilities', tab: 'utilities' },
-        { path: '/upload', heading: 'Upload Photos', title: 'Upload', nav: 'upload' },
+        { path: '/upload', heading: 'Upload', nav: 'upload' },
     ];
 }
 

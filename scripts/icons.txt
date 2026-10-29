@@ -63,3 +63,8 @@ videocam
 image
 groups
 location_on
+movie
+drive_folder_upload
+upload_file
+refresh
+cloud_done
