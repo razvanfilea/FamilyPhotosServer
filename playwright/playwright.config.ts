@@ -12,6 +12,11 @@ process.env.FP_E2E_RUN_DIR ??= mkdtempSync(join(tmpdir(), 'fp-e2e-'));
 const port = process.env.FP_E2E_PORT;
 const baseURL = `http://localhost:${port}`;
 const unitSpecs = /unit-.*\.spec\.ts/;
+// Firefox is a coordinator check before merges, not part of the default run: FP_E2E_FIREFOX=1 adds it
+// (install it once with `PLAYWRIGHT_BROWSERS_PATH=0 npx playwright install firefox`).
+const firefox = process.env.FP_E2E_FIREFOX
+    ? [{ name: 'firefox', testIgnore: unitSpecs, use: { ...devices['Desktop Firefox'] } }]
+    : [];
 
 export default defineConfig({
     testDir: './specs',
@@ -30,6 +35,7 @@ export default defineConfig({
         { name: 'unit', testMatch: unitSpecs },
         { name: 'chromium', testIgnore: unitSpecs, use: { ...devices['Desktop Chrome'] } },
         { name: 'Mobile Chrome', testIgnore: unitSpecs, use: { ...devices['Pixel 7'] } },
+        ...firefox,
     ],
     webServer: {
         command: 'node playwright/harness/serve.mjs',
