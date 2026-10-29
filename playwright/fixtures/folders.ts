@@ -68,7 +68,8 @@ export class TempFolders {
 
 export const test = base.extend<{ folders: TempFolders }>({
     folders: async ({ browser, baseURL }, use, testInfo) => {
-        const suffix = `${testInfo.project.name === 'chromium' ? 'D' : 'M'}${Date.now() % 1_000_000}`;
+        const prefix = ({ chromium: 'D', firefox: 'F' } as Record<string, string>)[testInfo.project.name] ?? 'M';
+        const suffix = `${prefix}${Date.now() % 1_000_000}`;
         const folders = new TempFolders(
             (user) => browser.newContext({ baseURL, storageState: storageStatePath(user) }),
             suffix,
