@@ -7,12 +7,17 @@
     "postinstall": "PLAYWRIGHT_BROWSERS_PATH=0 npx playwright install chromium",
     "test": "PLAYWRIGHT_BROWSERS_PATH=0 npx playwright test --config playwright/playwright.config.ts",
     "test:unit": "PLAYWRIGHT_BROWSERS_PATH=0 npx playwright test --config playwright/playwright.unit.config.ts",
-    "test:ui": "PLAYWRIGHT_BROWSERS_PATH=0 npx playwright test --config playwright/playwright.config.ts --ui"
+    "test:ui": "PLAYWRIGHT_BROWSERS_PATH=0 npx playwright test --config playwright/playwright.config.ts --ui",
+    "typecheck": "tsc -p jsconfig.json --noEmit && tsc -p playwright/tsconfig.json --noEmit",
+    "knip": "knip"
   },
   "devDependencies": {
     "@material-symbols/svg-400": "0.47.5",
     "@playwright/test": "1.61.0",
     "@tailwindcss/cli": "4.3.1",
-    "daisyui": "5.5.23"
+    "@types/node": "26.6.6",
+    "daisyui": "5.5.23",
+    "knip": "6.43.0",
+    "typescript": "7.0.2"
   }
 }

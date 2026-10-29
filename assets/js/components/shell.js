@@ -5,7 +5,7 @@ import { confirm } from '../core/dialog.js';
 import { api } from '../core/api.js';
 
 /** <details> menus: close on outside click, Escape, and after choosing an item. */
-register('dropdown', (details) => {
+register('dropdown', (/** @type {HTMLDetailsElement} */ details) => {
     const close = () => details.removeAttribute('open');
     const onDocumentClick = (event) => {
         if (!details.contains(event.target)) close();
@@ -17,7 +17,7 @@ register('dropdown', (details) => {
         }
     };
     const onItemClick = (event) => {
-        if (event.target.closest('li a, li button')) close();
+        if (/** @type {Element} */ (event.target).closest('li a, li button')) close();
     };
 
     document.addEventListener('click', onDocumentClick);
@@ -34,7 +34,7 @@ async function signOut() {
 }
 
 register('sign-out', (button) => {
-    const template = document.getElementById('sign-out-dialog');
+    const template = /** @type {HTMLTemplateElement} */ (document.getElementById('sign-out-dialog'));
     button.addEventListener('click', () => {
         confirm({
             title: template.content.querySelector('h2').textContent,
@@ -55,9 +55,9 @@ register('password-toggle', (button) => {
     });
 });
 
-register('login-form', (form) => {
-    const username = form.elements.namedItem('user_id');
-    const password = form.elements.namedItem('password');
+register('login-form', (/** @type {HTMLFormElement} */ form) => {
+    const username = /** @type {HTMLInputElement} */ (form.elements.namedItem('user_id'));
+    const password = /** @type {HTMLInputElement} */ (form.elements.namedItem('password'));
     const submit = form.querySelector('button[type="submit"]');
 
     const updateSubmit = () => {

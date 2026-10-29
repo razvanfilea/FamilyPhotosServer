@@ -101,6 +101,12 @@ http {
 }
 ```
 
+## Development checks
+
+`scripts/check.sh` runs every check before a merge (build, tests, clippy, rustfmt, the sqlx cache,
+CSS build, JS type-check, knip and the Playwright suites) against a throwaway database; see
+`scripts/check.sh --help`.
+
 ## Folder structure
 
 The server will generate the following folder structure in the STORAGE_PATH folder:

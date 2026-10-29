@@ -6,7 +6,7 @@ import { closeDialog } from '../core/dialog.js';
 
 register('month-picker', (element) => {
     element.addEventListener('click', (event) => {
-        const row = event.target.closest('[data-month]');
+        const row = /** @type {Element} */ (event.target).closest('[data-month]');
         if (!row) return;
 
         closeDialog();

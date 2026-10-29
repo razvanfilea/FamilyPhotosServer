@@ -8,7 +8,7 @@ import { popScope, pushScope } from './keyboard.js';
 
 const SCOPE = 'dialog';
 
-const dialogElement = () => document.getElementById('app-dialog');
+const dialogElement = () => /** @type {HTMLDialogElement} */ (document.getElementById('app-dialog'));
 const contentElement = () => document.getElementById('app-dialog-content');
 
 let onCloseCallback;
@@ -88,7 +88,9 @@ export function isDialogOpen() {
  * @returns {Promise<boolean>} true once confirmed (and `onConfirm` succeeded), false if dismissed
  */
 export function confirm({ title, body = '', confirmLabel = 'OK', cancelLabel, danger = false, onConfirm }) {
-    const fragment = document.getElementById('confirm-dialog-template').content.cloneNode(true);
+    const fragment = /** @type {DocumentFragment} */ (
+        /** @type {HTMLTemplateElement} */ (document.getElementById('confirm-dialog-template')).content.cloneNode(true)
+    );
     fragment.querySelector('[data-slot="title"]').textContent = title;
     const bodySlot = fragment.querySelector('[data-slot="body"]');
     if (typeof body === 'string') {
@@ -158,7 +160,7 @@ export function initDialog() {
     });
 
     dialog.addEventListener('click', (event) => {
-        if (!busy && event.target.closest('[data-dialog-close]')) closeDialog();
+        if (!busy && /** @type {Element} */ (event.target).closest('[data-dialog-close]')) closeDialog();
     });
 
     document.body.addEventListener('htmx:afterSwap', (event) => {

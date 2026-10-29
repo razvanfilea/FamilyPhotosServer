@@ -89,7 +89,7 @@ register('folder-browser', (root) => {
     }
 
     root.addEventListener('click', (event) => {
-        const chip = event.target.closest('.fp-chip[data-filter]');
+        const chip = /** @type {Element} */ (event.target).closest('.fp-chip[data-filter]');
         if (chip && root.contains(chip)) {
             if (chip.dataset.filter === state.filter) return;
             state.filter = chip.dataset.filter;
@@ -106,7 +106,7 @@ register('folder-browser', (root) => {
             return;
         }
 
-        const sortOption = event.target.closest('[data-sort]');
+        const sortOption = /** @type {Element} */ (event.target).closest('[data-sort]');
         if (sortOption && root.contains(sortOption)) {
             state.sort = sortOption.dataset.sort;
             for (const option of sortOptions) {
@@ -119,7 +119,7 @@ register('folder-browser', (root) => {
             return;
         }
 
-        if (event.target.closest('[data-role="view-toggle"]')) {
+        if (/** @type {Element} */ (event.target).closest('[data-role="view-toggle"]')) {
             state.view = state.view === 'grid' ? 'list' : 'grid';
             viewToggle.dataset.view = state.view;
             viewToggle.setAttribute('aria-label', state.view === 'grid' ? 'Switch to list view' : 'Switch to grid view');
@@ -130,7 +130,7 @@ register('folder-browser', (root) => {
             return;
         }
 
-        if (event.target.closest('[data-role="search-clear"]')) {
+        if (/** @type {Element} */ (event.target).closest('[data-role="search-clear"]')) {
             search.value = '';
             applySearch();
             updateUrl();

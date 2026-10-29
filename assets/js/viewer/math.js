@@ -1,9 +1,9 @@
 // Pure helpers of the viewer (geometry, gestures, formatting), unit-tested without a browser.
 
 /** Release distance, as a fraction of the stage width, past which a swipe navigates */
-export const SWIPE_DISTANCE = 0.25;
+const SWIPE_DISTANCE = 0.25;
 /** Release speed (px/ms) past which a swipe navigates whatever its distance */
-export const SWIPE_VELOCITY = 0.3;
+const SWIPE_VELOCITY = 0.3;
 /** Downward drag (px) past which the viewer closes */
 export const SWIPE_CLOSE_DISTANCE = 120;
 

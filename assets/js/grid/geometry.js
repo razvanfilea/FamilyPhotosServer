@@ -4,7 +4,7 @@
 export const MAX_ZOOM = 3;
 
 /** Accumulated ctrl+wheel delta that makes one zoom step. A mouse wheel notch is 100. */
-export const WHEEL_STEP_DELTA = 50;
+const WHEEL_STEP_DELTA = 50;
 
 /** Where a month header lands when jumping to it, as a fraction of the viewport height. */
 export const JUMP_OFFSET = 0.2;

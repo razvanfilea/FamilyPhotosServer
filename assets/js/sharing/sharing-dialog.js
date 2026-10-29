@@ -50,7 +50,12 @@ register('sharing-dialog', (root) => {
         updateBadge(Number(root.dataset.memberCount));
     }
 
-    /** Runs a change, shows its toast and re-renders the dialog (keeping a member's menu open) */
+    /**
+     * Runs a change, shows its toast and re-renders the dialog (keeping a member's menu open)
+     * @param {*} request
+     * @param {string} message
+     * @param {{keepMenuOf?: any}} [options]
+     */
     async function change(request, message, { keepMenuOf } = {}) {
         if (busy) return;
         busy = true;
@@ -94,7 +99,7 @@ register('sharing-dialog', (root) => {
     }
 
     root.addEventListener('click', (event) => {
-        const button = event.target.closest('[data-action]');
+        const button = /** @type {Element} */ (event.target).closest('[data-action]');
         if (!button || !root.contains(button)) return;
         const member = memberOf(button);
 
@@ -151,7 +156,7 @@ register('sharing-dialog', (root) => {
     });
 
     root.addEventListener('change', (event) => {
-        const select = event.target.closest('[data-role="expiry"]');
+        const select = /** @type {Element} */ (event.target).closest('[data-role="expiry"]');
         if (!select) return;
         const field = select.closest('[data-role="expiry-field"]');
         field.querySelector('[data-role="custom-expiry"]').hidden = select.value !== 'custom';

@@ -13,7 +13,7 @@ const SEEK_MAX = 1000;
  * @param {Record<string, string>} strings
  */
 export function createVideo(template, photo, strings) {
-    const element = template.content.firstElementChild.cloneNode(true);
+    const element = /** @type {HTMLElement} */ (template.content.firstElementChild.cloneNode(true));
     const part = (name) => element.querySelector(`[data-video="${name}"]`);
     /** @type {HTMLVideoElement} */
     const video = element.querySelector('video');
