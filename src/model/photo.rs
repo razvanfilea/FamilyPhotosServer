@@ -1,11 +1,9 @@
 use serde::Serialize;
-use serde_with::serde_as;
 use time::OffsetDateTime;
 
 use crate::model::user::PUBLIC_USER_FOLDER;
 use time::serde::timestamp;
 
-#[serde_as]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, sqlx::FromRow)]
 pub struct Photo {
     pub id: i64,
@@ -15,7 +13,7 @@ pub struct Photo {
     pub created_at: OffsetDateTime,
     pub file_size: i64,
     pub folder_id: Option<i64>,
-    #[serde_as(as = "Option<serde_with::base64::Base64>")]
+    #[serde(with = "crate::utils::serde_helpers::base64_option")]
     pub thumb_hash: Option<Vec<u8>>,
     #[serde(with = "timestamp::option")]
     pub trashed_on: Option<OffsetDateTime>,

@@ -1,6 +1,7 @@
 pub mod env_reader;
 pub mod exif;
 pub mod password_hash;
+pub mod serde_helpers;
 pub mod storage_resolver;
 
 const BLAKE_3_LEN: usize = 32;
