@@ -34,7 +34,7 @@ pub struct UpdateShareRequest {
     #[serde(default)]
     pub can_delete: bool,
     /// Unix seconds. Absent: the expiry is left unchanged, `null`: the share no longer expires
-    #[serde(default, with = "::serde_with::rust::double_option")]
+    #[serde(default, with = "crate::utils::serde_helpers::double_option")]
     pub expires_at: Option<Option<i64>>,
 }
 

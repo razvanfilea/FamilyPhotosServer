@@ -8,7 +8,6 @@ use axum::extract::{Query, State};
 use axum::routing::get;
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
-use serde_with::serde_as;
 use time::OffsetDateTime;
 use time::serde::timestamp;
 
@@ -24,7 +23,6 @@ pub fn router() -> Router<AppStateRef> {
 }
 
 /// A photo as the viewer needs it
-#[serde_as]
 #[derive(Debug, Serialize)]
 pub struct ViewerPhoto {
     pub id: i64,
@@ -32,7 +30,7 @@ pub struct ViewerPhoto {
     #[serde(with = "timestamp")]
     pub created_at: OffsetDateTime,
     pub is_video: bool,
-    #[serde_as(as = "Option<serde_with::base64::Base64>")]
+    #[serde(with = "crate::utils::serde_helpers::base64_option")]
     pub thumb_hash: Option<Vec<u8>>,
     pub file_size: i64,
     pub user_id: Option<String>,
