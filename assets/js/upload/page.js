@@ -59,7 +59,10 @@ register('upload-page', (root) => {
     const rowTemplate = part('row-template');
     const noticeTemplate = part('notice-template');
 
-    /** @type {Map<number, object>} */
+    /**
+     * @typedef {{id: number, file: File, key: string, size: number, hash?: string|null, hashed: number, checks: Map<any, any>, checking: Set<any>, phase: string, loaded: number, error: any, thumbUrl: string|null, [field: string]: any}} UploadItem
+     */
+    /** @type {Map<number, UploadItem>} */
     const items = new Map();
     let nextId = 1;
     /** The picker's choice */
@@ -462,7 +465,7 @@ register('upload-page', (root) => {
     });
 
     root.addEventListener('click', (event) => {
-        const button = event.target.closest('[data-action]');
+        const button = /** @type {Element} */ (event.target).closest('[data-action]');
         if (!button || !root.contains(button)) return;
         const row = button.closest('[data-item-id]');
         const item = row ? items.get(Number(row.dataset.itemId)) : null;

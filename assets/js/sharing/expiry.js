@@ -2,9 +2,6 @@
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/** Presets of the expiry select (`custom` takes a date, `keep` leaves the expiry alone). */
-export const EXPIRY_PRESETS = Object.freeze(['none', 'day', 'week', 'month']);
-
 /**
  * The expiry for a preset as unix seconds, `null` for "No expiry".
  * @param {'none'|'day'|'week'|'month'} preset

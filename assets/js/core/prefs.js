@@ -1,7 +1,7 @@
 // User preferences, persisted in the `fp_prefs` cookie so the server renders the right state on
 // first paint (parsed by `src/http/prefs.rs`). The value is a URL-encoded form string.
 
-export const PREFS_COOKIE = 'fp_prefs';
+const PREFS_COOKIE = 'fp_prefs';
 
 export const PREF_DEFAULTS = Object.freeze({
     filter: 'all',

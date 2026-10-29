@@ -1,0 +1,16 @@
+{
+  // Type-checks the Playwright specs and harness (Playwright itself doesn't): `npm run typecheck`.
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "bundler",
+    "lib": ["ES2023", "DOM"],
+    "types": ["node"],
+    "allowJs": true,
+    "checkJs": false,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "strict": false
+  },
+  "include": ["./**/*.ts"]
+}

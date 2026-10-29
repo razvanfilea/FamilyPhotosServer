@@ -81,7 +81,7 @@ register('destination-picker', (root) => {
     });
 
     root.addEventListener('click', (event) => {
-        const card = event.target.closest('[data-role="folders"] button[data-folder-id]');
+        const card = /** @type {Element} */ (event.target).closest('[data-role="folders"] button[data-folder-id]');
         if (!card) return;
         set({
             kind: 'folder',

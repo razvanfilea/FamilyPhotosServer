@@ -61,6 +61,7 @@ test.describe('share expiry', () => {
         expect(presetExpiry('week', now)).toBe(now / 1000 + 7 * 86400);
         // One calendar month: 31 Jan → 3 Mar (Feb has 28 days and the date overflows)
         expect(presetExpiry('month', now)).toBe(Date.UTC(2026, 2, 3, 12, 0, 0) / 1000);
+        // @ts-expect-error 'year' isn't a preset: the invalid input is the point of this check
         expect(() => presetExpiry('year', now)).toThrow();
     });
 

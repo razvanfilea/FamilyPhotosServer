@@ -13,8 +13,8 @@ const TIMEOUTS = { success: 4000, info: 4000, error: 6000 };
  */
 export function toast(message, { type = 'info', action, timeout } = {}) {
     const region = document.getElementById('toasts');
-    const template = document.getElementById('toast-template');
-    const element = template.content.firstElementChild.cloneNode(true);
+    const template = /** @type {HTMLTemplateElement} */ (document.getElementById('toast-template'));
+    const element = /** @type {HTMLElement} */ (template.content.firstElementChild.cloneNode(true));
 
     element.classList.add(`fp-toast--${type}`);
     element.dataset.type = type;

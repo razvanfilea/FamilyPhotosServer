@@ -269,16 +269,16 @@ register('photo-grid', (root) => {
     }
 
     root.addEventListener('focusin', (event) => {
-        const tile = event.target.closest?.(TILE);
+        const tile = /** @type {Element} */ (event.target).closest?.(TILE);
         if (!tile || tile.tabIndex === 0) return;
         root.querySelector(`${TILE}[tabindex="0"]`)?.setAttribute('tabindex', '-1');
         tile.tabIndex = 0;
     }, listen);
 
     root.addEventListener('click', (event) => {
-        const tile = event.target.closest(TILE);
+        const tile = /** @type {Element} */ (event.target).closest(TILE);
         // The check circle belongs to the selection
-        if (!tile || event.defaultPrevented || event.target.closest('.photo-tile__check')) return;
+        if (!tile || event.defaultPrevented || /** @type {Element} */ (event.target).closest('.photo-tile__check')) return;
         emit(tile, EVENTS.photoActivate, {
             photoId: Number(tile.dataset.photoId),
             index: Number(tile.dataset.index),
@@ -290,7 +290,7 @@ register('photo-grid', (root) => {
     const NAVIGATION_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown']);
 
     root.addEventListener('keydown', async (event) => {
-        const tile = event.target.closest?.(TILE);
+        const tile = /** @type {Element} */ (event.target).closest?.(TILE);
         if (!tile || !NAVIGATION_KEYS.has(event.key) || event.ctrlKey || event.metaKey || event.altKey) return;
         event.preventDefault();
 

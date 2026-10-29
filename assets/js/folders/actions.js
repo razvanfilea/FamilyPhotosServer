@@ -49,7 +49,7 @@ register('folder-actions', (actions) => {
     }
 
     actions.addEventListener('click', (event) => {
-        const action = event.target.closest('[data-action]')?.dataset.action;
+        const action = /** @type {Element} */ (event.target).closest('[data-action]')?.dataset.action;
         if (action === 'edit') rename();
         else if (action === 'share') openDialog({ url: `/ui/dialogs/sharing/${folderId}` });
         else if (action === 'delete') remove();

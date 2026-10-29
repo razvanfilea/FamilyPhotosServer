@@ -14,7 +14,7 @@ register('fast-scroller', (element) => {
     const grid = document.getElementById(element.dataset.grid);
     const thumb = element.querySelector('.fast-scroller__thumb');
     const label = element.querySelector('.fast-scroller__label');
-    if (!grid?.fpGrid) return;
+    if (!grid?.fpGrid) return undefined;
     const { fpGrid } = grid;
 
     const abort = new AbortController();

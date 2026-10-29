@@ -10,8 +10,8 @@
 
 import { clampTranslation, fitContain, zoomAbout } from './math.js';
 
-export const DOUBLE_TAP_SCALE = 2.5;
-export const MIN_MAX_SCALE = 4;
+const DOUBLE_TAP_SCALE = 2.5;
+const MIN_MAX_SCALE = 4;
 const DOUBLE_TAP_DELAY = 300;
 const DOUBLE_TAP_DISTANCE = 30;
 const TAP_SLOP = 10;
@@ -130,7 +130,7 @@ export function createZoom(container, options = {}) {
     }
 
     function onPointerDown(event) {
-        if (event.button > 0 || event.target.closest(CONTROLS)) return;
+        if (event.button > 0 || /** @type {Element} */ (event.target).closest(CONTROLS)) return;
         pointers.set(event.pointerId, {
             x: event.clientX, y: event.clientY, startX: event.clientX, startY: event.clientY, time: event.timeStamp,
         });
@@ -206,7 +206,7 @@ export function createZoom(container, options = {}) {
     }
 
     function onWheel(event) {
-        if (!target || event.target.closest(CONTROLS)) return;
+        if (!target || /** @type {Element} */ (event.target).closest(CONTROLS)) return;
         const pinch = event.ctrlKey || event.metaKey;
         if (!pinch && state.scale <= 1 && !isOverContent(event.clientX, event.clientY)) return;
         event.preventDefault();

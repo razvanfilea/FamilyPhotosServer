@@ -136,9 +136,15 @@ register('viewer', (root) => {
     // ---------- Slides ----------
 
     /**
-     * @typedef {{id: number, photo: object, element: HTMLElement, frame?: HTMLElement, video?: ReturnType<typeof createVideo>, provisional: boolean, aspect: number, natural: number, layout: () => void, setCurrent: (current: boolean) => void, loadOriginal: () => void, destroy: () => void}} Slide
+     * @typedef {{id: number, photo: object, element: HTMLElement, frame?: HTMLElement, video?: ReturnType<typeof createVideo>, provisional: boolean, aspect: number, natural: number, layout: () => void, setCurrent: (current: boolean) => void, loadOriginal: () => void, destroy: () => void, original?: any, screen?: any, startScreen?: any, screenWidth?: number}} Slide
      */
 
+    /**
+     * @param {HTMLElement} frame
+     * @param {string} className
+     * @param {string} src
+     * @param {{onReady?: (image: HTMLImageElement) => void, onFail?: () => void}} [handlers]
+     */
     function addLayer(frame, className, src, { onReady, onFail } = {}) {
         const image = new Image();
         image.className = className;
@@ -175,7 +181,7 @@ register('viewer', (root) => {
             },
             setCurrent() {},
             loadOriginal() {
-                if (slide.original || !hasExtension(slide.photo.name ?? '', imageExtensions)) return;
+                if (slide.original || !hasExtension(/** @type {{name?: string}} */ (slide.photo).name ?? '', imageExtensions)) return;
                 slide.original = addLayer(frame, 'viewer-slide__layer viewer-slide__original',
                     `/api/download/${slide.id}?inline=1`, { onReady: useImage });
             },
@@ -466,8 +472,8 @@ register('viewer', (root) => {
         document.documentElement.classList.add('fp-viewer-open');
         inerted = [...document.body.children].filter((element) =>
             element !== root && element.id !== 'toasts' && element.id !== 'app-dialog'
-            && !element.inert && !['SCRIPT', 'TEMPLATE'].includes(element.tagName));
-        for (const element of inerted) element.inert = true;
+            && !(/** @type {HTMLElement} */ (element)).inert && !['SCRIPT', 'TEMPLATE'].includes(element.tagName));
+        for (const element of inerted) /** @type {HTMLElement} */ (element).inert = true;
     }
 
     function unlockPage() {
@@ -647,7 +653,7 @@ register('viewer', (root) => {
     }
 
     stage.addEventListener('pointerdown', (event) => {
-        if (event.pointerType === 'mouse' || !isOpen || event.target.closest('button, a, input, summary')) return;
+        if (event.pointerType === 'mouse' || !isOpen || /** @type {Element} */ (event.target).closest('button, a, input, summary')) return;
         if (zoom.isZoomed() || zoom.pointerCount() > 1) {
             swipe = null;
             return;
@@ -895,7 +901,7 @@ register('viewer', (root) => {
     };
 
     root.addEventListener('click', (event) => {
-        const target = event.target.closest('[data-action]');
+        const target = /** @type {Element} */ (event.target).closest('[data-action]');
         if (!target || !root.contains(target) || target.hidden) return;
         ACTIONS[target.dataset.action]?.();
     }, listen);
@@ -946,7 +952,7 @@ register('viewer', (root) => {
     // Space can't be registered with core/keyboard.js (it splits key sequences on spaces)
     root.addEventListener('keydown', (event) => {
         if (event.key !== ' ' || event.ctrlKey || event.metaKey || event.altKey || isDialogOpen()) return;
-        if (event.target.closest('button, a, input, summary')) return;
+        if (/** @type {Element} */ (event.target).closest('button, a, input, summary')) return;
         const video = currentVideo();
         if (!video) return;
         event.preventDefault();

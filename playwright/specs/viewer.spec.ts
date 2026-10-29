@@ -249,7 +249,7 @@ test.describe('navigation', () => {
         const photos = timeline('alice');
         await gotoViewer(page, `/?photo=${photos[0].id}`, photos[0].id);
         const cdp = await page.context().newCDPSession(page);
-        const touch = (type: string, x?: number, y?: number) => cdp.send('Input.dispatchTouchEvent', {
+        const touch = (type: 'touchStart' | 'touchMove' | 'touchEnd' | 'touchCancel', x?: number, y?: number) => cdp.send('Input.dispatchTouchEvent', {
             type, touchPoints: x === undefined ? [] : [{ x, y: y!, id: 1 }],
         });
         const { width, height } = page.viewportSize()!;

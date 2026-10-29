@@ -54,7 +54,7 @@ export function openFolderNameDialog({ folderId, initialName = '', initialPublic
             resolve(result);
         });
         dialog.addEventListener('click', (event) => {
-            if (event.target.closest('[data-dialog-close]')) dialog.close();
+            if (/** @type {Element} */ (event.target).closest('[data-dialog-close]')) dialog.close();
         });
 
         document.body.append(dialog);
@@ -64,7 +64,7 @@ export function openFolderNameDialog({ folderId, initialName = '', initialPublic
 
         (async () => {
             try {
-                await window.htmx.ajax('GET', `/ui/dialogs/folder-name?${new URLSearchParams(query)}`, {
+                await window.htmx.ajax('GET', `/ui/dialogs/folder-name?${new URLSearchParams(/** @type {any} */ (query))}`, {
                     target: box,
                     swap: 'innerHTML',
                 });
@@ -83,10 +83,10 @@ export function openFolderNameDialog({ folderId, initialName = '', initialPublic
     });
 }
 
-register('folder-name-form', (form) => {
+register('folder-name-form', (/** @type {HTMLFormElement} */ form) => {
     const dialog = form.closest('dialog');
     const session = sessions.get(dialog);
-    const input = form.elements.namedItem('name');
+    const input = /** @type {HTMLInputElement} */ (form.elements.namedItem('name'));
     const confirm = form.querySelector('[data-testid="folder-name-confirm"]');
     const error = form.querySelector('[data-role="error"]');
     const warning = form.querySelector('[data-role="warning"]');

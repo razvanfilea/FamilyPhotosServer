@@ -6,7 +6,7 @@
 // with an AbortError when `signal` aborts. queue.js sets `item.phase`, `item.loaded`,
 // `item.error` and `item.photo`.
 
-export const CONCURRENCY = 3;
+const CONCURRENCY = 3;
 export const RETRY_DELAYS = Object.freeze([1000, 4000, 10000]);
 
 /** Network errors and server errors are worth retrying; other errors won't change. */
@@ -19,7 +19,7 @@ function abortError() {
 }
 
 /** Waits `ms`, or rejects with an AbortError as soon as `signal` aborts. */
-export function sleep(ms, signal) {
+function sleep(ms, signal) {
     return new Promise((resolve, reject) => {
         if (signal.aborted) {
             reject(abortError());

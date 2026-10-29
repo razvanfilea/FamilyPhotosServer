@@ -25,7 +25,7 @@ register('memories', (element) => {
     thumbs.observe(element);
 
     element.addEventListener('click', (event) => {
-        const card = event.target.closest('.memory-card');
+        const card = /** @type {Element} */ (event.target).closest('.memory-card');
         if (!card) return;
         emit(card, EVENTS.photoActivate, {
             photoId: Number(card.dataset.photoId),

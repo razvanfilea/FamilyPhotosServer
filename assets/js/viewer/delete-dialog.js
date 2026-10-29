@@ -16,7 +16,7 @@ import { closeDialog, openDialog } from '../core/dialog.js';
 import { t } from '../core/strings.js';
 
 /** Thumbnails shown before the "+N" chip */
-export const MAX_THUMBNAILS = 8;
+const MAX_THUMBNAILS = 8;
 
 function thumbnails(list, ids) {
     const shown = ids.length > MAX_THUMBNAILS ? ids.slice(0, MAX_THUMBNAILS - 1) : ids;
@@ -45,7 +45,7 @@ function thumbnails(list, ids) {
 export function openDeleteDialog({ ids, permanent = false, onConfirm, title, message }) {
     const template = /** @type {HTMLTemplateElement} */ (document.getElementById('delete-dialog-template'));
     const texts = template.dataset;
-    const fragment = template.content.cloneNode(true);
+    const fragment = /** @type {DocumentFragment} */ (template.content.cloneNode(true));
     const slot = (name) => fragment.querySelector(`[data-slot="${name}"]`);
     const one = ids.length === 1;
 

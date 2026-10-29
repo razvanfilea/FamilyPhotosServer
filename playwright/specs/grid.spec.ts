@@ -524,7 +524,7 @@ test.describe('fast scroller', () => {
         await gotoGrid(page);
         const cdp = await page.context().newCDPSession(page);
         let x = 0;
-        const touch = (type: string, y?: number) => cdp.send('Input.dispatchTouchEvent', {
+        const touch = (type: 'touchStart' | 'touchMove' | 'touchEnd' | 'touchCancel', y?: number) => cdp.send('Input.dispatchTouchEvent', {
             type, touchPoints: y === undefined ? [] : [{ x, y, id: 1 }],
         });
 

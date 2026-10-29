@@ -1,0 +1,29 @@
+{
+  // Unused files, exports and dependencies of the frontend, the Playwright harness and the scripts.
+  // Run with `npm run knip`; fix findings by deleting the dead code, not by ignoring it.
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    // Modules loaded by a template <script type="module">, the hash worker and the vendor wrappers
+    "assets/js/app.js",
+    "assets/js/pages/{folder,folders,timeline,upload}.js",
+    "assets/js/viewer/index.js",
+    "assets/js/upload/hash-worker.js",
+    "assets/js/vendor-wrappers/*.js",
+    "playwright/specs/*.spec.ts",
+    "playwright/harness/*.{ts,mjs}",
+    "scripts/*.mjs"
+  ],
+  "project": ["assets/js/**/*.js", "playwright/**/*.{ts,mjs}", "scripts/*.mjs"],
+  // Documented API of core/prefs.js: the selection and utilities code reads preferences with it.
+  "ignoreIssues": {
+    "assets/js/core/prefs.js": ["exports"]
+  },
+  "ignoreDependencies": [
+    // Used by templates/input.css (`@plugin "daisyui"`), which knip doesn't parse
+    "daisyui",
+    // Read by scripts/build-icons.mjs through a file path, not an import
+    "@material-symbols/svg-400"
+  ],
+  // The destination picker spec imports this module in the browser (page.evaluate), by URL
+  "ignoreUnresolved": ["/assets/js/destination-picker/destination.js"]
+}

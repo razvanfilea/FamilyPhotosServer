@@ -32,7 +32,7 @@ export function watchTiles(container) {
         for (const { isIntersecting, target } of entries) {
             if (!isIntersecting) continue;
             observer.unobserve(target);
-            const hash = target.dataset.thumbhash;
+            const hash = /** @type {HTMLElement} */ (target).dataset.thumbhash;
             if (!hash || target.parentElement.classList.contains('is-loaded')) continue;
             try {
                 drawThumbHash(target, hash);

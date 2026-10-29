@@ -10,7 +10,7 @@ export const WINDOW_AFTER = 30;
 /** The window is extended once the current photo is this close to one of its edges */
 export const EXTEND_THRESHOLD = 10;
 /** Photos loaded by each extension */
-export const EXTEND_LIMIT = 50;
+const EXTEND_LIMIT = 50;
 
 const NEIGHBORS = '/api/context/neighbors';
 

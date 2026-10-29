@@ -4,11 +4,11 @@
 export const MAX_ZOOM = 3;
 
 /** Accumulated pinch scale beyond which the zoom level steps (Android's detectZoomIn). */
-export const PINCH_ZOOM_IN = 1.8;
-export const PINCH_ZOOM_OUT = 0.6;
+const PINCH_ZOOM_IN = 1.8;
+const PINCH_ZOOM_OUT = 0.6;
 
 /** Accumulated ctrl+wheel delta that makes one zoom step. A mouse wheel notch is 100. */
-export const WHEEL_STEP_DELTA = 50;
+const WHEEL_STEP_DELTA = 50;
 
 /** Where a month header lands when jumping to it, as a fraction of the viewport height. */
 export const JUMP_OFFSET = 0.2;

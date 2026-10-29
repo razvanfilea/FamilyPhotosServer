@@ -172,6 +172,7 @@ test.describe('destination picker', () => {
         const name = folders.name('Resolved');
         await gotoReady(page, PAGE);
         const resolved = await page.evaluate(async (folderName) => {
+            // @ts-expect-error browser URL import, resolved by the page and not by tsc
             const { resolveDestination } = await import('/assets/js/destination-picker/destination.js');
             return [
                 await resolveDestination({ kind: 'root', isPublic: true }),
@@ -186,6 +187,7 @@ test.describe('destination picker', () => {
 
         // Same name again: the server returns the same folder
         const again = await page.evaluate(async (folderName) => {
+            // @ts-expect-error browser URL import, resolved by the page and not by tsc
             const { resolveDestination } = await import('/assets/js/destination-picker/destination.js');
             return resolveDestination({ kind: 'new', name: folderName, isPublic: false });
         }, name);
