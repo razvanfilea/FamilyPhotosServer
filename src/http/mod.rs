@@ -36,9 +36,12 @@ mod views;
 #[cfg(test)]
 mod tests;
 
-const CONTENT_SECURITY_POLICY: &str = "default-src 'self'; img-src 'self' data: blob:; \
-    media-src 'self' blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; \
-    connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
+/// The policy of every response: no inline scripts, no eval, no WebAssembly
+const CONTENT_SECURITY_POLICY: &str = concat!(
+    "default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; ",
+    "style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; ",
+    "frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+);
 
 pub fn router(
     app_state: AppStateRef,
@@ -74,7 +77,8 @@ pub fn router(
         )
         .fallback(pages::not_found)
         .layer(middleware::from_fn(session_activity::mark_session_active))
-        .layer(SetResponseHeaderLayer::overriding(
+        // `if_not_present`: routes with their own policy (the upload page and its worker) keep it
+        .layer(SetResponseHeaderLayer::if_not_present(
             header::CONTENT_SECURITY_POLICY,
             HeaderValue::from_static(CONTENT_SECURITY_POLICY),
         ))

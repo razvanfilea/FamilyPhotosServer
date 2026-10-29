@@ -123,7 +123,7 @@ async fn test_pages_and_fragments_render_when_logged_in(pool: SqlitePool) {
         ("/duplicates", "Duplicates"),
         ("/large-files", "Large Files"),
         ("/settings", "Settings"),
-        ("/upload", "Upload Photos"),
+        ("/upload", "Upload"),
     ] {
         let request = Request::get(uri)
             .header(header::COOKIE, &cookie)
@@ -291,4 +291,29 @@ fn test_asset_cache_control() {
         asset_cache_control("/css/main.css", Some("v=dev"), "dev"),
         "no-cache"
     );
+}
+
+#[sqlx::test]
+async fn test_strict_csp_everywhere(pool: SqlitePool) {
+    let router = test_router(pool).await;
+    let cookie = login(&router).await;
+
+    for uri in [
+        "/",
+        "/upload",
+        "/login",
+        "/folders",
+        "/api/profile",
+        "/assets/js/app.js",
+        "/missing",
+        "/assets/js/upload/missing.js",
+    ] {
+        let request = Request::get(uri)
+            .header(header::COOKIE, &cookie)
+            .body(Body::empty())
+            .unwrap();
+        let response = send(&router, request).await;
+        let csp = header_value(&response, "content-security-policy");
+        assert!(csp.contains("script-src 'self';"), "{uri}: {csp}");
+    }
 }
