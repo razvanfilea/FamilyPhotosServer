@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "update users set password_hash = $1 where id = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "c623c3fc37c43be7adb821bb1cc3c9a08f8a0c66c46cdc5523b058c69e61be83"
+}

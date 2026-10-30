@@ -5,6 +5,7 @@ use crate::http::fragments::safe_redirect_path;
 use crate::http::template_into_response::TemplateIntoResponse;
 use crate::http::utils::{AuthSession, WantsHtml};
 use crate::model::user::{SimpleUser, UserCredentials};
+use crate::utils::password_hash::{generate_hash_from_password, validate_credentials};
 use askama::Template;
 use axum::extract::State;
 use axum::http::{HeaderValue, StatusCode};
@@ -12,6 +13,7 @@ use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use axum::{Form, Json, Router};
 use serde::Deserialize;
+use tokio::task;
 use tracing::{debug, error, warn};
 
 pub fn public_router() -> Router<AppStateRef> {
@@ -23,6 +25,7 @@ pub fn public_router() -> Router<AppStateRef> {
 pub fn protected_router() -> Router<AppStateRef> {
     Router::new()
         .route("/profile", get(profile))
+        .route("/profile/password", post(change_password))
         .route("/members", get(members_list))
 }
 
@@ -128,6 +131,71 @@ async fn profile(auth_session: AuthSession) -> impl IntoResponse {
         .map_or(StatusCode::UNAUTHORIZED.into_response(), |user| {
             Json(SimpleUser::from(user)).into_response()
         })
+}
+
+const MIN_PASSWORD_LENGTH: usize = 8;
+const MAX_PASSWORD_LENGTH: usize = 1024;
+
+#[derive(Deserialize)]
+struct ChangePasswordRequest {
+    current_password: String,
+    new_password: String,
+}
+
+/// Web only. Other sessions of the user end (axum-login ties a session to the password hash); the
+/// current one is logged in again with the new hash.
+async fn change_password(
+    State(state): State<AppStateRef>,
+    auth: AuthSession,
+    AuthenticatedUser(user): AuthenticatedUser,
+    Json(request): Json<ChangePasswordRequest>,
+) -> HttpResult<impl IntoResponse> {
+    let ChangePasswordRequest {
+        current_password,
+        new_password,
+    } = request;
+
+    let current_hash = user.password_hash.clone();
+    let is_correct =
+        task::spawn_blocking(move || validate_credentials(current_password, current_hash))
+            .await
+            .map_err(|e| HttpError::Internal(e.to_string()))?
+            .map_err(|e| HttpError::Internal(e.to_string()))?;
+    if !is_correct {
+        return Err(HttpError::BadRequest(
+            "Current password is incorrect".to_string(),
+        ));
+    }
+
+    let length = new_password.chars().count();
+    if length < MIN_PASSWORD_LENGTH {
+        return Err(HttpError::BadRequest(format!(
+            "Password must be at least {MIN_PASSWORD_LENGTH} characters"
+        )));
+    }
+    if length > MAX_PASSWORD_LENGTH {
+        return Err(HttpError::BadRequest("Password is too long".to_string()));
+    }
+
+    let new_hash = task::spawn_blocking(move || generate_hash_from_password(new_password))
+        .await
+        .map_err(|e| HttpError::Internal(e.to_string()))?;
+    state
+        .users_repo
+        .update_password(&user.id, &new_hash)
+        .await?;
+
+    let updated = state
+        .users_repo
+        .get_user(&user.id)
+        .await
+        .ok_or_else(|| HttpError::Internal("User disappeared".to_string()))?;
+    auth.login(&updated)
+        .await
+        .map_err(|e| HttpError::Internal(e.to_string()))?;
+
+    debug!("Password changed for user: {}", user.id);
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn logout(auth: AuthSession, WantsHtml(wants_html): WantsHtml) -> Response {

@@ -107,13 +107,14 @@ async function restore(selection) {
     if (error) toast(explain(error, 'cantRestore').message, { type: 'error' });
 }
 
-async function deleteForever(selection) {
+async function deleteForever(selection, _userId, title) {
     const ids = selection.ids();
     const deleted = new Set();
 
     await openDeleteDialog({
         ids,
         permanent: true,
+        title,
         onConfirm: async ({ setStatus }) => {
             const todo = ids.filter((id) => !deleted.has(id));
             let finished = 0;
@@ -241,4 +242,15 @@ const ACTIONS = {
  */
 export function runAction(name, selection, { userId }) {
     return ACTIONS[name](selection, userId);
+}
+
+/**
+ * Runs a bar action on a list of ids that aren't (all) in the grid: the page-level buttons of the
+ * trash ("Restore all", "Empty trash"). `title` replaces the title of the permanent delete dialog.
+ * @param {'restore' | 'delete-forever'} name
+ * @param {number[]} ids
+ * @param {{contextKey: string, title?: string}} options
+ */
+export function runOnIds(name, ids, { contextKey, title }) {
+    return ACTIONS[name]({ ids: () => ids, contextKey, clear() {} }, '', title);
 }

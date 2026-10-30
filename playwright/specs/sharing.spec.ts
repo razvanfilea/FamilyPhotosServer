@@ -1,6 +1,10 @@
 import { expect, gotoReady } from '../fixtures/auth';
 import { test } from '../fixtures/folders';
 import { folderId } from '../harness/seed';
+import { USERS } from '../harness/users.mjs';
+
+/** Everyone alice can share with */
+const OTHER_USERS = USERS.filter((u) => u.id !== 'alice').map((u) => u.id);
 
 const dialog = (page: import('@playwright/test').Page) => page.getByTestId('sharing-dialog');
 const member = (page: import('@playwright/test').Page, name: string) =>
@@ -18,12 +22,12 @@ test.describe('sharing', () => {
         await expect(dialog(page)).toContainText('Manage access');
         await expect(page.getByTestId('sharing-owner')).toContainText('Alice');
         await expect(page.getByTestId('sharing-owner')).toContainText('Owner');
-        await expect(page.getByTestId('sharing-add-user')).toContainText(['Bob', 'Carol']);
+        await expect(page.getByTestId('sharing-add-user')).toContainText(['Bob', 'Carol', 'Dave', 'Erin']);
         await page.getByTestId('sharing-add').click();
         await page.getByTestId('sharing-add-user').filter({ hasText: 'Bob' }).click();
         await expect(page.getByTestId('toast')).toHaveText(/Member added/);
         await expect(member(page, 'Bob').getByTestId('sharing-permission')).toHaveText('View only');
-        await expect(page.getByTestId('sharing-add-user')).toHaveCount(1);
+        await expect(page.getByTestId('sharing-add-user')).toHaveCount(OTHER_USERS.length - 1);
         await expect(page.getByTestId('folder-badge')).toContainText('Shared (1)');
 
         // He sees it under Shared, without upload
@@ -115,14 +119,14 @@ test.describe('sharing', () => {
     test('a shared folder with nobody left to add hides the add section', async ({ alicePage: page, folders }) => {
         const id = await folders.create('alice', folders.name('Everyone'));
         const alice = await folders.as('alice');
-        for (const grantee of ['bob', 'carol']) {
+        for (const grantee of OTHER_USERS) {
             expect((await alice.post('/api/sharing', { data: { folder_id: id, grantee_id: grantee } })).ok()).toBe(true);
         }
         await gotoReady(page, `/folders/${id}`);
         await page.getByTestId('folder-share').click();
-        await expect(page.getByTestId('sharing-member')).toHaveCount(2);
+        await expect(page.getByTestId('sharing-member')).toHaveCount(OTHER_USERS.length);
         await expect(page.getByTestId('sharing-add')).toHaveCount(0);
-        await expect(page.getByTestId('folder-badge')).toContainText('Shared (2)');
+        await expect(page.getByTestId('folder-badge')).toContainText(`Shared (${OTHER_USERS.length})`);
     });
 
     test('members see who has access, read only', async ({ bobPage: page }) => {

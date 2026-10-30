@@ -100,7 +100,8 @@ export function summarize(metas, userId) {
     for (const { deletable, owner } of metas) {
         count += 1;
         if (deletable === false) undeletable += 1;
-        // Permanent deletion is owner-only (/api/delete): own or public photos
+        // Permanent deletion is owner-only (/api/delete): own or public photos. The same rule is
+        // `permanently_deletable_ids` in src/http/pages/trash.rs ("Empty trash").
         if (owner !== undefined && owner !== null && owner !== userId) foreign += 1;
     }
     return { count, undeletable, foreign };

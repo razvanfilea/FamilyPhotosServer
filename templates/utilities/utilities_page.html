@@ -1,0 +1,38 @@
+{% extends "shell.html" %}
+{% import "macros/icons.html" as icons %}
+
+{% block title %}Utilities - Family Photos{% endblock %}
+{% block page_title %}Utilities{% endblock %}
+
+{% macro tool(testid, href, label, icon, tone) -%}
+<a href="{{ href }}" class="fp-tool" hx-boost="false" data-testid="tool-{{ testid }}">
+    <span class="fp-tool__icon fp-tool__icon--{{ tone }}">{% call icons::icon(icon, true) %}{% endcall %}</span>
+    <span class="fp-tool__label">{{ label }}</span>
+</a>
+{%- endmacro %}
+
+{% block content %}
+<div class="fp-utilities">
+    <section class="fp-stats-card" aria-labelledby="stats-title" data-testid="stats-card">
+        <h2 id="stats-title" class="fp-stats-card__title">Photo Statistics</h2>
+        <dl class="fp-stats-card__rows">
+            {%- for row in rows %}
+            <div class="fp-stats-card__row" data-testid="{{ row.testid }}">
+                <dt>{% call icons::icon(row.icon) %}{% endcall %} {{ row.label }}</dt>
+                <dd>{{ row.value }}</dd>
+            </div>
+            {%- endfor %}
+        </dl>
+        <p class="fp-stats-card__total" data-testid="stat-total">Total: {{ total }}</p>
+    </section>
+
+    <nav class="fp-tools" aria-label="Tools">
+        {% call tool("favorites", "/favorites", "Favorites", "star", "yellow") %}{% endcall %}
+        {% call tool("trash", "/trash", "Trash", "delete", "red") %}{% endcall %}
+        {% call tool("duplicates", "/duplicates", "Duplicates", "content_copy", "teal") %}{% endcall %}
+        {% call tool("large-files", "/large-files", "Large Files", "database", "blue") %}{% endcall %}
+        {% call tool("upload", "/upload", "Upload", "cloud_upload", "green") %}{% endcall %}
+        {% call tool("settings", "/settings", "Settings", "settings", "grey") %}{% endcall %}
+    </nav>
+</div>
+{% endblock %}

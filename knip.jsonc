@@ -5,7 +5,7 @@
   "entry": [
     // Modules loaded by a template <script type="module">, the hash worker and the vendor wrappers
     "assets/js/app.js",
-    "assets/js/pages/{folder,folders,timeline,upload}.js",
+    "assets/js/pages/{duplicates,favorites,folder,folders,large-files,settings,timeline,trash,upload}.js",
     "assets/js/viewer/index.js",
     "assets/js/upload/hash-worker.js",
     "assets/js/vendor-wrappers/*.js",

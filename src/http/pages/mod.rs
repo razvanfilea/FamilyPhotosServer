@@ -16,7 +16,6 @@ mod favorites;
 mod folders;
 pub mod grid;
 mod large_files;
-mod placeholder;
 mod settings;
 mod sharing;
 mod shortcuts;
@@ -70,6 +69,7 @@ pub fn router(app_state: AppStateRef) -> Router {
         .route("/ui/grid/month", get(grid::month_page))
         .route("/ui/grid/month-picker", get(grid::month_picker))
         .route("/ui/viewer/info/{photo_id}", get(viewer::info_panel))
+        .route("/ui/trash/deletable-ids", get(trash::deletable_ids))
         .route_layer(middleware::from_fn(fragments::require_login));
 
     let unauthenticated_router = Router::new()

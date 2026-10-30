@@ -1,0 +1,49 @@
+{% extends "shell.html" %}
+{% import "macros/icons.html" as icons %}
+{% import "grid/macros.html" as grids %}
+
+{% block title %}Trash - Family Photos{% endblock %}
+
+{% block topbar %}
+<div class="fp-folder-title">
+    <div class="fp-folder-title__text">
+        <h1 data-testid="trash-title" class="fp-topbar__heading">Trash</h1>
+        <div class="fp-folder-title__badges">
+            <span class="fp-pill" data-bind="photo-count" data-testid="trash-count">{{ count_label }}</span>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block topbar_actions %}
+{% call grids::zoom_controls(grid.zoom) %}{% endcall %}
+<div class="fp-trash-actions" data-component="trash-actions"
+     data-message-nothing-to-delete="There are no photos you can delete permanently"
+     data-delete-title="Delete {photos} permanently?">
+    <button type="button" class="btn btn-ghost" data-action="restore-all" aria-label="Restore all"
+            data-testid="trash-restore-all"{% if grid.total == 0 %} disabled{% endif %}>
+        {% call icons::icon("restore_from_trash") %}{% endcall %}
+        <span class="fp-trash-actions__label">Restore all</span>
+    </button>
+    <button type="button" class="btn btn-ghost text-error" data-action="empty" aria-label="Empty trash"
+            data-testid="trash-empty"{% if grid.total == 0 %} disabled{% endif %}>
+        {% call icons::icon("delete_forever") %}{% endcall %}
+        <span class="fp-trash-actions__label">Empty trash</span>
+    </button>
+</div>
+{% endblock %}
+
+{% block content %}
+<div data-testid="trash-page">
+    <p class="fp-trash-info" data-testid="trash-info">
+        {% call icons::icon("info") %}{% endcall %}
+        <span>Photos in trash are automatically deleted after 30 days</span>
+    </p>
+    {% call grids::grid_empty(grid, "delete", "Trash is empty", "") %}{% endcall %}
+    {% call grids::photo_grid(grid) %}{% endcall %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script type="module" src="/assets/js/pages/trash.js"></script>
+{% endblock %}

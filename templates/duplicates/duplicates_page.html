@@ -1,0 +1,91 @@
+{% extends "shell.html" %}
+{% import "macros/icons.html" as icons %}
+{% import "macros/ui.html" as ui %}
+
+{% block title %}Duplicates - Family Photos{% endblock %}
+
+{% block topbar %}
+<div class="fp-folder-title">
+    <a href="/utilities" class="btn btn-ghost btn-circle" aria-label="Back to utilities" hx-boost="false"
+       data-testid="duplicates-back">{% call icons::icon("arrow_back") %}{% endcall %}</a>
+    <div class="fp-folder-title__text">
+        <h1 data-testid="duplicates-title" class="fp-topbar__heading">Duplicates</h1>
+        {%- if !groups.is_empty() %}
+        <p class="fp-topbar__subtitle" data-testid="dup-position" data-bind="position"></p>
+        {%- endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block topbar_actions %}
+{%- if !groups.is_empty() %}
+<button type="button" class="btn btn-ghost btn-circle" data-action="info" aria-label="Photo info"
+        data-testid="dup-info">{% call icons::icon("info") %}{% endcall %}</button>
+{%- endif %}
+{% endblock %}
+
+{% block content %}
+<div data-testid="duplicates-page">
+    {%- if failed %}
+    <div class="fp-empty fp-empty--error" role="alert" data-testid="duplicates-error">
+        {% call icons::icon("error", false, "fp-empty__icon") %}{% endcall %}
+        <h2 class="fp-empty__title">Failed to load duplicates</h2>
+    </div>
+    {%- else %}
+    <div data-empty{% if !groups.is_empty() %} hidden{% endif %} data-testid="duplicates-empty">
+        {% call ui::empty_state("content_copy", "No duplicates found", "") %}{% endcall %}
+    </div>
+    {%- if !groups.is_empty() %}
+    <div class="fp-duplicates" data-component="duplicates"
+         data-message-moved-one="1 duplicate moved to trash" data-message-moved-many="{count} duplicates moved to trash"
+         data-label-position="Group {current} of {total}">
+        <div class="fp-dup-stage" data-slot="stage" data-testid="dup-stage">
+            <img class="fp-dup-stage__image" data-slot="image" alt="Selected photo" draggable="false">
+            <button type="button" class="fp-dup-stage__nav fp-dup-stage__nav--prev" data-action="prev"
+                    aria-label="Previous group" data-testid="dup-prev">{% call icons::icon("chevron_left") %}{% endcall %}</button>
+            <button type="button" class="fp-dup-stage__nav fp-dup-stage__nav--next" data-action="next"
+                    aria-label="Next group" data-testid="dup-next">{% call icons::icon("chevron_right") %}{% endcall %}</button>
+        </div>
+
+        <div class="fp-dup-choices">
+            {%- for group in groups %}
+            <section class="fp-dup-group" data-group hidden data-image-url="{{ group.image_url }}"
+                     data-fallback-url="{{ group.fallback_url }}" data-photo-id="{{ group.copies[0].id }}"
+                     data-testid="dup-group">
+                <h2 class="fp-dup-group__title">Which do you want to keep?</h2>
+                <ul class="fp-dup-group__copies">
+                    {%- for copy in group.copies %}
+                    <li>
+                        <button type="button" class="fp-dup-copy" data-action="keep" data-photo-id="{{ copy.id }}" title="{{ copy.name }}"
+                                data-testid="dup-keep">
+                            <img src="/api/preview/{{ copy.id }}" alt="" loading="lazy" decoding="async">
+                            <span class="fp-dup-copy__text">
+                                <span class="fp-dup-copy__where">
+                                    {% call icons::icon(copy.type_icon) %}{% endcall %}
+                                    <span>{{ copy.type_label }}</span>
+                                    {%- if let Some(folder) = copy.folder_name %}
+                                    <span class="fp-dup-copy__folder">{{ folder }}</span>
+                                    {%- else %}
+                                    <em class="fp-dup-copy__folder">No folder</em>
+                                    {%- endif %}
+                                </span>
+                                <span class="fp-dup-copy__meta">{{ copy.date }} • {{ copy.size }}</span>
+                            </span>
+                        </button>
+                    </li>
+                    {%- endfor %}
+                </ul>
+            </section>
+            {%- endfor %}
+        </div>
+    </div>
+    {%- endif %}
+    {%- endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+{%- if !groups.is_empty() %}
+<script type="module" src="/assets/js/pages/duplicates.js"></script>
+{%- endif %}
+{% endblock %}

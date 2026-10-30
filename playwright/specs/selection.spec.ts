@@ -1,12 +1,11 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
-import type { APIRequestContext, Locator, Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import { expect, gotoReady, loginAs, test, type UserId } from '../fixtures/auth';
+import { photoInfo as libraryPhotoInfo, uploadPhoto } from '../fixtures/library';
 import { folderId, getSeed, type SeedPhoto } from '../harness/seed';
 
 // Read-only tests use alice's and bob's seeded photos. Tests that change photos run as carol, on
-// uploads with far-future dates (each upload unique), on desktop only; the trash and favorites
-// pages have no grid yet.
+// uploads with far-future dates (each upload unique), on desktop only. The selection on the trash,
+// favorites and large files pages is tested in trash.spec.ts and utilities.spec.ts.
 
 /** alice's or bob's timeline (filter all), in order */
 function timeline(user: UserId): SeedPhoto[] {
@@ -46,41 +45,17 @@ const center = async (target: Locator) => {
     return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
 };
 
-/** Uploads fixture files as carol with the given creation times, returns their ids in order */
-async function uploadAsCarol(
-    request: APIRequestContext,
-    files: { fixture: string, name: string, time: number }[],
-) {
+/** Three of carol's photos, newest first, `year` far in the future so they top the timeline */
+async function carolPhotos(page: Page, year: number, names = ['a', 'b', 'c']) {
+    await loginAs(page, 'carol');
     const ids = [];
-    for (const { fixture, name, time } of files) {
-        // The server reuses a photo with the same content, so make each upload unique
-        const buffer = Buffer.concat([
-            readFileSync(join(__dirname, '../fixtures/photos', fixture)),
-            Buffer.from(`${name} ${Date.now()}`),
-        ]);
-        const response = await request.post(`/api/upload?time_created=${time}`, {
-            multipart: { file: { name, mimeType: 'image/jpeg', buffer } },
-        });
-        expect(response.ok(), await response.text()).toBe(true);
-        ids.push((await response.json()).id as number);
+    for (const [i, name] of names.entries()) {
+        ids.push(await uploadPhoto(page.request, `sel-${year}-${name}.jpg`, Date.UTC(year, 0, 10) / 1000 - i * 86400));
     }
     return ids;
 }
 
-/** Three of carol's photos, newest first, `year` far in the future so they top the timeline */
-async function carolPhotos(page: Page, year: number, names = ['a', 'b', 'c']) {
-    await loginAs(page, 'carol');
-    const fixtures = ['public/garden.jpg', 'public/picnic.jpg', 'public/bikes.jpg'];
-    return uploadAsCarol(page.request, names.map((name, i) => ({
-        fixture: fixtures[i % fixtures.length],
-        name: `sel-${year}-${name}.jpg`,
-        time: Date.UTC(year, 0, 10) / 1000 - i * 86400,
-    })));
-}
-
-async function photoInfo(page: Page, id: number) {
-    return (await (await page.request.get(`/api/photos/${id}/info`)).json()).photo;
-}
+const photoInfo = async (page: Page, id: number) => (await libraryPhotoInfo(page.request, id)).photo;
 
 test.describe('entering and leaving selection mode', () => {
     test('the check circle selects, a click toggles, Escape and the close button clear', async ({ alicePage: page, isMobile }) => {
