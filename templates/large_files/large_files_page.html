@@ -1,0 +1,29 @@
+{% extends "shell.html" %}
+{% import "macros/icons.html" as icons %}
+{% import "grid/macros.html" as grids %}
+
+{% block title %}Large Files - Family Photos{% endblock %}
+
+{% block topbar %}
+<div class="fp-folder-title">
+    <a href="/utilities" class="btn btn-ghost btn-circle" aria-label="Back to utilities" hx-boost="false"
+       data-testid="large-files-back">{% call icons::icon("arrow_back") %}{% endcall %}</a>
+    <div class="fp-folder-title__text">
+        <h1 data-testid="large-files-title" class="fp-topbar__heading">Large Files</h1>
+        <p class="fp-topbar__subtitle" data-testid="large-files-subtitle">Files larger than 50 MB</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block topbar_actions %}{% call grids::zoom_controls(grid.zoom) %}{% endcall %}{% endblock %}
+
+{% block content %}
+<div data-testid="large-files-page">
+    {% call grids::grid_empty(grid, "database", "No files larger than 50 MB", "") %}{% endcall %}
+    {% call grids::photo_grid(grid) %}{% endcall %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script type="module" src="/assets/js/pages/large-files.js"></script>
+{% endblock %}

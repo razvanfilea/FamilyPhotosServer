@@ -46,6 +46,7 @@ photos=(
     "bob/bob-a.jpg|2024:06:15 10:00:00|480x360"
     "bob/bob-b.jpg|2024:04:02 10:00:00|480x360"
     "bob/bob-c.jpg|2023:10:10 10:00:00|360x480"
+    "carol/dup-a.jpg|2024:03:01 10:00:00|480x360"
 )
 
 seed=1
@@ -59,6 +60,10 @@ done
 
 # An exact copy, for the duplicates tool
 cp "$root/public/duplicate-a.jpg" "$root/public/duplicate-b.jpg"
+
+# carol's duplicates: the upload API refuses to create duplicates of a user's photos
+mkdir -p "$root/carol/Copies"
+cp "$root/carol/dup-a.jpg" "$root/carol/Copies/dup-b.jpg"
 
 # Videos have no EXIF, the server reads their date from the file name
 ffmpeg -loglevel error -f lavfi -i testsrc=duration=2:size=320x240:rate=15 \

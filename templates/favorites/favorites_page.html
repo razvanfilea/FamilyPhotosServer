@@ -1,0 +1,30 @@
+{% extends "shell.html" %}
+{% import "macros/icons.html" as icons %}
+{% import "grid/macros.html" as grids %}
+
+{% block title %}Favorites - Family Photos{% endblock %}
+
+{% block topbar %}
+<div class="fp-folder-title">
+    <div class="fp-folder-title__text">
+        <h1 data-testid="favorites-title" class="fp-topbar__heading">Favorites</h1>
+        <div class="fp-folder-title__badges">
+            <span class="fp-pill" data-bind="photo-count" data-testid="favorites-count">{{ count_label }}</span>
+            <span class="fp-pill" data-testid="favorites-badge">Favorites {% call icons::icon("star", true) %}{% endcall %}</span>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block topbar_actions %}{% call grids::zoom_controls(grid.zoom) %}{% endcall %}{% endblock %}
+
+{% block content %}
+<div data-testid="favorites-page">
+    {% call grids::grid_empty(grid, "star", "No favorites yet", "Tap the star on a photo to add it here.") %}{% endcall %}
+    {% call grids::photo_grid(grid) %}{% endcall %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script type="module" src="/assets/js/pages/favorites.js"></script>
+{% endblock %}

@@ -1,8 +1,7 @@
 import { type APIRequestContext, type BrowserContext } from '@playwright/test';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { storageStatePath } from '../harness/run';
 import { test as base, type UserId } from './auth';
+import { uploadPhoto } from './library';
 
 interface TempFolder {
     id: number;
@@ -42,18 +41,9 @@ export class TempFolders {
         return id;
     }
 
-    /** Uploads a fixture photo into a folder; returns the photo id. */
-    async upload(owner: UserId, folderId: number, fixture = 'alice/alice-a.jpg'): Promise<number> {
-        // The server reuses a photo with the same content, so make this one unique
-        const buffer = Buffer.concat([readFileSync(join(__dirname, 'photos', fixture)), Buffer.from(this.suffix)]);
-        const response = await (await this.as(owner)).post(
-            `/api/upload?folder_id=${folderId}&time_created=1700000000`,
-            { multipart: { file: { name: `e2e-${this.suffix}.jpg`, mimeType: 'image/jpeg', buffer } } },
-        );
-        if (!response.ok()) throw new Error(`Uploading failed: ${response.status()}`);
-        const photo = await response.json();
-        if (photo.folder_id !== folderId) throw new Error(`The upload ended up in folder ${photo.folder_id}`);
-        return photo.id;
+    /** Uploads a photo into a folder; returns the photo id. */
+    async upload(owner: UserId, folderId: number): Promise<number> {
+        return uploadPhoto(await this.as(owner), `e2e-${this.suffix}.jpg`, 1700000000, folderId);
     }
 
     async dispose() {

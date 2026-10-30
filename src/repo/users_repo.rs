@@ -44,6 +44,17 @@ impl UsersRepository {
         .map(|_| ())
     }
 
+    pub async fn update_password(&self, user_id: &str, password_hash: &str) -> sqlx::Result<()> {
+        query!(
+            "update users set password_hash = $1 where id = $2",
+            password_hash,
+            user_id
+        )
+        .execute(&self.write_pool)
+        .await
+        .map(|_| ())
+    }
+
     pub async fn delete_user(&self, user_id: &str) -> sqlx::Result<()> {
         query!("delete from users where id = $1", user_id)
             .execute(&self.write_pool)

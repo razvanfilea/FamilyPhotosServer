@@ -82,6 +82,53 @@ pub trait PhotosHashRepo<'c>: SqliteExecutor<'c> {
         qb.build_query_scalar().fetch_all(self).await
     }
 
+    /// The groups of photos with the same content among the user's own and the public photos
+    /// that aren't trashed (at least two copies), each copy with its folder's name. Copies are
+    /// ordered by id and groups by their first copy.
+    async fn get_duplicate_photos_for_user(
+        self,
+        user_id: &str,
+    ) -> sqlx::Result<Vec<Vec<(Photo, Option<String>)>>> {
+        #[derive(sqlx::FromRow)]
+        struct Row {
+            #[sqlx(flatten)]
+            photo: Photo,
+            hash: Vec<u8>,
+            folder_name: Option<String>,
+        }
+
+        let rows = sqlx::query_as::<_, Row>(
+            "select p.*, h.hash as hash, f.name as folder_name from photos_hash h
+            join photos p on p.id = h.photo_id
+            left join folders f on f.id = p.folder_id
+            where (p.user_id = $1 or p.user_id is null) and p.trashed_on is null
+            and h.hash in (
+                select h2.hash from photos_hash h2 join photos p2 on p2.id = h2.photo_id
+                where (p2.user_id = $1 or p2.user_id is null) and p2.trashed_on is null
+                group by h2.hash having count(*) > 1)
+            order by h.hash, p.id",
+        )
+        .bind(user_id)
+        .fetch_all(self)
+        .await?;
+
+        let mut groups: Vec<Vec<(Photo, Option<String>)>> = Vec::new();
+        let mut current_hash: Option<Vec<u8>> = None;
+        for row in rows {
+            if current_hash.as_ref() != Some(&row.hash) {
+                groups.push(Vec::new());
+                current_hash = Some(row.hash);
+            }
+            groups
+                .last_mut()
+                .expect("a group was pushed")
+                .push((row.photo, row.folder_name));
+        }
+        groups.sort_by_key(|group| group[0].0.id);
+
+        Ok(groups)
+    }
+
     async fn insert_hash(self, photo_hash: PhotoHash) -> sqlx::Result<()> {
         query!(
             "insert or replace into photos_hash (photo_id, hash) values ($1, $2)",

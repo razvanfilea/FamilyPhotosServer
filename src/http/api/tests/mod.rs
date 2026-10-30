@@ -5,6 +5,7 @@ mod context;
 mod files;
 mod folders;
 mod photos;
+mod profile;
 mod upload;
 
 use crate::db::SessionStore;

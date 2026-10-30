@@ -54,7 +54,6 @@ impl Nav {
 pub struct PageContext {
     pub user_id: String,
     pub user_display_name: String,
-    #[expect(dead_code, reason = "Read by the pages of later packages")]
     pub asset_version: &'static str,
     pub nav_active: Nav,
     pub prefs: Prefs,
