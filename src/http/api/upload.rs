@@ -211,6 +211,7 @@ mod tests {
     use crate::http::{AppState, router};
     use crate::utils::password_hash::generate_hash_from_password;
     use crate::utils::storage_resolver::StorageResolver;
+    use axum_login::tower_sessions::SessionStore as _;
     use sqlx::SqlitePool;
     use sqlx::migrate::MigrateDatabase;
     use std::net::SocketAddr;
@@ -292,11 +293,7 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn test_authenticated_get_does_not_need_the_write_connection() {
-        let server = start_server().await;
-        let _held = server.write_pool.acquire().await.unwrap();
-
+    async fn get_profile(server: &TestServer) -> String {
         let response = send(
             server.addr,
             &format!(
@@ -305,8 +302,72 @@ mod tests {
             ),
         )
         .await;
-
         assert!(response.starts_with("HTTP/1.1 200"), "{response}");
+        response
+    }
+
+    async fn session_expiries(server: &TestServer) -> Vec<time::OffsetDateTime> {
+        sqlx::query_scalar("select expiry_date from tower_sessions")
+            .fetch_all(&server.read_pool)
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn test_session_is_not_saved_again_on_the_same_day() {
+        let server = start_server().await;
+        let before = session_expiries(&server).await;
+
+        let response = get_profile(&server).await;
+        assert_eq!(set_cookie(&response), None);
+        assert_eq!(session_expiries(&server).await, before);
+    }
+
+    #[tokio::test]
+    async fn test_session_is_extended_when_last_seen_is_older() {
+        let server = start_server().await;
+        let store = db::SessionStore::new(server.read_pool.clone(), server.write_pool.clone());
+        let id = server.cookie.split_once('=').unwrap().1.parse().unwrap();
+        let mut record = store.load(&id).await.unwrap().unwrap();
+        record
+            .data
+            .insert("last_seen".to_owned(), serde_json::json!(0));
+        record.expiry_date = time::OffsetDateTime::now_utc() + time::Duration::days(1);
+        store.save(&record).await.unwrap();
+        let before = session_expiries(&server).await;
+
+        let response = get_profile(&server).await;
+        assert!(set_cookie(&response).is_some(), "{response}");
+        let after = session_expiries(&server).await;
+        assert_eq!(after.len(), 1);
+        assert!(
+            after[0] > before[0] + time::Duration::days(50),
+            "{before:?} {after:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_anonymous_request_creates_no_session() {
+        let server = start_server().await;
+        sqlx::query("delete from tower_sessions")
+            .execute(&server.write_pool)
+            .await
+            .unwrap();
+
+        let response = send(
+            server.addr,
+            "GET /api/profile HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n",
+        )
+        .await;
+        assert_eq!(set_cookie(&response), None);
+        assert!(session_expiries(&server).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_authenticated_get_does_not_need_the_write_connection() {
+        let server = start_server().await;
+        let _held = server.write_pool.acquire().await.unwrap();
+        get_profile(&server).await;
     }
 
     #[tokio::test]

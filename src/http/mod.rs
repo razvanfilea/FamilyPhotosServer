@@ -4,6 +4,7 @@ use crate::utils::storage_resolver::StorageResolver;
 use axum::Router;
 use axum::extract::DefaultBodyLimit;
 use axum::http::{HeaderValue, header};
+use axum::middleware;
 use axum_login::AuthManagerLayerBuilder;
 use axum_login::tower_sessions::{Expiry, SessionManagerLayer};
 use sqlx::SqlitePool;
@@ -22,6 +23,7 @@ mod auth;
 mod error;
 mod extractors;
 mod pages;
+mod session_activity;
 mod template_into_response;
 mod utils;
 
@@ -52,6 +54,7 @@ pub fn router(
         .merge(pages::router(app_state))
         .nest("/api", api::router(app_state))
         .nest_service("/assets", ServeDir::new("assets"))
+        .layer(middleware::from_fn(session_activity::mark_session_active))
         .layer(SetResponseHeaderLayer::overriding(
             header::X_FRAME_OPTIONS,
             HeaderValue::from_static("DENY"),
