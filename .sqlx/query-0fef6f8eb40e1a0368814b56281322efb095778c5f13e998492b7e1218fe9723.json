@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "select * from photos where thumb_hash is null",
+  "query": "select * from photos where thumb_hash is null and id > $1 order by id limit $2",
   "describe": {
     "columns": [
       {
@@ -93,7 +93,7 @@
       }
     ],
     "parameters": {
-      "Right": 0
+      "Right": 2
     },
     "nullable": [
       false,
@@ -106,5 +106,5 @@
       true
     ]
   },
-  "hash": "46ace4886c9be63a388df117a4ae5589aa9c6966912c77ff8c3e382a328751cb"
+  "hash": "0fef6f8eb40e1a0368814b56281322efb095778c5f13e998492b7e1218fe9723"
 }

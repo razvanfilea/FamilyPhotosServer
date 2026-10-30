@@ -1,3 +1,4 @@
+use crate::db::SessionStore;
 use crate::repo::users_repo::UsersRepository;
 use crate::utils::storage_resolver::StorageResolver;
 use axum::Router;
@@ -14,7 +15,6 @@ use tower_http::services::ServeDir;
 use tower_http::set_header::SetResponseHeaderLayer;
 use tower_http::trace::TraceLayer;
 use tower_http::{cors, trace};
-use tower_sessions_sqlx_store::SqliteStore;
 use tracing::{Level, info, warn};
 
 mod api;
@@ -27,7 +27,7 @@ mod utils;
 
 pub fn router(
     app_state: AppStateRef,
-    session_store: SqliteStore,
+    session_store: SessionStore,
     allowed_origins: Vec<String>,
 ) -> Router {
     let session_layer = SessionManagerLayer::new(session_store)
@@ -84,7 +84,7 @@ impl AppState {
     pub fn new(read_pool: SqlitePool, write_pool: SqlitePool, storage: StorageResolver) -> Self {
         Self {
             storage,
-            users_repo: UsersRepository::new(write_pool.clone()),
+            users_repo: UsersRepository::new(read_pool.clone(), write_pool.clone()),
             read_pool,
             write_pool,
             preview_generation: Mutex::new(()),

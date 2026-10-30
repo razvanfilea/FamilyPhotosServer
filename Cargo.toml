@@ -16,6 +16,7 @@ axum-extra = { version = "0.12", default-features = false, features = ["typed-he
 tower-http = { version = "0.7", features = ["trace", "cors", "set-header", "fs"] }
 # git revs until upstream publishes releases using sqlx 0.9 (issue #83)
 axum-login = { git = "https://github.com/maxcountryman/axum-login", rev = "151c72d7a1b4646830f86b4332e6bd6e34d719a7" }
+async-trait = "0.1"
 tower-sessions-sqlx-store = { git = "https://github.com/maxcountryman/tower-sessions-stores", rev = "d18c9bf76f1d4fb73130dbe5aa643197f14b5d2d", features = ["sqlite"] }
 askama = "0.16"
 

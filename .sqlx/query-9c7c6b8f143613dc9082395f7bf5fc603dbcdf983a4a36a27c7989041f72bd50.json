@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "select p.* from photos p left join photos_hash e on p.id = e.photo_id\n             where e.hash is null and p.trashed_on is null",
+  "query": "select p.* from photos p left join photos_hash e on p.id = e.photo_id\n             where e.hash is null and p.trashed_on is null and p.id > $1\n             order by p.id limit $2",
   "describe": {
     "columns": [
       {
@@ -93,7 +93,7 @@
       }
     ],
     "parameters": {
-      "Right": 0
+      "Right": 2
     },
     "nullable": [
       false,
@@ -106,5 +106,5 @@
       true
     ]
   },
-  "hash": "412c0db7abc22b28086a336fb791b5d25ff9d90f91ad54fcba95793d01b4be62"
+  "hash": "9c7c6b8f143613dc9082395f7bf5fc603dbcdf983a4a36a27c7989041f72bd50"
 }

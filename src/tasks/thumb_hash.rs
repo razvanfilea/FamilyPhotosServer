@@ -7,20 +7,28 @@ use std::path::Path;
 use tokio::task::spawn_blocking;
 use tracing::{error, info};
 
+const BATCH_SIZE: i64 = 256;
+
+/// Generates thumb hashes in batches, so no database connection is held while reading files.
+/// Photos are paginated by id, so a photo without a valid preview is skipped, not retried.
 pub async fn generate_thumb_hashes(app_state: AppStateRef) -> Result<(), sqlx::Error> {
-    const CHUNK_SIZE: usize = 256;
+    let mut last_id = 0;
+    let mut count = 0;
 
-    let mut tx = app_state.write_pool.begin().await?;
-    let photos = tx.get_photos_without_thumb_hash().await?;
+    loop {
+        let photos = app_state
+            .read_pool
+            .get_photos_without_thumb_hash(last_id, BATCH_SIZE)
+            .await?;
 
-    info!("Computing thumb hashes for {} photos", photos.len());
+        let Some(last_photo) = photos.last() else {
+            break;
+        };
+        last_id = last_photo.id;
 
-    let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel();
-
-    spawn_blocking(move || {
-        photos.par_chunks(CHUNK_SIZE).for_each(|chunk| {
-            let chunk = chunk
-                .iter()
+        let thumb_hashes: Vec<(i64, Vec<u8>)> = spawn_blocking(move || {
+            photos
+                .par_iter()
                 .filter_map(|photo| {
                     let preview_path = app_state
                         .storage
@@ -46,28 +54,38 @@ pub async fn generate_thumb_hashes(app_state: AppStateRef) -> Result<(), sqlx::E
                         }
                     }
                 })
-                .collect::<Vec<_>>();
-
-            if let Err(e) = sender.send(chunk) {
-                error!("Failed to send thumb hashes over channel: {e}");
-            }
+                .collect()
+        })
+        .await
+        .unwrap_or_else(|e| {
+            error!("Thumb hashing batch panicked: {e}");
+            Vec::new()
         });
 
-        drop(sender);
-    });
-
-    let mut count = 0;
-
-    while let Some(chunk) = receiver.recv().await {
-        tx.update_thumb_hashes(&chunk).await?;
-        count += chunk.len();
+        match save_thumb_hashes(app_state, &thumb_hashes).await {
+            Ok(()) => count += thumb_hashes.len(),
+            Err(e) => error!(
+                "Failed to save a batch of {} thumb hashes: {e}",
+                thumb_hashes.len()
+            ),
+        }
     }
 
-    tx.commit().await?;
-
-    info!("Updated {count} thumb hashes");
+    if count > 0 {
+        info!("Updated {count} thumb hashes");
+    }
 
     Ok(())
+}
+
+/// Saves a batch in its own short write transaction.
+async fn save_thumb_hashes(
+    app_state: AppStateRef,
+    thumb_hashes: &[(i64, Vec<u8>)],
+) -> sqlx::Result<()> {
+    let mut tx = app_state.write_pool.begin().await?;
+    tx.update_thumb_hashes(thumb_hashes).await?;
+    tx.commit().await
 }
 
 fn generate_thumb_image_hash(preview_path: &Path) -> Result<Vec<u8>, std::io::Error> {

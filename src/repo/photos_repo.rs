@@ -120,10 +120,20 @@ pub trait PhotosRepo<'c>: SqliteExecutor<'c> {
             .await
     }
 
-    async fn get_photos_without_thumb_hash(self) -> sqlx::Result<Vec<Photo>> {
-        query_as!(Photo, "select * from photos where thumb_hash is null")
-            .fetch_all(self)
-            .await
+    /// Returns up to `limit` photos without a thumb hash and with an id greater than `last_id`, ordered by id.
+    async fn get_photos_without_thumb_hash(
+        self,
+        last_id: i64,
+        limit: i64,
+    ) -> sqlx::Result<Vec<Photo>> {
+        query_as!(
+            Photo,
+            "select * from photos where thumb_hash is null and id > $1 order by id limit $2",
+            last_id,
+            limit
+        )
+        .fetch_all(self)
+        .await
     }
 
     async fn get_accessible_photo_with_folder(
@@ -788,7 +798,7 @@ mod tests {
         tx.insert_photos(&[photo_no_hash, photo_with_hash]).await?;
         tx.commit().await?;
 
-        let without_hash = pool.get_photos_without_thumb_hash().await?;
+        let without_hash = pool.get_photos_without_thumb_hash(0, 100).await?;
         assert_eq!(without_hash.len(), 1);
         assert_eq!(without_hash[0].name, "no_hash.jpg");
 

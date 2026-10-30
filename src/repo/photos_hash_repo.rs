@@ -4,11 +4,15 @@ use sqlx::{QueryBuilder, Sqlite, SqliteExecutor, query, query_as};
 use std::num::ParseIntError;
 
 pub trait PhotosHashRepo<'c>: SqliteExecutor<'c> {
-    async fn get_photos_without_hash(self) -> sqlx::Result<Vec<Photo>> {
+    /// Returns up to `limit` photos without a hash and with an id greater than `last_id`, ordered by id.
+    async fn get_photos_without_hash(self, last_id: i64, limit: i64) -> sqlx::Result<Vec<Photo>> {
         query_as!(
             Photo,
             "select p.* from photos p left join photos_hash e on p.id = e.photo_id
-             where e.hash is null and p.trashed_on is null"
+             where e.hash is null and p.trashed_on is null and p.id > $1
+             order by p.id limit $2",
+            last_id,
+            limit
         )
         .fetch_all(self)
         .await
@@ -68,6 +72,16 @@ pub trait PhotosHashRepo<'c>: SqliteExecutor<'c> {
         .await
     }
 
+    async fn get_existing_photo_ids(self, ids: &[i64]) -> sqlx::Result<Vec<i64>> {
+        let mut qb = QueryBuilder::<Sqlite>::new("select id from photos where id in (");
+        let mut separated = qb.separated(", ");
+        for id in ids {
+            separated.push_bind(*id);
+        }
+        separated.push_unseparated(")");
+        qb.build_query_scalar().fetch_all(self).await
+    }
+
     async fn insert_hash(self, photo_hash: PhotoHash) -> sqlx::Result<()> {
         query!("insert or replace into photos_hash (photo_id, hash) values ($1, $2)", photo_hash.id, photo_hash.hash)
             .execute(self)
@@ -117,13 +131,22 @@ mod tests {
         tx.insert_photos(&photos).await?;
         tx.commit().await?;
 
-        let ids: Vec<i64> = sqlx::query_scalar!("select id from photos")
+        let ids: Vec<i64> = sqlx::query_scalar!("select id from photos order by id")
             .fetch_all(&pool)
             .await?;
 
         // Without any hashes, both should be returned
-        let without_hash = pool.get_photos_without_hash().await?;
+        let without_hash = pool.get_photos_without_hash(0, 100).await?;
         assert_eq!(without_hash.len(), 2);
+
+        // Keyset pagination: limit and last_id are respected
+        let page = pool.get_photos_without_hash(0, 1).await?;
+        assert_eq!(page.len(), 1);
+        assert_eq!(page[0].id, ids[0]);
+        let page = pool.get_photos_without_hash(ids[0], 1).await?;
+        assert_eq!(page.len(), 1);
+        assert_eq!(page[0].id, ids[1]);
+        assert!(pool.get_photos_without_hash(ids[1], 1).await?.is_empty());
 
         // Insert hash for one photo
         let hashes = vec![PhotoHash {
@@ -133,7 +156,7 @@ mod tests {
         pool.insert_hashes(&hashes).await?;
 
         // Some without → those returned
-        let without_hash = pool.get_photos_without_hash().await?;
+        let without_hash = pool.get_photos_without_hash(0, 100).await?;
         assert_eq!(without_hash.len(), 1);
         assert_eq!(without_hash[0].id, ids[1]);
 
@@ -145,7 +168,7 @@ mod tests {
         pool.insert_hashes(&hashes).await?;
 
         // All have hash → empty
-        let without_hash = pool.get_photos_without_hash().await?;
+        let without_hash = pool.get_photos_without_hash(0, 100).await?;
         assert!(without_hash.is_empty());
 
         // Trashed photo without hash → excluded (trashed_on IS NULL)
@@ -156,7 +179,7 @@ mod tests {
         tx.commit().await?;
 
         // The trashed photo has no hash but should be excluded
-        let without_hash = pool.get_photos_without_hash().await?;
+        let without_hash = pool.get_photos_without_hash(0, 100).await?;
         assert!(without_hash.is_empty());
 
         Ok(())

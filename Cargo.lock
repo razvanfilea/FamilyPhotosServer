@@ -780,6 +780,7 @@ version = "5.0.0"
 dependencies = [
  "argon2",
  "askama",
+ "async-trait",
  "axum",
  "axum-extra",
  "axum-login",

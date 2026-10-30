@@ -7,24 +7,28 @@ use tokio::task;
 
 #[derive(Clone)]
 pub struct UsersRepository {
-    pool: SqlitePool,
+    read_pool: SqlitePool,
+    write_pool: SqlitePool,
 }
 
 impl UsersRepository {
-    pub fn new(pool: SqlitePool) -> Self {
-        Self { pool }
+    pub fn new(read_pool: SqlitePool, write_pool: SqlitePool) -> Self {
+        Self {
+            read_pool,
+            write_pool,
+        }
     }
 
     pub async fn get_user(&self, user_id: &str) -> Option<User> {
         query_as!(User, "select * from users where id = $1", user_id)
-            .fetch_optional(&self.pool)
+            .fetch_optional(&self.read_pool)
             .await
             .ok()?
     }
 
     pub async fn get_users(&self) -> sqlx::Result<Vec<User>> {
         query_as!(User, "select * from users")
-            .fetch_all(&self.pool)
+            .fetch_all(&self.read_pool)
             .await
     }
 
@@ -35,14 +39,14 @@ impl UsersRepository {
             user.name,
             user.password_hash
         )
-        .execute(&self.pool)
+        .execute(&self.write_pool)
         .await
         .map(|_| ())
     }
 
     pub async fn delete_user(&self, user_id: &str) -> sqlx::Result<()> {
         query!("delete from users where id = $1", user_id)
-            .execute(&self.pool)
+            .execute(&self.write_pool)
             .await
             .map(|_| ())
     }

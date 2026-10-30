@@ -2,11 +2,9 @@ use crate::http::AppState;
 use crate::tasks::start_periodic_tasks;
 use crate::utils::env_reader::EnvVariables;
 use crate::utils::storage_resolver::StorageResolver;
-use axum_login::tower_sessions::ExpiredDeletion;
 use mimalloc::MiMalloc;
 use std::net::SocketAddr;
 use tokio::net::TcpListener;
-use tower_sessions_sqlx_store::SqliteStore;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::layer::SubscriberExt;
@@ -46,7 +44,7 @@ async fn main() {
 
     db::run_migrations(&write_pool).await;
 
-    let session_store = SqliteStore::new(write_pool.clone());
+    let session_store = db::SessionStore::new(read_pool.clone(), write_pool.clone());
     session_store
         .migrate()
         .await
