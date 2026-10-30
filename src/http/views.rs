@@ -23,6 +23,8 @@ pub struct PhotoTileView {
     pub is_video: bool,
     /// Whether the user has Delete access to the photo; gates the bulk actions
     pub deletable: bool,
+    /// Id of the user who owns the photo, empty for public photos; gates permanent deletion
+    pub owner: String,
     /// Standard base64 of the thumbhash, empty if the photo has none
     pub thumb_hash_b64: String,
     pub aria_label: String,
@@ -38,6 +40,7 @@ impl PhotoTileView {
             id: photo.id,
             is_video,
             deletable,
+            owner: photo.user_id.clone().unwrap_or_default(),
             thumb_hash_b64: photo
                 .thumb_hash
                 .as_ref()
@@ -271,6 +274,7 @@ mod tests {
         assert!(html.contains(r#"data-index="12""#));
         assert!(html.contains(r#"data-video="true""#));
         assert!(html.contains(r#"data-deletable="true""#));
+        assert!(html.contains(r#"data-owner="""#));
         assert!(html.contains(r#"data-thumbhash="AQID""#));
         assert!(html.contains(r#"aria-label="Video, 8 Jun 2024 14:03""#));
         assert!(html.contains(r#"src="/api/preview/42""#));
@@ -318,6 +322,7 @@ mod tests {
         assert_eq!(tile.id, 7);
         assert!(tile.is_video);
         assert!(tile.deletable);
+        assert_eq!(tile.owner, "");
         assert_eq!(tile.thumb_hash_b64, "AQID");
         assert_eq!(tile.aria_label, "Video, 8 Jun 2024 14:03");
         assert_eq!(tile.created_at_unix, 1717855409);
@@ -327,7 +332,14 @@ mod tests {
             thumb_hash: None,
             ..photo
         };
-        let tile = PhotoTileView::from_photo(&photo, false);
+        let tile = PhotoTileView::from_photo(
+            &Photo {
+                user_id: Some("alice".to_string()),
+                ..photo
+            },
+            false,
+        );
+        assert_eq!(tile.owner, "alice");
         assert!(!tile.is_video);
         assert!(tile.thumb_hash_b64.is_empty());
         assert_eq!(tile.aria_label, "Photo, 8 Jun 2024 14:03");

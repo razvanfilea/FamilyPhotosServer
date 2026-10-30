@@ -63,6 +63,7 @@ interface ParentNode {
 interface HTMLElement {
     fpGrid?: any;
     fpPicker?: any;
+    fpSelection?: any;
 }
 
 /** Loaded by `assets/vendor/hash-wasm/blake3.umd.min.js` in the hash worker. */

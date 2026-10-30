@@ -334,7 +334,7 @@ register('viewer', (root) => {
             button('delete-forever').hidden = !isOwnOrPublic(photo);
         } else {
             button('delete').hidden = !photo.deletable;
-            button('move').hidden = !photo.deletable || typeof openMoveDialog !== 'function';
+            button('move').hidden = !photo.deletable;
         }
         button('prev').hidden = index <= 0;
         button('next').hidden = index >= source.total - 1;
@@ -816,7 +816,7 @@ register('viewer', (root) => {
 
     async function moveCurrent() {
         const photo = current();
-        if (!photo?.deletable || isTrash() || typeof openMoveDialog !== 'function') return;
+        if (!photo?.deletable || isTrash()) return;
         const result = await openMoveDialog({ ids: [photo.id] });
         if (!result?.moved?.some((moved) => moved.id === photo.id)) return;
         toast(strings.moved, { type: 'success' });

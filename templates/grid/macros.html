@@ -6,7 +6,7 @@
    (see `build_grid_view`). The behaviour comes from `assets/js/grid/index.js`, which the page must
    load. #}
 {% macro photo_grid(grid) -%}
-<div id="photo-grid" class="photo-grid" data-component="photo-grid" data-context="{{ grid.context_key }}"
+<div id="photo-grid" class="photo-grid" data-component="photo-grid grid-selection" data-context="{{ grid.context_key }}"
      data-zoom="{{ grid.zoom }}" data-total="{{ grid.total }}" data-testid="photo-grid">
     {%- for section in grid.sections %}
     {%- if grid.flat %}

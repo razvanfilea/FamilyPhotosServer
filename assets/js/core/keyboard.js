@@ -3,11 +3,11 @@
 // so shortcuts of the page underneath don't fire while it's open.
 //
 // Keys: "k", "?", "+", "shift+a", "ctrl+k", or sequences like "g p" (typed within 1 second).
-// Events coming from text fields are ignored.
+// Events coming from text fields are ignored. A handler returning false declines the key.
 
 const SEQUENCE_TIMEOUT = 1000;
 
-/** @type {Map<string, Map<string, (event: KeyboardEvent) => void>>} */
+/** @type {Map<string, Map<string, (event: KeyboardEvent) => void | false>>} */
 const handlers = new Map([['global', new Map()]]);
 /** @type {{name: string, modal: boolean}[]} */
 const stack = [{ name: 'global', modal: false }];
@@ -55,12 +55,9 @@ function activeScopes() {
     return scopes;
 }
 
-function findHandler(sequence) {
-    for (const scope of activeScopes()) {
-        const handler = handlers.get(scope)?.get(sequence);
-        if (handler) return handler;
-    }
-    return undefined;
+/** The handlers of a key sequence, from the top scope down */
+function findHandlers(sequence) {
+    return activeScopes().flatMap((scope) => handlers.get(scope)?.get(sequence) ?? []);
 }
 
 function isPrefix(sequence) {
@@ -78,11 +75,11 @@ function onKeyDown(event) {
 
     // Try the longest pending sequence first, then fall back to just the last key
     for (const sequence of [pending.join(' '), pending.at(-1)]) {
-        const handler = findHandler(sequence);
+        // A handler returning false declines the key: the next one gets it
+        const handler = findHandlers(sequence).find((candidate) => candidate(event) !== false);
         if (handler) {
             pending = [];
             event.preventDefault();
-            handler(event);
             return;
         }
         if (isPrefix(sequence)) {
@@ -113,9 +110,14 @@ export function register(scope, keys, handler) {
     };
 }
 
-/** Activates a scope on top of the current ones. Modal scopes hide the scopes below them. */
+/**
+ * Activates a scope on top of the current ones. Modal scopes hide the scopes below them; a
+ * non-modal scope pushed while a modal one is open (a page mounting behind a deep-linked viewer)
+ * goes below it, so it can't take keys from the modal scope.
+ */
 export function pushScope(name, { modal = false } = {}) {
-    stack.push({ name, modal });
+    const firstModal = stack.findIndex((scope) => scope.modal);
+    stack.splice(modal || firstModal < 0 ? stack.length : firstModal, 0, { name, modal });
 }
 
 /** Removes the topmost occurrence of a scope. */

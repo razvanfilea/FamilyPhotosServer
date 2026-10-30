@@ -1,0 +1,202 @@
+/* Selection: the floating selection bar, the drag-select state of the grid and the move
+   dialog. Tile and month-header styling of selected photos is in grid.css. */
+
+@layer components {
+    /* Taps and drags on the tiles are selections, not text or image gestures */
+    .photo-grid {
+        -webkit-user-select: none;
+        user-select: none;
+    }
+
+    .photo-tile {
+        -webkit-touch-callout: none;
+    }
+
+    /* A finger that drags to select must not scroll the page */
+    .photo-grid.is-dragging {
+        touch-action: none;
+    }
+
+    .photo-grid.is-dragging .photo-tile {
+        cursor: grabbing;
+    }
+
+    .selection-bar {
+        --selection-offset: 0px;
+        position: fixed;
+        top: calc(var(--fp-topbar-height) + env(safe-area-inset-top) + 0.5rem);
+        left: calc(50% + var(--selection-offset));
+        z-index: 36;
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+        max-width: calc(100vw - 1rem);
+        height: 3.5rem;
+        padding: 0 0.5rem 0 0.25rem;
+        border: 1px solid color-mix(in oklab, var(--fp-outline) 40%, transparent);
+        border-radius: 9999px;
+        background-color: var(--color-accent);
+        color: var(--color-accent-content);
+        box-shadow: 0 6px 16px rgb(0 0 0 / 0.4);
+        transform: translateX(-50%) scaleX(0.6);
+        opacity: 0;
+        visibility: hidden;
+        transition: transform 180ms ease, opacity 180ms ease, visibility 0s linear 180ms;
+
+        &[data-visible="true"] {
+            transform: translateX(-50%);
+            opacity: 1;
+            visibility: visible;
+            transition-delay: 0s;
+        }
+
+        @variant md {
+            --selection-offset: calc(var(--fp-rail-width) / 2);
+        }
+
+        @variant xl {
+            --selection-offset: calc(var(--fp-sidebar-width) / 2);
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            transition: none;
+        }
+    }
+
+    .selection-bar__clear,
+    .selection-bar__action {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        min-width: 2.75rem;
+        height: 2.75rem;
+        border-radius: 9999px;
+        font-size: 1.5rem;
+        cursor: pointer;
+
+        &:hover {
+            background-color: color-mix(in oklab, var(--color-accent-content) 12%, transparent);
+        }
+
+        &:focus-visible {
+            outline: 2px solid var(--color-accent-content);
+            outline-offset: -2px;
+        }
+
+        &[aria-disabled="true"] {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        &[hidden] {
+            display: none;
+        }
+    }
+
+    .selection-bar__action--danger {
+        color: var(--fp-on-error-container);
+    }
+
+    .selection-bar__label {
+        display: none;
+        font-size: 0.875rem;
+        font-weight: 500;
+        white-space: nowrap;
+
+        @variant md {
+            display: inline;
+        }
+    }
+
+    .selection-bar__action:has(.selection-bar__label) {
+        @variant md {
+            padding: 0 0.75rem;
+        }
+    }
+
+    .selection-bar__count {
+        padding: 0 0.5rem;
+        font-size: 1rem;
+        font-weight: 500;
+        white-space: nowrap;
+
+        & > [data-slot="count"] {
+            display: inline-block;
+        }
+
+        & > [data-slot="count"].is-changing {
+            animation: fp-count-pop 150ms ease-out;
+        }
+    }
+
+    .selection-bar__actions {
+        display: flex;
+        align-items: center;
+        gap: 0.125rem;
+        margin-left: 0.25rem;
+    }
+
+    /* ---------- Move dialog ---------- */
+
+    .modal-box:has([data-component~="move-dialog"]) {
+        width: 100%;
+        max-width: 720px;
+
+        @media (max-width: 639px) {
+            height: 100dvh;
+            max-height: 100dvh;
+            border-radius: 0;
+        }
+    }
+
+    .move-showcase__thumbs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.375rem;
+
+        & img,
+        & .move-showcase__more {
+            width: 48px;
+            height: 48px;
+            border-radius: 8px;
+            object-fit: cover;
+            background-color: var(--color-base-300);
+        }
+    }
+
+    .move-showcase__more {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.875rem;
+        font-weight: 600;
+    }
+
+    .move-showcase__count {
+        margin-top: 0.5rem;
+        font-weight: 600;
+    }
+
+    .move-note {
+        margin-top: 1rem;
+        padding: 0.5rem 0.75rem;
+        border-radius: 8px;
+        background-color: var(--color-base-300);
+        color: var(--color-info);
+        font-size: 0.875rem;
+    }
+
+    .move-error {
+        margin-top: 1rem;
+        color: var(--color-error);
+        font-size: 0.875rem;
+    }
+}
+
+@keyframes fp-count-pop {
+    from {
+        opacity: 0.4;
+        transform: translateY(35%);
+    }
+}
