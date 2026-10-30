@@ -8,11 +8,6 @@ use time::OffsetDateTime;
 use tokio::fs;
 use tracing::{error, info};
 
-use crate::{
-    http::utils::write_field_to_file,
-    model::photo_hash::PhotoHash,
-    utils::{crop_blake_3_hash, is_safe_path_component},
-};
 use crate::http::{AppStateRef, auth::AuthenticatedUser};
 use crate::model::photo::Photo;
 use crate::repo::{FoldersRepo, PhotosHashRepo, PhotosTransactionRepo};
@@ -20,7 +15,12 @@ use crate::{
     http::error::{HttpError, HttpResult},
     model::folder::AccessibleFolder,
 };
-use sqlx::{Sqlite, Transaction};
+use crate::{
+    http::utils::write_field_to_file,
+    model::photo_hash::PhotoHash,
+    utils::{crop_blake_3_hash, is_safe_path_component},
+};
+use sqlx::SqliteConnection;
 use time::serde::timestamp;
 
 pub fn router() -> Router<AppStateRef> {
@@ -46,7 +46,7 @@ struct UploadTarget {
 }
 
 async fn resolve_upload_target(
-    tx: &mut Transaction<'_, Sqlite>,
+    conn: &mut SqliteConnection,
     user_id: &str,
     query: &UploadDataQuery,
 ) -> HttpResult<UploadTarget> {
@@ -58,8 +58,7 @@ async fn resolve_upload_target(
         });
     };
 
-    let folder = tx
-        .as_mut()
+    let folder = conn
         .get_accessible_folder(user_id, target_folder_id)
         .await?
         .ok_or(HttpError::Unauthorized)?;
@@ -102,19 +101,25 @@ async fn upload_photo(
         return Err(HttpError::BadRequest("Invalid file name".to_string()));
     }
 
-    let mut tx = state.write_pool.begin().await?;
+    {
+        let mut conn = state.read_pool.acquire().await?;
+        let target = resolve_upload_target(&mut conn, &user.id, &query).await?;
 
-    let target = resolve_upload_target(&mut tx, &user.id, &query).await?;
-
-    // Check the hash before writing the file
-    if let Ok(client_hash) = blake3::Hash::from_hex(query.hash.as_deref().unwrap_or("")) {
-        let hash = crop_blake_3_hash(client_hash.as_bytes());
-        if let Some(photo) = check_existing_photo_with_hash(&mut tx, &target, &hash).await? {
-            return Ok(Json(photo));
+        if let Ok(client_hash) = blake3::Hash::from_hex(query.hash.as_deref().unwrap_or("")) {
+            let hash = crop_blake_3_hash(client_hash.as_bytes());
+            if let Some(photo) = check_existing_photo_with_hash(&mut conn, &target, &hash).await? {
+                return Ok(Json(photo));
+            }
         }
     }
 
-    let written_file = write_field_to_file(field).await?;
+    let written_file = write_field_to_file(field, &state.storage.storage_folder).await?;
+
+    // The upload may have taken long, so the folder could have been deleted or renamed, its
+    // share revoked, or the same file uploaded by someone else: check everything again.
+    let mut tx = state.write_pool.begin().await?;
+
+    let target = resolve_upload_target(&mut tx, &user.id, &query).await?;
 
     if let Some(photo) =
         check_existing_photo_with_hash(&mut tx, &target, &written_file.hash).await?
@@ -157,7 +162,11 @@ async fn upload_photo(
     info!("Uploading file to {}", photo_path.display());
 
     let photo = tx.insert_photo(&photo).await?;
-    tx.insert_hash(PhotoHash{id: photo.id, hash: written_file.hash.clone()}).await?;
+    tx.insert_hash(PhotoHash {
+        id: photo.id,
+        hash: written_file.hash.clone(),
+    })
+    .await?;
 
     written_file.persist_to(&photo_path).await?;
 
@@ -172,20 +181,20 @@ async fn upload_photo(
 }
 
 async fn check_existing_photo_with_hash(
-    tx: &mut Transaction<'_, Sqlite>,
+    conn: &mut SqliteConnection,
     target: &UploadTarget,
     hash: &[u8],
 ) -> Result<Option<Photo>, HttpError> {
     let existing = match target.dedup_folder_id {
-        Some(folder_id) => tx.get_photo_with_hash_in_folder(hash, folder_id).await?,
+        Some(folder_id) => conn.get_photo_with_hash_in_folder(hash, folder_id).await?,
         None => {
-            tx.get_photo_with_hash(hash, target.photo_user_id.as_deref())
+            conn.get_photo_with_hash(hash, target.photo_user_id.as_deref())
                 .await?
         }
     };
 
     if let Some(photo) = existing {
-        let folder_name = tx.as_mut().get_folder_name(photo.folder_id).await?;
+        let folder_name = conn.get_folder_name(photo.folder_id).await?;
         info!(
             "Photo with same hash already exists with path: {}",
             photo.partial_path(folder_name.as_deref())
@@ -194,4 +203,146 @@ async fn check_existing_photo_with_hash(
     }
 
     Ok(None)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::db;
+    use crate::http::{AppState, router};
+    use crate::utils::password_hash::generate_hash_from_password;
+    use crate::utils::storage_resolver::StorageResolver;
+    use sqlx::SqlitePool;
+    use sqlx::migrate::MigrateDatabase;
+    use std::net::SocketAddr;
+    use std::time::Duration;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpStream;
+
+    struct TestServer {
+        addr: SocketAddr,
+        cookie: String,
+        write_pool: SqlitePool,
+        read_pool: SqlitePool,
+        _dir: tempfile::TempDir,
+    }
+
+    async fn read_response(stream: &mut TcpStream) -> String {
+        let mut buf = vec![0; 8192];
+        let n = tokio::time::timeout(Duration::from_secs(5), stream.read(&mut buf))
+            .await
+            .expect("response timed out")
+            .unwrap();
+        String::from_utf8_lossy(&buf[..n]).into_owned()
+    }
+
+    async fn send(addr: SocketAddr, request: &str) -> String {
+        let mut stream = TcpStream::connect(addr).await.unwrap();
+        stream.write_all(request.as_bytes()).await.unwrap();
+        read_response(&mut stream).await
+    }
+
+    fn set_cookie(response: &str) -> Option<&str> {
+        response
+            .lines()
+            .find_map(|l| l.strip_prefix("set-cookie: "))
+            .and_then(|c| c.split(';').next())
+    }
+
+    /// Starts the real router on a free port, with user `u` (password `pw`) logged in.
+    async fn start_server() -> TestServer {
+        let dir = tempfile::tempdir().unwrap();
+        let db_url = format!("sqlite:{}", dir.path().join("test.db").display());
+        sqlx::Sqlite::create_database(&db_url).await.unwrap();
+        let (read_pool, write_pool) = db::init_pools(&db_url).await;
+        db::run_migrations(&write_pool).await;
+        sqlx::query("insert into users (id, name, password_hash) values ('u', 'U', $1)")
+            .bind(generate_hash_from_password("pw"))
+            .execute(&write_pool)
+            .await
+            .unwrap();
+        let session_store = db::SessionStore::new(read_pool.clone(), write_pool.clone());
+        session_store.migrate().await.unwrap();
+
+        let storage = StorageResolver::new(dir.path().join("storage"), dir.path().join("prev"));
+        let state = Box::leak(Box::new(AppState::new(
+            read_pool.clone(),
+            write_pool.clone(),
+            storage,
+        )));
+        let app = router(state, session_store, vec![]);
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        let login = send(
+            addr,
+            "POST /api/login HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\
+             Content-Type: application/x-www-form-urlencoded\r\nContent-Length: 21\r\n\r\n\
+             user_id=u&password=pw",
+        )
+        .await;
+        let cookie = set_cookie(&login).expect(&login).to_owned();
+
+        TestServer {
+            addr,
+            cookie,
+            write_pool,
+            read_pool,
+            _dir: dir,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_authenticated_get_does_not_need_the_write_connection() {
+        let server = start_server().await;
+        let _held = server.write_pool.acquire().await.unwrap();
+
+        let response = send(
+            server.addr,
+            &format!(
+                "GET /api/profile HTTP/1.1\r\nHost: x\r\nConnection: close\r\nCookie: {}\r\n\r\n",
+                server.cookie
+            ),
+        )
+        .await;
+
+        assert!(response.starts_with("HTTP/1.1 200"), "{response}");
+    }
+
+    #[tokio::test]
+    async fn test_write_connection_is_free_while_upload_streams() {
+        let server = start_server().await;
+        let multipart = format!(
+            "--B\r\nContent-Disposition: form-data; name=\"file\"; filename=\"a.jpg\"\r\n\r\n{}\r\n--B--\r\n",
+            "x".repeat(1000)
+        );
+        let (first, second) = multipart.split_at(multipart.len() / 2);
+        let mut upload = TcpStream::connect(server.addr).await.unwrap();
+        let headers = format!(
+            "POST /api/upload?time_created=1700000000 HTTP/1.1\r\nHost: x\r\nCookie: {}\r\n\
+             Content-Type: multipart/form-data; boundary=B\r\nContent-Length: {}\r\n\r\n",
+            server.cookie,
+            multipart.len()
+        );
+        upload.write_all(headers.as_bytes()).await.unwrap();
+        upload.write_all(first.as_bytes()).await.unwrap();
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        tokio::time::timeout(
+            Duration::from_secs(2),
+            sqlx::query("update users set name = 'V' where id = 'u'").execute(&server.write_pool),
+        )
+        .await
+        .expect("write connection was held during the upload")
+        .unwrap();
+
+        upload.write_all(second.as_bytes()).await.unwrap();
+        let response = read_response(&mut upload).await;
+        assert!(response.starts_with("HTTP/1.1 200"), "{response}");
+        let count: i64 = sqlx::query_scalar("select count(*) from photos where name = 'a.jpg'")
+            .fetch_one(&server.read_pool)
+            .await
+            .unwrap();
+        assert_eq!(count, 1);
+    }
 }

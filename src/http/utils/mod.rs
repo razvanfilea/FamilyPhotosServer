@@ -169,8 +169,13 @@ impl WrittenFile {
     }
 }
 
-pub async fn write_field_to_file(mut field: multipart::Field<'_>) -> HttpResult<WrittenFile> {
-    let temp_file = NamedTempFile::new()?;
+/// The temp file is created in `temp_dir`, which should be on the same filesystem as the
+/// final location, so that persisting it is a rename and not a copy.
+pub async fn write_field_to_file(
+    mut field: multipart::Field<'_>,
+    temp_dir: &std::path::Path,
+) -> HttpResult<WrittenFile> {
+    let temp_file = NamedTempFile::new_in(temp_dir)?;
     let (tx, rx) = mpsc::channel::<Bytes>(8);
 
     let writer_handle = tokio::task::spawn_blocking(move || write_chunks_blocking(temp_file, rx));
