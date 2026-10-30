@@ -1,0 +1,60 @@
+{% import "macros/icons.html" as icons %}
+{# The selection bar: a floating pill below the top bar, shown while photos of a grid are selected.
+   Included once by shell.html; its behaviour is assets/js/selection/.
+   The actions shown depend on the grid's context (trash has its own). The texts that scripts show
+   are in the JSON below. #}
+{%- macro action(name, icon, label, danger=false) %}
+<button type="button" class="selection-bar__action{% if danger %} selection-bar__action--danger{% endif %}" data-action="{{ name }}"
+        data-testid="selection-{{ name }}" aria-label="{{ label }}" title="{{ label }}" hidden>
+    {% call icons::icon(icon) %}{% endcall %}
+    <span class="selection-bar__label" data-slot="label">{{ label }}</span>
+</button>
+{%- endmacro %}
+<div class="selection-bar" data-component="selection-bar" data-visible="false" data-user-id="{{ ctx.user_id }}"
+     role="toolbar" aria-label="Selected photos" data-testid="selection-bar" inert>
+    <button type="button" class="selection-bar__clear" data-action="clear" aria-label="Clear selection"
+            title="Clear selection" data-testid="selection-clear">{% call icons::icon("close") %}{% endcall %}</button>
+    <span class="selection-bar__count" aria-live="polite" data-testid="selection-count"><span data-slot="count">0</span> selected</span>
+    <span class="loading loading-spinner loading-sm" data-slot="spinner" role="status" aria-label="Selecting photos" hidden></span>
+    <div class="selection-bar__actions">
+        {% call action("favorite", "star", "Add to favorites") %}{% endcall %}
+        {% call action("download", "download", "Download") %}{% endcall %}
+        {% call action("share", "share", "Share") %}{% endcall %}
+        {% call action("move", "drive_file_move", "Move") %}{% endcall %}
+        {% call action("delete", "delete", "Delete") %}{% endcall %}
+        {% call action("restore", "restore_from_trash", "Restore") %}{% endcall %}
+        {% call action("delete-forever", "delete_forever", "Delete forever", true) %}{% endcall %}
+    </div>
+    <script type="application/json" data-selection-strings>
+    {"favorite":"Add to favorites","unfavorite":"Remove from favorites",
+     "cantDelete":"You can't delete some of the selected photos",
+     "cantMove":"You can't move some of the selected photos",
+     "cantRestore":"You can't restore some of the selected photos",
+     "cantDeleteForever":"You can't permanently delete some of the selected photos",
+     "resolving":"Selecting photos...",
+     "undo":"Undo",
+     "movedToTrash":["{count} photo moved to trash","{count} photos moved to trash"],
+     "movedToTrashPartial":"Moved {count} of {total} photos to trash",
+     "restored":["{count} photo restored","{count} photos restored"],
+     "restoredPartial":"Restored {count} of {total} photos",
+     "moved":["{count} photo moved","{count} photos moved"],
+     "movedPartial":"Moved {count} of {total} photos",
+     "favorited":["Added {count} photo to favorites","Added {count} photos to favorites"],
+     "favoritedPartial":"Added {count} of {total} photos to favorites",
+     "unfavorited":["Removed {count} photo from favorites","Removed {count} photos from favorites"],
+     "unfavoritedPartial":"Removed {count} of {total} photos from favorites",
+     "deletedForever":["{count} photo deleted permanently","{count} photos deleted permanently"],
+     "deletedForeverPartial":"Deleted {count} of {total} photos permanently",
+     "selectUpTo":"Select up to {max} photos to share",
+     "downloadTitle":"Download {count} files?",
+     "downloadBody":"Your browser may ask you to allow multiple downloads.",
+     "download":"Download",
+     "downloading":["Downloading {count} file","Downloading {count} files"],
+     "shareFailed":"Couldn't share the photos",
+     "moveNothing":"None of the photos could be moved",
+     "moveNotFound":"You can't move photos to that folder, or some of the photos can't be moved",
+     "moveNoteFamily":"These photos will become visible to the whole family",
+     "moveNoteHidden":"These photos will become private",
+     "movePhotos":["{count} photo","{count} photos"]}
+    </script>
+</div>

@@ -2,9 +2,10 @@
 // a key is looked up from the top scope down, stopping at the first modal scope (dialog, viewer),
 // so shortcuts of the page underneath don't fire while it's open.
 //
-// Keys: "k", "?", "+", "shift+a", "ctrl+k". Events coming from text fields are ignored.
+// Keys: "k", "?", "+", "shift+a", "ctrl+k". Events coming from text fields are ignored. A handler
+// returning false declines the key.
 
-/** @type {Map<string, Map<string, (event: KeyboardEvent) => void>>} */
+/** @type {Map<string, Map<string, (event: KeyboardEvent) => void | false>>} */
 const handlers = new Map([['global', new Map()]]);
 /** @type {{name: string, modal: boolean}[]} */
 const stack = [{ name: 'global', modal: false }];
@@ -46,23 +47,18 @@ function activeScopes() {
     return scopes;
 }
 
-function findHandler(combo) {
-    for (const scope of activeScopes()) {
-        const handler = handlers.get(scope)?.get(combo);
-        if (handler) return handler;
-    }
-    return undefined;
+/** The handlers of a key, from the top scope down */
+function findHandlers(combo) {
+    return activeScopes().flatMap((scope) => handlers.get(scope)?.get(combo) ?? []);
 }
 
 function onKeyDown(event) {
     if (event.defaultPrevented || event.isComposing || isTextField(event.target)) return;
     if (['Shift', 'Control', 'Alt', 'Meta'].includes(event.key)) return;
 
-    const handler = findHandler(eventCombo(event));
-    if (handler) {
-        event.preventDefault();
-        handler(event);
-    }
+    // A handler returning false declines the key: the next one gets it
+    const handler = findHandlers(eventCombo(event)).find((candidate) => candidate(event) !== false);
+    if (handler) event.preventDefault();
 }
 
 /**
@@ -84,9 +80,14 @@ export function register(scope, combo, handler) {
     };
 }
 
-/** Activates a scope on top of the current ones. Modal scopes hide the scopes below them. */
+/**
+ * Activates a scope on top of the current ones. Modal scopes hide the scopes below them; a
+ * non-modal scope pushed while a modal one is open (a page mounting behind a deep-linked viewer)
+ * goes below it, so it can't take keys from the modal scope.
+ */
 export function pushScope(name, { modal = false } = {}) {
-    stack.push({ name, modal });
+    const firstModal = stack.findIndex((scope) => scope.modal);
+    stack.splice(modal || firstModal < 0 ? stack.length : firstModal, 0, { name, modal });
 }
 
 /** Removes the topmost occurrence of a scope. */

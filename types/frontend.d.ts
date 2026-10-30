@@ -63,4 +63,5 @@ interface ParentNode {
 interface HTMLElement {
     fpGrid?: any;
     fpPicker?: any;
+    fpSelection?: any;
 }

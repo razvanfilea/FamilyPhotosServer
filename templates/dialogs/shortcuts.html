@@ -8,6 +8,11 @@
         <dl>
             {% call row(["←", "→", "↑", "↓"], "Move between photos") %}{% endcall %}
             {% call row(["Enter"], "Open the photo") %}{% endcall %}
+            {% call row(["x"], "Select the photo") %}{% endcall %}
+            {% call row(["Ctrl", "A"], "Select all loaded photos") %}{% endcall %}
+            {% call row(["Delete"], "Delete the selection") %}{% endcall %}
+            {% call row(["m"], "Move the selection") %}{% endcall %}
+            {% call row(["Esc"], "Clear the selection") %}{% endcall %}
             {% call row(["+", "-"], "Bigger / smaller tiles") %}{% endcall %}
             {% call row(["?"], "Show this list") %}{% endcall %}
         </dl>
