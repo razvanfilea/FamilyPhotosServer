@@ -201,6 +201,52 @@ mod integration {
     }
 
     #[sqlx::test]
+    async fn test_updating_a_trashed_photo_does_not_log_it_into_its_folder(
+        pool: SqlitePool,
+    ) -> sqlx::Result<()> {
+        let user = create_test_user("user1", "Test User");
+        insert_test_user(&pool, &user).await?;
+        let folder = create_test_folder(&pool, Some("user1"), "vacation").await;
+
+        let mut tx = pool.begin().await?;
+        let photo = create_test_photo(0, Some("user1"), Some(folder.id), "test.jpg");
+        let mut trashed = tx.insert_photo(&photo).await?;
+        trashed.trashed_on = Some(OffsetDateTime::now_utc());
+        tx.update_photo(&trashed).await?;
+        tx.commit().await?;
+
+        let folder_events = || {
+            sqlx::query_as::<_, (i64, Option<Vec<u8>>)>(
+                "select event_id, data from folder_event_log where photo_id = $1 order by event_id",
+            )
+            .bind(trashed.id)
+            .fetch_all(&pool)
+        };
+        let before = folder_events().await?;
+        assert_eq!(before.last().map(|e| e.1.is_none()), Some(true));
+
+        let mut tx = pool.begin().await?;
+        trashed.name = "renamed.jpg".to_string();
+        tx.update_photo(&trashed).await?;
+        tx.commit().await?;
+
+        let mut tx = pool.begin().await?;
+        tx.update_thumb_hashes(&[(trashed.id, vec![1, 2, 3])])
+            .await?;
+        tx.commit().await?;
+
+        assert_eq!(folder_events().await?, before);
+        let logged: i64 =
+            sqlx::query_scalar("select count(*) from photos_event_log where photo_id = $1")
+                .bind(trashed.id)
+                .fetch_one(&pool)
+                .await?;
+        assert_eq!(logged, 4);
+
+        Ok(())
+    }
+
+    #[sqlx::test]
     async fn test_event_log_bounds(pool: SqlitePool) -> sqlx::Result<()> {
         let user = create_test_user("user1", "Test User");
         insert_test_user(&pool, &user).await?;

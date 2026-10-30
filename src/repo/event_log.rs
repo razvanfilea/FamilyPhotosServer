@@ -109,6 +109,7 @@ pub trait FolderEventLogRepo<'c>: SqliteExecutor<'c> {
     async fn insert_folder_creation_event_logs(self, photos: &[Photo]) -> sqlx::Result<()> {
         let photos_with_folders: Vec<_> = photos
             .iter()
+            .filter(|p| p.trashed_on.is_none())
             .filter_map(|p| p.folder_id.map(|fid| (fid, p)))
             .collect();
 

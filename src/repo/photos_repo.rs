@@ -345,7 +345,10 @@ impl<'c> PhotosTransactionRepo<'c> for SqliteTransaction<'c> {
             self.as_mut()
                 .insert_folder_event(new_folder_id, photo.id, Some(photo))
                 .await?;
-        } else if !left_old_folder && let Some(folder_id) = photo.folder_id {
+        } else if !left_old_folder
+            && photo.trashed_on.is_none()
+            && let Some(folder_id) = photo.folder_id
+        {
             self.as_mut()
                 .insert_folder_event(folder_id, photo.id, Some(photo))
                 .await?;
