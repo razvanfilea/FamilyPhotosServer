@@ -14,8 +14,9 @@ rayon = "1.12"
 axum = { version = "0.8", features = ["multipart"] }
 axum-extra = { version = "0.12", default-features = false, features = ["typed-header"] }
 tower-http = { version = "0.7", features = ["trace", "cors", "set-header", "fs"] }
-axum-login = "0.18"
-tower-sessions-sqlx-store = { version = "0.15.0", features = ["sqlite"] }
+# git revs until upstream publishes releases using sqlx 0.9 (issue #83)
+axum-login = { git = "https://github.com/maxcountryman/axum-login", rev = "151c72d7a1b4646830f86b4332e6bd6e34d719a7" }
+tower-sessions-sqlx-store = { git = "https://github.com/maxcountryman/tower-sessions-stores", rev = "d18c9bf76f1d4fb73130dbe5aa643197f14b5d2d", features = ["sqlite"] }
 askama = "0.16"
 
 # Logging
@@ -23,30 +24,30 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Database
-sqlx = { version = "0.8", features = ["runtime-tokio", "macros", "time", "sqlite", "migrate"] }
+sqlx = { version = "0.9", features = ["runtime-tokio", "macros", "time", "sqlite", "migrate"] }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-serde_with = { version = "3.16", features = ["base64"] }
-base64 = "0.22"
+serde_with = { version = "3.24", features = ["base64"] }
+base64 = "0.23"
 
 # Files
 walkdir = "2.5"
 mime_guess = "2"
 kamadak-exif = "0.6"
-tempfile = "3.24"
+tempfile = "3.27"
 
 # Utils
-clap = { version = "4.5", features = ["derive", "cargo"] }
+clap = { version = "4.6", features = ["derive", "cargo"] }
 thiserror = "2"
 regex = "1"
 wait-timeout = "0.2"
 time = { version = "0.3", features = ["macros", "parsing", "serde"] }
 dotenvy = "0.15"
-argon2 = { version = "=0.6.0-rc.8" }
+argon2 = "0.6"
 blake3 = { version = "1.8", features = ["mmap"] }
-uuid = { version = "1.20", features = ["v4"] }
+uuid = { version = "1.29", features = ["v4"] }
 fast-thumbhash = "0.2"
 mimalloc = "0.1"
 

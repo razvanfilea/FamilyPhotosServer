@@ -6,7 +6,8 @@
       {
         "name": "exists(select 1 from favorite_photos where photo_id = $1 and user_id = $2)",
         "ordinal": 0,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": "Expression"
       }
     ],
     "parameters": {

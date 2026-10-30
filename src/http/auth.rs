@@ -27,7 +27,8 @@ where
             .map_err(|_| HttpError::Unauthorized)?;
 
         auth_session
-            .user
+            .user()
+            .await
             .map(AuthenticatedUser)
             .ok_or(HttpError::Unauthorized)
     }

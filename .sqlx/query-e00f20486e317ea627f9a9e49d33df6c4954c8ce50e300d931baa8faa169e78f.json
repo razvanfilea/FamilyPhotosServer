@@ -6,26 +6,29 @@
       {
         "name": "max_created_at!: String",
         "ordinal": 0,
-        "type_info": "Null"
+        "type_info": "Datetime",
+        "origin": "Expression"
       },
       {
         "name": "count!: i64",
         "ordinal": 1,
-        "type_info": "Null"
+        "type_info": "Integer",
+        "origin": "Expression"
       },
       {
         "name": "cover_photo_id!: i64",
         "ordinal": 2,
-        "type_info": "Null"
+        "type_info": "Integer",
+        "origin": "Expression"
       }
     ],
     "parameters": {
       "Right": 1
     },
     "nullable": [
-      null,
-      null,
-      null
+      false,
+      false,
+      true
     ]
   },
   "hash": "e00f20486e317ea627f9a9e49d33df6c4954c8ce50e300d931baa8faa169e78f"

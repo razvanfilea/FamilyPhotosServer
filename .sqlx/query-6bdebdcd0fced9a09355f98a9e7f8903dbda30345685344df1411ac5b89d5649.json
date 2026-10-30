@@ -6,22 +6,36 @@
       {
         "name": "id!: i64",
         "ordinal": 0,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "folders",
+            "name": "id"
+          }
+        }
       },
       {
         "name": "name!",
         "ordinal": 1,
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "folders",
+            "name": "name"
+          }
+        }
       },
       {
         "name": "photo_count!: i64",
         "ordinal": 2,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": "Expression"
       },
       {
         "name": "cover_photo_id!: i64",
         "ordinal": 3,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": "Expression"
       }
     ],
     "parameters": {

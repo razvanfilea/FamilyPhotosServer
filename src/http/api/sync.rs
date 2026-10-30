@@ -87,8 +87,6 @@ enum SharedFolderSync {
     },
 }
 
-/// Syncs a single shared folder: deltas for a valid cursor, the full photo list for
-/// cursor <= 0 or a stale cursor.
 async fn sync_shared_folder(
     tx: &mut SqliteTransaction<'_>,
     folder_id: i64,
@@ -194,7 +192,6 @@ mod tests {
     };
     use sqlx::SqlitePool;
 
-    /// Creates a folder with `count` photos (one folder event each); returns the folder id.
     async fn setup_folder(pool: &SqlitePool, count: usize) -> sqlx::Result<i64> {
         insert_test_user(pool, &create_test_user("owner", "Owner")).await?;
         let folder = create_test_folder(pool, Some("owner"), "shared").await;
@@ -291,7 +288,6 @@ mod tests {
         let ids = folder_event_ids(&pool, folder_id).await?;
         pool.delete_old_folder_events(3).await?;
 
-        // The cursor is the oldest remaining event: nothing after it was deleted
         expect_events(sync(&pool, folder_id, ids[2]).await?, ids[4], 2);
         Ok(())
     }
@@ -305,7 +301,6 @@ mod tests {
 
         // Events after the cursor were deleted, the survivors are not a complete delta
         expect_photos(sync(&pool, folder_id, ids[1]).await?, ids[4], 5);
-        // Same for the cursor of the newest deleted event
         expect_photos(sync(&pool, folder_id, ids[2]).await?, ids[4], 5);
         Ok(())
     }

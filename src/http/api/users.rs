@@ -25,7 +25,7 @@ pub fn protected_router() -> Router<AppStateRef> {
 }
 
 async fn login_handler(
-    mut auth: AuthSession,
+    auth: AuthSession,
     WantsHtml(wants_html): WantsHtml,
     Form(credentials): Form<UserCredentials>,
 ) -> Response {
@@ -101,18 +101,20 @@ fn login_error(message: &str) -> Response {
 
 async fn profile(auth_session: AuthSession) -> impl IntoResponse {
     auth_session
-        .user
+        .user()
+        .await
         .map_or(StatusCode::UNAUTHORIZED.into_response(), |user| {
             Json(SimpleUser::from(user)).into_response()
         })
 }
 
-pub async fn logout(mut auth: AuthSession, WantsHtml(wants_html): WantsHtml) -> Response {
-    if let Some(user) = &auth.user {
+pub async fn logout(auth: AuthSession, WantsHtml(wants_html): WantsHtml) -> Response {
+    let user = auth.user().await;
+    if let Some(user) = &user {
         debug!("Logging out user: {}", user.id);
     }
 
-    if auth.user.is_some()
+    if user.is_some()
         && let Err(e) = auth.logout().await
     {
         error!("Failed to logout: {}", e);

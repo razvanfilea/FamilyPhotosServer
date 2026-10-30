@@ -6,12 +6,24 @@
       {
         "name": "photo_id",
         "ordinal": 0,
-        "type_info": "Integer"
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "folder_event_log",
+            "name": "photo_id"
+          }
+        }
       },
       {
         "name": "data",
         "ordinal": 1,
-        "type_info": "Blob"
+        "type_info": "Blob",
+        "origin": {
+          "Table": {
+            "table": "folder_event_log",
+            "name": "data"
+          }
+        }
       }
     ],
     "parameters": {

@@ -1,0 +1,110 @@
+{
+  "db_name": "SQLite",
+  "query": "update folder_permissions set can_upload = $3, can_delete = $4\n            where id = $1 and folder_id in (select id from folders where owner_id = $2 or owner_id is null)\n            returning id as \"id!\", folder_id, grantee_id, token, can_upload, can_delete,\n                created_at, expires_at",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "folder_permissions",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "folder_id",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "folder_permissions",
+            "name": "folder_id"
+          }
+        }
+      },
+      {
+        "name": "grantee_id",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "folder_permissions",
+            "name": "grantee_id"
+          }
+        }
+      },
+      {
+        "name": "token",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "folder_permissions",
+            "name": "token"
+          }
+        }
+      },
+      {
+        "name": "can_upload",
+        "ordinal": 4,
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "folder_permissions",
+            "name": "can_upload"
+          }
+        }
+      },
+      {
+        "name": "can_delete",
+        "ordinal": 5,
+        "type_info": "Bool",
+        "origin": {
+          "Table": {
+            "table": "folder_permissions",
+            "name": "can_delete"
+          }
+        }
+      },
+      {
+        "name": "created_at",
+        "ordinal": 6,
+        "type_info": "Datetime",
+        "origin": {
+          "Table": {
+            "table": "folder_permissions",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "name": "expires_at",
+        "ordinal": 7,
+        "type_info": "Datetime",
+        "origin": {
+          "Table": {
+            "table": "folder_permissions",
+            "name": "expires_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true,
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "a316fc26fa5d1066357f9a910bc76700b16384d7cbce00300fe8063cf73e1d73"
+}

@@ -8,7 +8,7 @@ use axum::response::{IntoResponse, Redirect};
 struct LoginTemplate;
 
 pub async fn login_page(auth_session: AuthSession) -> impl IntoResponse {
-    if auth_session.user.is_some() {
+    if auth_session.user().await.is_some() {
         return Redirect::to("/").into_response();
     }
 

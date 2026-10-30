@@ -68,7 +68,8 @@ pub trait FolderPermissionsRepo<'c>: SqliteExecutor<'c> {
             r#"insert into folder_permissions
                 (folder_id, grantee_id, token, can_upload, can_delete, expires_at)
             values ($1, $2, $3, $4, $5, $6)
-            returning *"#,
+            returning id as "id!", folder_id, grantee_id, token, can_upload, can_delete,
+                created_at, expires_at"#,
             folder_id,
             grantee_id,
             token,
@@ -91,7 +92,8 @@ pub trait FolderPermissionsRepo<'c>: SqliteExecutor<'c> {
             FolderPermission,
             r#"update folder_permissions set can_upload = $3, can_delete = $4
             where id = $1 and folder_id in (select id from folders where owner_id = $2 or owner_id is null)
-            returning *"#,
+            returning id as "id!", folder_id, grantee_id, token, can_upload, can_delete,
+                created_at, expires_at"#,
             share_id, owner_id, can_upload, can_delete
         )
         .fetch_optional(self)

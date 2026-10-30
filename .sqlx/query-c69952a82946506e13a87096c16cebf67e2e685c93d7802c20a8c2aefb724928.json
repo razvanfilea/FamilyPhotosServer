@@ -1,0 +1,110 @@
+{
+  "db_name": "SQLite",
+  "query": "insert into photos (user_id, name, created_at, file_size, folder_id, trashed_on) values ($1, $2, $3, $4, $5, $6) returning id, user_id as \"user_id?\", name, created_at, file_size, folder_id as \"folder_id?\", thumb_hash, trashed_on",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "photos",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "user_id?",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "photos",
+            "name": "user_id"
+          }
+        }
+      },
+      {
+        "name": "name",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "photos",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "created_at",
+        "ordinal": 3,
+        "type_info": "Datetime",
+        "origin": {
+          "Table": {
+            "table": "photos",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "name": "file_size",
+        "ordinal": 4,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "photos",
+            "name": "file_size"
+          }
+        }
+      },
+      {
+        "name": "folder_id?",
+        "ordinal": 5,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "photos",
+            "name": "folder_id"
+          }
+        }
+      },
+      {
+        "name": "thumb_hash",
+        "ordinal": 6,
+        "type_info": "Blob",
+        "origin": {
+          "Table": {
+            "table": "photos",
+            "name": "thumb_hash"
+          }
+        }
+      },
+      {
+        "name": "trashed_on",
+        "ordinal": 7,
+        "type_info": "Datetime",
+        "origin": {
+          "Table": {
+            "table": "photos",
+            "name": "trashed_on"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "c69952a82946506e13a87096c16cebf67e2e685c93d7802c20a8c2aefb724928"
+}

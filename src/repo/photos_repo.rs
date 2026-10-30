@@ -211,7 +211,6 @@ impl<'c> PhotosTransactionRepo<'c> for SqliteTransaction<'c> {
         last_event_id: i64,
         user_id: &str,
     ) -> Result<EventLogs, UserEventLogError> {
-        // An empty log yields min = max = 0
         let (min_event_id, max_event_id) = query!(
             "select coalesce(min(event_id), 0) as 'min_id!: i64', coalesce(max(event_id), 0) as 'max_id!: i64' from photos_event_log",
         ).map(|record| (record.min_id, record.max_id))
@@ -242,7 +241,7 @@ impl<'c> PhotosTransactionRepo<'c> for SqliteTransaction<'c> {
     async fn insert_photo(&mut self, photo: &Photo) -> sqlx::Result<Photo> {
         let photo = query_as!(
             Photo,
-            "insert into photos (user_id, name, created_at, file_size, folder_id, trashed_on) values ($1, $2, $3, $4, $5, $6) returning *",
+            "insert into photos (user_id, name, created_at, file_size, folder_id, trashed_on) values ($1, $2, $3, $4, $5, $6) returning id, user_id as \"user_id?\", name, created_at, file_size, folder_id as \"folder_id?\", thumb_hash, trashed_on",
             photo.user_id,
             photo.name,
             photo.created_at,

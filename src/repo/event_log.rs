@@ -170,12 +170,8 @@ pub trait FolderEventLogRepo<'c>: SqliteExecutor<'c> {
 impl<'c, E> FolderEventLogRepo<'c> for E where E: SqliteExecutor<'c> {}
 
 pub trait FolderEventLogTransactionRepo {
-    /// Returns the events of the folder after `after_event_id` (which must be > 0), or
-    /// `None` if the cursor is stale, meaning the client cannot rely on a delta:
-    /// - the folder has no events but the cursor is > 0
-    /// - the oldest remaining event is newer than the cursor (cleanup deleted events
-    ///   at or after the cursor; it only ever deletes the oldest events of a folder)
-    /// - the cursor is ahead of the newest event
+    /// Returns the events of the folder after `after_event_id` (> 0), or `None` if the
+    /// cursor is stale (see `sync_folders`).
     async fn get_folder_events(
         &mut self,
         folder_id: i64,
@@ -534,9 +530,7 @@ mod tests {
 
         pool.delete_old_folder_events(3).await?;
 
-        // The quiet folder keeps all its events even though they are far behind the global max
         assert_eq!(folder_event_ids(&pool, quiet.id).await?, quiet_before);
-        // The busy folder keeps only its last 3
         assert_eq!(folder_event_ids(&pool, busy.id).await?, &busy_before[4..]);
 
         pool.delete_old_folder_events(1).await?;

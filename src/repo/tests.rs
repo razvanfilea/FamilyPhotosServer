@@ -253,7 +253,6 @@ mod integration {
         let user = create_test_user("user1", "Test User");
         insert_test_user(&pool, &user).await?;
 
-        // Empty log: cursor 0 → Ok with no events
         let mut tx = pool.begin().await?;
         let events = tx
             .get_events_for_user(0, "user1")
@@ -262,7 +261,6 @@ mod integration {
         assert!(events.events.is_empty());
         assert_eq!(events.event_log_id, 0);
 
-        // Any other cursor → InvalidEventId
         let result = tx.get_events_for_user(5, "user1").await;
         assert!(
             matches!(result, Err(UserEventLogError::InvalidEventId)),
@@ -296,7 +294,6 @@ mod integration {
 
         let mut tx = pool.begin().await?;
 
-        // Cursor below the oldest remaining event → InvalidEventId
         let result = tx.get_events_for_user(min_id - 1, "user1").await;
         assert!(
             matches!(result, Err(UserEventLogError::InvalidEventId)),
@@ -304,7 +301,6 @@ mod integration {
             result
         );
 
-        // Cursor equal to the oldest remaining event → the newer events
         let events = tx
             .get_events_for_user(min_id, "user1")
             .await
