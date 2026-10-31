@@ -61,11 +61,6 @@ pub fn router(app_state: AppStateRef) -> Router {
             "/ui/dialogs/folder-delete/{folder_id}",
             get(folders::folder_delete_dialog),
         )
-        .route("/ui/folders", post(folders::create_folder))
-        .route(
-            "/ui/folders/{folder_id}",
-            post(folders::update_folder).delete(folders::delete_folder),
-        )
         .route(
             "/ui/sharing/folder/{folder_id}/members",
             post(sharing::add_member),
@@ -83,6 +78,11 @@ pub fn router(app_state: AppStateRef) -> Router {
             axum::routing::delete(sharing::remove_member),
         )
         .route("/ui/settings/password", post(settings::change_password))
+        .route("/ui/folders", post(folders::create_folder))
+        .route(
+            "/ui/folders/{folder_id}",
+            post(folders::update_folder).delete(folders::delete_folder),
+        )
         .route(
             "/ui/dialogs/sharing/{folder_id}",
             get(sharing::sharing_dialog),
@@ -96,7 +96,8 @@ pub fn router(app_state: AppStateRef) -> Router {
         .route("/ui/grid/month-picker", get(grid::month_picker))
         .route("/ui/viewer/info/{photo_id}", get(viewer::info_panel))
         .route("/ui/trash/deletable-ids", get(trash::deletable_ids))
-        .route_layer(middleware::from_fn(fragments::require_login));
+        .route_layer(middleware::from_fn(fragments::require_login))
+        .route_layer(middleware::from_fn(fragments::same_origin_writes));
 
     let unauthenticated_router = Router::new()
         .route("/login", get(user::login_page))

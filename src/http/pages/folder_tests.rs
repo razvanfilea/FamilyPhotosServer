@@ -1173,3 +1173,52 @@ async fn test_ui_delete_folder(pool: SqlitePool) {
     );
     assert_eq!(app.folder_name(empty).await, None);
 }
+
+#[sqlx::test]
+async fn test_ui_writes_check_the_origin(pool: SqlitePool) {
+    let app = App::new(pool).await;
+    let alice = app.login("alice").await;
+    let post = |origin: Option<&str>| {
+        let mut request = Request::post("/ui/folders")
+            .header(header::COOKIE, &alice)
+            .header(header::HOST, "photos.example")
+            .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded");
+        if let Some(origin) = origin {
+            request = request.header(header::ORIGIN, origin);
+        }
+        app.send(
+            request
+                .body(Body::from("name=Origin&folder-visibility=personal"))
+                .unwrap(),
+        )
+    };
+
+    assert_eq!(post(None).await.status, StatusCode::OK);
+    assert_eq!(
+        post(Some("https://photos.example")).await.status,
+        StatusCode::OK
+    );
+    for origin in [
+        "https://evil.example",
+        "null",
+        "https://photos.example.evil",
+    ] {
+        assert_eq!(
+            post(Some(origin)).await.status,
+            StatusCode::FORBIDDEN,
+            "{origin}"
+        );
+    }
+
+    // Reads are never checked
+    let response = app
+        .send(
+            Request::get("/ui/dialogs/folder-name")
+                .header(header::COOKIE, &alice)
+                .header(header::ORIGIN, "https://evil.example")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await;
+    assert_eq!(response.status, StatusCode::OK);
+}
