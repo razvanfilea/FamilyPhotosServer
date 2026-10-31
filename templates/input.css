@@ -5,6 +5,7 @@
 @import './css/utilities.css';
 @import './css/viewer.css';
 @import './css/upload.css';
+@import './css/login.css';
 
 @source "./**/*.html";
 @source "../assets/js/**/*.js";
@@ -526,59 +527,6 @@
         color: inherit;
     }
 
-    /* ---------- Login ---------- */
-
-    .fp-login-body {
-        background:
-            radial-gradient(circle at 0% 0%, color-mix(in oklab, var(--color-secondary) 25%, transparent), transparent 60%),
-            radial-gradient(circle at 0% 100%, color-mix(in oklab, var(--color-accent) 20%, transparent), transparent 60%),
-            var(--color-base-100);
-        background-attachment: fixed;
-    }
-
-    .fp-login {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        gap: 2rem;
-        min-height: 100dvh;
-        padding: 1.5rem max(1rem, env(safe-area-inset-right)) 1.5rem max(1rem, env(safe-area-inset-left));
-    }
-
-    .fp-login__header {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        text-align: center;
-    }
-
-    .fp-login__logo {
-        border-radius: 9999px;
-        margin-bottom: 1rem;
-    }
-
-    .fp-login__title {
-        @apply text-3xl font-bold;
-    }
-
-    .fp-login__subtitle {
-        color: var(--color-neutral-content);
-        margin-top: 0.25rem;
-    }
-
-    .fp-login__card {
-        display: flex;
-        flex-direction: column;
-        gap: 1rem;
-        width: 100%;
-        max-width: 30rem;
-        padding: 1.5rem;
-        border-radius: 1.5rem;
-        border: 1px solid color-mix(in oklab, var(--fp-outline) 40%, transparent);
-        background-color: color-mix(in oklab, var(--color-neutral) 30%, transparent);
-    }
-
     .fp-field {
         display: flex;
         flex-direction: column;
@@ -589,38 +537,6 @@
         font-size: 0.875rem;
         font-weight: 500;
         color: var(--color-neutral-content);
-    }
-
-    .fp-login__error {
-        padding: 0.75rem;
-        border-radius: 0.5rem;
-        background-color: var(--fp-error-container);
-        color: var(--fp-on-error-container);
-    }
-
-    .fp-login__submit {
-        margin-top: 0.5rem;
-    }
-
-    .fp-login__submit-busy,
-    .htmx-request .fp-login__submit-idle {
-        display: none;
-    }
-
-    .fp-login__submit-idle,
-    .htmx-request .fp-login__submit-busy {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.5rem;
-    }
-
-    .fp-password-toggle__hide,
-    [aria-pressed="true"] > .fp-password-toggle__show {
-        display: none;
-    }
-
-    [aria-pressed="true"] > .fp-password-toggle__hide {
-        display: inline;
     }
 }
 

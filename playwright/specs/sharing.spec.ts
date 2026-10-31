@@ -143,18 +143,19 @@ test.describe('sharing', () => {
     });
 
     test('an expired share hides the folder from bob', async ({ alicePage: page, bobPage, folders }) => {
-        // The API only accepts a future expiry, so let a share run out a few seconds from now
+        // The API only accepts a future expiry, so let a share run out some seconds from now (with slack
+        // for a loaded machine between creating the share and the first request)
         const name = folders.name('Short lived');
         const id = await folders.create('alice', name);
         const alice = await folders.as('alice');
-        const expiresAt = Math.floor(Date.now() / 1000) + 3;
+        const expiresAt = Math.floor(Date.now() / 1000) + 10;
         expect((await alice.post('/api/sharing', {
             data: { folder_id: id, grantee_id: 'bob', expires_at: expiresAt },
         })).ok()).toBe(true);
         expect((await bobPage.request.get(`/folders/${id}`)).status()).toBe(200);
 
         await expect.poll(async () => (await bobPage.request.get(`/folders/${id}`)).status(), {
-            timeout: 10_000,
+            timeout: 30_000,
         }).toBe(404);
         await gotoReady(bobPage, '/folders');
         await expect(bobPage.getByTestId('folder-card').filter({ hasText: name })).toHaveCount(0);

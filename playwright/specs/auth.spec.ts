@@ -9,7 +9,8 @@ test.describe('login page', () => {
     test('logs in, normalizing the username, and lands on the timeline', async ({ page }) => {
         await gotoReady(page, '/login');
         await expect(page.getByRole('heading', { name: 'Family Photos' })).toBeVisible();
-        await expect(page.getByText('Your self-hosted photo library')).toBeVisible();
+        await expect(page.getByText("Your family's moments, kept at home.")).toBeVisible();
+        await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
 
         const submit = page.getByTestId('login-submit');
         await expect(submit).toBeDisabled();
