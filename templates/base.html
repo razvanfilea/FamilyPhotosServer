@@ -22,7 +22,7 @@
 
     <title>{% block title %}Family Photos{% endblock %}</title>
 </head>
-<body class="{% block body_class %}{% endblock %}">
+<body class="{% block body_class %}{% endblock %}"{% block body_attrs %}{% endblock %}>
 {% block body %}{% endblock %}
 
 <div id="toasts" class="toast toast-center toast-bottom" role="status" aria-live="polite"
@@ -31,7 +31,7 @@
 <dialog id="app-dialog" class="modal modal-bottom sm:modal-middle" aria-labelledby="app-dialog-title"
         data-testid="app-dialog">
     <div id="app-dialog-content" class="modal-box"></div>
-    <form method="dialog" class="modal-backdrop">
+    <form method="dialog" class="modal-backdrop" hx-boost="false">
         <button type="submit" tabindex="-1">Close</button>
     </form>
 </dialog>

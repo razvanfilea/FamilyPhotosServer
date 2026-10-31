@@ -77,3 +77,14 @@ register('login-form', (/** @type {HTMLFormElement} */ form) => {
         document.getElementById('login-error').replaceWith(error);
     });
 });
+
+/** Tapping the tab that is already open scrolls to the top (captured, so the link doesn't reload the page). */
+register('nav-top', (nav) => {
+    nav.addEventListener('click', (event) => {
+        const link = /** @type {Element} */ (event.target).closest('a[aria-current="page"]');
+        if (!link || event.ctrlKey || event.metaKey || event.shiftKey) return;
+        event.preventDefault();
+        event.stopPropagation();
+        scrollTo({ top: 0, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    }, true);
+});

@@ -9,7 +9,7 @@
 {%- let active = (variant == "bottom" && nav.tab() == key) || (variant != "bottom" && nav.key() == key) -%}
 {%- let parent = variant != "bottom" && !active && nav.tab() == key -%}
 <a href="{{ href }}" class="fp-nav-item{% if variant == "secondary" %} fp-nav-item--secondary{% endif %}{% if parent %} fp-nav-item--parent{% endif %}"
-   hx-boost="false" data-testid="{% if variant == "bottom" %}bottom-{% endif %}nav-{{ key }}"
+   data-testid="{% if variant == "bottom" %}bottom-{% endif %}nav-{{ key }}"
    {%- if active %} aria-current="page"{% endif %}>
     <span class="fp-nav-item__icon">{% call icons::icon(icon, active || parent) %}{% endcall %}</span>
     <span class="fp-nav-item__label">{{ label }}</span>
@@ -17,12 +17,14 @@
 {%- endmacro %}
 
 {% block body_class %}fp-shell-body{% endblock %}
+{# Links navigate in place: the response replaces the body (View Transition, new page at the top). Links that need a full load (upload has its own CSP) opt out with hx-boost="false". #}
+{% block body_attrs %} hx-boost:inherited='{"swap":"innerHTML scroll:top","transition":true}'{% endblock %}
 
 {% block body %}
 <a class="fp-skip-link" href="#main">Skip to content</a>
 
-<nav class="fp-rail" aria-label="Main" data-testid="nav-rail">
-    <a href="/" class="fp-rail__brand" hx-boost="false">
+<nav class="fp-rail" aria-label="Main" data-component="nav-top" data-testid="nav-rail">
+    <a href="/" class="fp-rail__brand">
         <img src="/assets/fav/icon-192.png" alt="" width="32" height="32">
         <span>Family Photos</span>
     </a>
@@ -58,7 +60,7 @@
                 </summary>
                 <ul class="dropdown-content menu fp-menu w-64" data-testid="user-menu-items">
                     <li class="menu-title fp-user-menu__name" data-testid="user-menu-name">{{ ctx.user_display_name }}</li>
-                    <li><a href="/settings" hx-boost="false" data-testid="user-menu-settings">{% call icons::icon("settings") %}{% endcall %} Settings</a></li>
+                    <li><a href="/settings" data-testid="user-menu-settings">{% call icons::icon("settings") %}{% endcall %} Settings</a></li>
                     <li>
                         <button type="button" data-testid="user-menu-shortcuts"
                                 hx-get="/ui/dialogs/shortcuts" hx-target="#app-dialog-content" hx-swap="innerHTML">
@@ -80,7 +82,7 @@
     </main>
 </div>
 
-<nav class="fp-bottom-nav" aria-label="Main" data-testid="bottom-nav">
+<nav class="fp-bottom-nav" aria-label="Main" data-component="nav-top" data-testid="bottom-nav">
     {% call nav_item(ctx.nav_active, "/", "photos", "Photos", "photo_library", "bottom") %}{% endcall %}
     {% call nav_item(ctx.nav_active, "/folders", "folders", "Folders", "folder", "bottom") %}{% endcall %}
     {% call nav_item(ctx.nav_active, "/utilities", "utilities", "Utilities", "apps", "bottom") %}{% endcall %}

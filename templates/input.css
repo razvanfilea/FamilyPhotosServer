@@ -550,7 +550,10 @@
 @media (prefers-reduced-motion: reduce) {
     *,
     ::before,
-    ::after {
+    ::after,
+    ::view-transition-group(root),
+    ::view-transition-old(root),
+    ::view-transition-new(root) {
         animation-duration: 1ms !important;
         animation-iteration-count: 1 !important;
         transition-duration: 1ms !important;
