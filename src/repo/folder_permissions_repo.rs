@@ -3,7 +3,7 @@ use sqlx::{SqliteExecutor, query_as};
 use time::OffsetDateTime;
 
 pub trait FolderPermissionsRepo<'c>: SqliteExecutor<'c> {
-    #[allow(dead_code)] // TODO: used by future token-based public link access
+    #[cfg(test)]
     async fn get_permission_by_token(self, token: &str) -> sqlx::Result<Option<FolderPermission>> {
         query_as!(
             FolderPermission,

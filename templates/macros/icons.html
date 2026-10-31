@@ -1,4 +1,4 @@
 {# Material Symbols Rounded icon from the sprite built by `npm run icons` (see scripts/icons.txt). #}
 {% macro icon(name, filled=false, class="") -%}
-<svg class="icon {{ class }}" aria-hidden="true" focusable="false"><use href="/assets/icons/sprite.svg?v={{ crate::http::AppState::ASSET_VERSION }}#{{ name }}{% if filled %}-fill{% endif %}"></use></svg>
+<svg class="icon{% if class != "" %} {{ class }}{% endif %}" aria-hidden="true"><use href="/assets/icons/sprite.svg?v={{ crate::http::AppState::ASSET_VERSION }}#{{ name }}{% if filled %}-fill{% endif %}"/></svg>
 {%- endmacro %}

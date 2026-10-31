@@ -10,7 +10,7 @@ pub use generate::*;
 
 use crate::http::AppState;
 use crate::model::photo::Photo;
-use crate::repo::{FoldersRepo, PhotosRepo};
+use crate::repo::{FoldersRepo, MAX_BOUND_IDS, PhotosRepo};
 use crate::utils::storage_resolver::StorageResolver;
 
 mod generate;
@@ -162,23 +162,25 @@ pub async fn remove_renditions(storage: &StorageResolver, photo_id: i64) {
 }
 
 pub async fn generate_all_previews(app_state: &'static AppState) -> sqlx::Result<()> {
-    let mut tx = app_state.read_pool.begin().await?;
+    let all_ids = app_state.read_pool.get_all_photo_ids().await?;
+    let missing_ids = tokio::task::spawn_blocking(move || {
+        all_ids
+            .into_iter()
+            .filter(|id| {
+                let preview_path = app_state
+                    .storage
+                    .resolve_preview(Photo::construct_partial_preview_path(*id));
+                !is_valid_preview(&preview_path)
+            })
+            .collect::<Vec<_>>()
+    })
+    .await
+    .map_err(|e| sqlx::Error::Io(std::io::Error::other(e)))?;
 
-    let missing_previews_ids = tx.get_all_photo_ids().await?.into_iter().filter(|id| {
-        let preview_path = app_state
-            .storage
-            .resolve_preview(Photo::construct_partial_preview_path(*id));
-        !is_valid_preview(&preview_path)
-    });
-
-    let mut missing_previews = Vec::with_capacity(128);
-    for id in missing_previews_ids {
-        let Some(photo) = tx.get_photo(id).await? else {
-            continue;
-        };
-        missing_previews.push(photo);
+    let mut missing_previews = Vec::with_capacity(missing_ids.len());
+    for chunk in missing_ids.chunks(MAX_BOUND_IDS) {
+        missing_previews.extend(app_state.read_pool.get_photos_by_ids(chunk).await?);
     }
-    drop(tx);
 
     let folder_map = app_state.read_pool.get_folder_name_map().await?;
 
@@ -207,7 +209,7 @@ pub async fn generate_all_previews(app_state: &'static AppState) -> sqlx::Result
             .resolve_preview(photo.partial_preview_path());
 
         tasks.spawn(async move {
-            if !photo_path.exists() {
+            if !tokio::fs::try_exists(&photo_path).await.unwrap_or(false) {
                 return false;
             }
             match app_state

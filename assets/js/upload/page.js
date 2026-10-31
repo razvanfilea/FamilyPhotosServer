@@ -1,5 +1,3 @@
-// The upload page (templates/upload/upload_page.html).
-//
 // Files flow like this: picked or dropped files are filtered (files.js) and get a row; hasher.js
 // hashes them in workers right away; once a destination is chosen, their hashes are checked in
 // batches with `POST /api/upload/check-hashes`, and matches show "Already on server". "Upload"
@@ -434,7 +432,6 @@ register('upload-page', (root) => {
         maybeFinish();
     }
 
-    /** Uploads failed or cancelled files again */
     function retry(toRetry) {
         if (state === 'running' || toRetry.length === 0) return;
         for (const item of toRetry) {

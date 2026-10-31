@@ -97,3 +97,59 @@ impl TowerSessionStore for SessionStore {
         self.write.delete(session_id).await
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use sqlx::SqlitePool;
+
+    const UP: &str = include_str!("../migrations/20261031120000_folder_created_index.up.sql");
+    const DOWN: &str = include_str!("../migrations/20261031120000_folder_created_index.down.sql");
+
+    async fn photo_indexes(pool: &SqlitePool) -> Vec<String> {
+        sqlx::query_scalar(
+            "select name from sqlite_master where type = 'index' and name like 'idx_photos_folder%' order by name",
+        )
+        .fetch_all(pool)
+        .await
+        .unwrap()
+    }
+
+    #[sqlx::test]
+    async fn test_folder_created_index_migration(pool: SqlitePool) {
+        assert_eq!(photo_indexes(&pool).await, ["idx_photos_folder_created"]);
+
+        sqlx::raw_sql(DOWN).execute(&pool).await.unwrap();
+        assert_eq!(photo_indexes(&pool).await, ["idx_photos_folder_id"]);
+
+        for (name, created_at) in [
+            ("old", "2020-01-02 03:04:05"),
+            ("new", "2020-01-02T03:04:05Z"),
+            ("fraction", "2020-01-02T03:04:05.25Z"),
+            ("offset", "2020-01-02T01:04:05+02:00"),
+        ] {
+            sqlx::query("insert into photos (name, created_at, file_size) values (?, ?, 1)")
+                .bind(name)
+                .bind(created_at)
+                .execute(&pool)
+                .await
+                .unwrap();
+        }
+
+        sqlx::raw_sql(UP).execute(&pool).await.unwrap();
+        assert_eq!(photo_indexes(&pool).await, ["idx_photos_folder_created"]);
+        let created_at: Vec<String> =
+            sqlx::query_scalar("select created_at from photos order by id")
+                .fetch_all(&pool)
+                .await
+                .unwrap();
+        assert_eq!(
+            created_at,
+            [
+                "2020-01-02T03:04:05Z",
+                "2020-01-02T03:04:05Z",
+                "2020-01-02T03:04:05.25Z",
+                "2020-01-01T23:04:05Z",
+            ]
+        );
+    }
+}

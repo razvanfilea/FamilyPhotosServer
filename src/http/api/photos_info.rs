@@ -3,7 +3,7 @@ use crate::http::auth::AuthenticatedUser;
 use crate::http::error::{HttpError, HttpResult};
 use crate::model::photo::Photo;
 use crate::model::user::SimpleUser;
-use crate::repo::{FavoritesRepo, PhotoAccess, PhotosRepo};
+use crate::repo::PhotosRepo;
 use crate::utils::exif::{PhotoDetails, photo_details};
 use axum::extract::{Path, State};
 use axum::routing::get;
@@ -39,46 +39,41 @@ pub async fn load_photo_info(
     user_id: &str,
     photo_id: i64,
 ) -> HttpResult<PhotoInfo> {
-    let mut tx = state.read_pool.begin().await?;
-
-    let pf = tx
-        .get_accessible_photo_with_folder(photo_id, user_id, PhotoAccess::Read)
+    let info = state
+        .read_pool
+        .get_photo_info(photo_id, user_id)
         .await?
         .ok_or(HttpError::NotFound)?;
-    let can_delete = tx
-        .get_accessible_photo(photo_id, user_id, PhotoAccess::Delete)
-        .await?
-        .is_some();
-    let is_favorite = tx.check_favorite(photo_id, user_id).await?;
-    drop(tx);
+    let photo = info.photo;
+    let owner = photo
+        .user_id
+        .clone()
+        .zip(info.owner_name)
+        .map(|(user_id, display_name)| SimpleUser {
+            user_id,
+            display_name,
+        });
 
-    let owner = match pf.photo.user_id.as_deref() {
-        Some(owner_id) => state
-            .users_repo
-            .get_user(owner_id)
-            .await
-            .map(SimpleUser::from),
-        None => None,
-    };
-
-    let path = state.storage.resolve_photo(pf.partial_path());
-    let name = pf.photo.name.clone();
+    let path = state
+        .storage
+        .resolve_photo(photo.partial_path(info.folder_name.as_deref()));
+    let name = photo.name.clone();
     let details = task::spawn_blocking(move || photo_details(&path, &name))
         .await
         .map_err(|e| HttpError::AnyError(Box::new(e)))?;
 
-    let folder = match (pf.photo.folder_id, pf.folder_name) {
-        (Some(id), Some(name)) => Some(FolderRef { id, name }),
-        _ => None,
-    };
+    let folder = photo
+        .folder_id
+        .zip(info.folder_name)
+        .map(|(id, name)| FolderRef { id, name });
 
     Ok(PhotoInfo {
-        photo: pf.photo,
+        photo,
         folder,
         owner,
-        is_favorite,
-        can_delete,
-        can_move: can_delete,
+        is_favorite: info.is_favorite,
+        can_delete: info.can_delete,
+        can_move: info.can_delete,
         details,
     })
 }

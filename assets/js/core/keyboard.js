@@ -92,7 +92,6 @@ function onKeyDown(event) {
 }
 
 /**
- * Registers a shortcut in a scope.
  * @returns {() => void} a function unregistering it
  */
 export function register(scope, keys, handler) {

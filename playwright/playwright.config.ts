@@ -17,6 +17,14 @@ const unitSpecs = /unit-.*\.spec\.ts/;
 const firefox = process.env.FP_E2E_FIREFOX
     ? [{ name: 'firefox', testIgnore: unitSpecs, use: { ...devices['Desktop Firefox'] } }]
     : [];
+// The same for WebKit and Mobile Safari: FP_E2E_WEBKIT=1 (`PLAYWRIGHT_BROWSERS_PATH=0 npx playwright install webkit`;
+// on Linux it needs the system libraries from `npx playwright install-deps`).
+const webkit = process.env.FP_E2E_WEBKIT
+    ? [
+          { name: 'webkit', testIgnore: unitSpecs, use: { ...devices['Desktop Safari'] } },
+          { name: 'Mobile Safari', testIgnore: unitSpecs, use: { ...devices['iPhone 14'] } },
+      ]
+    : [];
 
 export default defineConfig({
     testDir: './specs',
@@ -36,6 +44,7 @@ export default defineConfig({
         { name: 'chromium', testIgnore: unitSpecs, use: { ...devices['Desktop Chrome'] } },
         { name: 'Mobile Chrome', testIgnore: unitSpecs, use: { ...devices['Pixel 7'] } },
         ...firefox,
+        ...webkit,
     ],
     webServer: {
         command: 'node playwright/harness/serve.mjs',

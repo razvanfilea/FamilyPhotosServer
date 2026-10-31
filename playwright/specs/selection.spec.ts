@@ -3,7 +3,7 @@ import { expect, gotoReady, loginAs, test, type UserId } from '../fixtures/auth'
 import { photoInfo as libraryPhotoInfo, uploadPhoto } from '../fixtures/library';
 import { folderId, getSeed, type SeedPhoto } from '../harness/seed';
 
-// Read-only tests use alice's and bob's seeded photos. Tests that change photos run as carol, on
+// Read-only tests use alice's and bob's seeded photos. Tests that change photos run as heidi, on
 // uploads with far-future dates (each upload unique), on desktop only. The selection on the trash,
 // favorites and large files pages is tested in trash.spec.ts and utilities.spec.ts.
 
@@ -45,9 +45,9 @@ const center = async (target: Locator) => {
     return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
 };
 
-/** Three of carol's photos, newest first, `year` far in the future so they top the timeline */
-async function carolPhotos(page: Page, year: number, names = ['a', 'b', 'c']) {
-    await loginAs(page, 'carol');
+/** Three of heidi's photos, newest first, `year` far in the future so they top the timeline */
+async function heidiPhotos(page: Page, year: number, names = ['a', 'b', 'c']) {
+    await loginAs(page, 'heidi');
     const ids = [];
     for (const [i, name] of names.entries()) {
         ids.push(await uploadPhoto(page.request, `sel-${year}-${name}.jpg`, Date.UTC(year, 0, 10) / 1000 - i * 86400));
@@ -434,11 +434,11 @@ test.describe('permissions and the bar', () => {
 test.describe('changing photos', () => {
     test.describe.configure({ mode: 'serial' });
     test.beforeEach(({ isMobile }) => {
-        test.skip(isMobile, 'Mutates carol\'s photos');
+        test.skip(isMobile, 'Mutates heidi\'s photos');
     });
 
     test('Delete moves the photos to the trash, Undo brings them back', async ({ page }) => {
-        const [a, b, c] = await carolPhotos(page, 2040);
+        const [a, b, c] = await heidiPhotos(page, 2040);
         await gotoGrid(page);
         await select(page, a, b);
 
@@ -471,7 +471,7 @@ test.describe('changing photos', () => {
     });
 
     test('the Delete key asks, Cancel keeps everything', async ({ page }) => {
-        const [a] = await carolPhotos(page, 2041);
+        const [a] = await heidiPhotos(page, 2041);
         await gotoGrid(page);
         await select(page, a);
         await page.keyboard.press('Delete');
@@ -484,7 +484,7 @@ test.describe('changing photos', () => {
     });
 
     test('Move to a new folder creates it and the photos are there', async ({ page }) => {
-        const [a, b, c] = await carolPhotos(page, 2042);
+        const [a, b, c] = await heidiPhotos(page, 2042);
         await gotoGrid(page);
         await select(page, a, b);
         await page.getByTestId('selection-move').click();
@@ -517,7 +517,7 @@ test.describe('changing photos', () => {
     });
 
     test('Move to the Family gallery makes the photos public and removes them from the personal timeline', async ({ page, bobPage }) => {
-        const [a, b, c] = await carolPhotos(page, 2043);
+        const [a, b, c] = await heidiPhotos(page, 2043);
         const bobInfo = (id: number) => bobPage.request.get(`/api/photos/${id}/info`);
         expect((await bobInfo(a)).status()).toBe(404);
 
@@ -566,7 +566,7 @@ test.describe('changing photos', () => {
     });
 
     test('the move dialog shows errors and keeps the selection when it is cancelled', async ({ page }) => {
-        const [a] = await carolPhotos(page, 2044, ['a']);
+        const [a] = await heidiPhotos(page, 2044, ['a']);
         await gotoGrid(page);
         await select(page, a);
         await page.getByTestId('selection-move').click();
@@ -582,7 +582,7 @@ test.describe('changing photos', () => {
     });
 
     test('a failed favorite is reported and stays selected', async ({ page }) => {
-        const [a, b] = await carolPhotos(page, 2046);
+        const [a, b] = await heidiPhotos(page, 2046);
         await gotoGrid(page);
         await select(page, a, b);
         await page.route(`**/api/favorite/${b}`, (route) => route.fulfill({ status: 500 }));
@@ -593,7 +593,7 @@ test.describe('changing photos', () => {
     });
 
     test('Add to favorites favorites every selected photo', async ({ page }) => {
-        const [a, b] = await carolPhotos(page, 2045);
+        const [a, b] = await heidiPhotos(page, 2045);
         await gotoGrid(page);
         await select(page, a, b);
         const requests: string[] = [];

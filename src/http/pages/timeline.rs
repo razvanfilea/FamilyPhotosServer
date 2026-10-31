@@ -49,37 +49,25 @@ async fn memories(
     user_id: &str,
     filter: PhotoFilter,
 ) -> HttpResult<Vec<MemoryView>> {
-    let mut memories = Vec::new();
+    let summaries = state.read_pool.memories_summary(user_id, filter).await?;
 
-    for summary in state.read_pool.memories_summary(user_id, filter).await? {
-        let context = PhotoListContext::Memories {
-            years_ago: summary.years_ago,
-            filter,
-        };
-        // The cover is the first photo of the group; its thumbhash is the card's placeholder
-        let cover = state
-            .read_pool
-            .context_month_page(user_id, &context, None, 0, 1)
-            .await?
-            .into_iter()
-            .next();
-
-        if let Some(cover) = cover {
-            memories.push(MemoryView {
-                cover_photo_id: cover.photo.id,
-                thumb_hash_b64: cover
-                    .photo
-                    .thumb_hash
-                    .as_ref()
-                    .map(|hash| STANDARD.encode(hash))
-                    .unwrap_or_default(),
-                context_key: context.key(),
-                label: years_ago_label(summary.years_ago),
-            });
-        }
-    }
-
-    Ok(memories)
+    Ok(summaries
+        .into_iter()
+        .map(|summary| MemoryView {
+            cover_photo_id: summary.cover_photo_id,
+            thumb_hash_b64: summary
+                .cover_thumb_hash
+                .as_ref()
+                .map(|hash| STANDARD.encode(hash))
+                .unwrap_or_default(),
+            context_key: PhotoListContext::Memories {
+                years_ago: summary.years_ago,
+                filter,
+            }
+            .key(),
+            label: years_ago_label(summary.years_ago),
+        })
+        .collect())
 }
 
 /// `GET /`: the timeline. `?filter=` overrides the saved filter for this render.

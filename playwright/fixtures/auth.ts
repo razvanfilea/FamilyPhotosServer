@@ -2,7 +2,7 @@ import { test as base, expect, type Browser, type Page, type TestInfo } from '@p
 import { USERS } from '../harness/users.mjs';
 import { storageStatePath } from '../harness/run';
 
-export type UserId = 'alice' | 'bob' | 'carol' | 'dave' | 'erin';
+export type UserId = 'alice' | 'bob' | 'carol' | 'dave' | 'erin' | 'frank' | 'grace' | 'hank' | 'heidi' | 'ivan' | 'judy';
 
 export function user(id: UserId) {
     return USERS.find((u) => u.id === id)!;

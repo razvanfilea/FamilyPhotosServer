@@ -115,37 +115,42 @@ async fn delete_invalid_photo_previews(app_state: AppStateRef) -> Result<(), sql
         .into_iter()
         .collect();
 
-    let mut orphan_count = 0;
-    let mut invalid_count = 0;
+    let preview_folder = app_state.storage.preview_folder.clone();
+    let (orphan_count, invalid_count) = tokio::task::spawn_blocking(move || {
+        let mut orphan_count = 0;
+        let mut invalid_count = 0;
 
-    for entry in walkdir::WalkDir::new(&app_state.storage.preview_folder)
-        .into_iter()
-        .filter_map(|e| e.ok())
-    {
-        let path = entry.path();
-        if !path.is_file() {
-            continue;
-        }
-
-        // Check for 0-byte/invalid files
-        if let Ok(metadata) = fs::metadata(path)
-            && metadata.len() < MIN_PREVIEW_SIZE
+        for entry in walkdir::WalkDir::new(preview_folder)
+            .into_iter()
+            .filter_map(|e| e.ok())
         {
-            if fs::remove_file(path).is_ok() {
-                invalid_count += 1;
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
             }
-            continue;
+
+            if let Ok(metadata) = fs::metadata(path)
+                && metadata.len() < MIN_PREVIEW_SIZE
+            {
+                if fs::remove_file(path).is_ok() {
+                    invalid_count += 1;
+                }
+                continue;
+            }
+
+            if let Some(stem) = path.file_stem()
+                && let Ok(photo_id) = stem.to_string_lossy().parse::<i64>()
+                && !photos.contains(&photo_id)
+                && fs::remove_file(path).is_ok()
+            {
+                orphan_count += 1;
+            }
         }
 
-        // Check for orphaned previews
-        if let Some(stem) = path.file_stem()
-            && let Ok(photo_id) = stem.to_string_lossy().parse::<i64>()
-            && !photos.contains(&photo_id)
-            && fs::remove_file(path).is_ok()
-        {
-            orphan_count += 1;
-        }
-    }
+        (orphan_count, invalid_count)
+    })
+    .await
+    .map_err(|e| sqlx::Error::Io(std::io::Error::other(e)))?;
 
     if orphan_count > 0 || invalid_count > 0 {
         info!(

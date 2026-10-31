@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "select * from photos where user_id is null or user_id = $1 order by created_at desc",
+  "query": "select * from photos where user_id = $1 order by created_at desc, id",
   "describe": {
     "columns": [
       {
@@ -106,5 +106,5 @@
       true
     ]
   },
-  "hash": "3e80e73b1169589151fa5767fecbba4d4903b50297c5eaf106d8b51cace9b965"
+  "hash": "e4d3b9e64d3b009f453e32efbf6455c89fdc7fde1d7f1c11b3e15fb634778113"
 }

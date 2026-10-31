@@ -108,16 +108,15 @@ test.describe('favorites', () => {
         await expect(page.getByTestId('photo-tile')).toHaveCount(0);
     });
 
-    // Other specs favourite carol's photos too, so only this test's own tiles are checked
     test('unfavouriting in the viewer removes the tile', async ({ page, playwright, baseURL, isMobile }) => {
-        test.skip(isMobile, 'Mutates carol\'s favourites');
-        await loginAs(page, 'carol');
-        const carol = await apiAs(playwright, baseURL, 'carol');
+        test.skip(isMobile, 'Mutates grace\'s favourites');
+        await loginAs(page, 'grace');
+        const grace = await apiAs(playwright, baseURL, 'grace');
         const time = Date.UTC(2035, 0, 1) / 1000;
-        const first = await uploadPhoto(carol, 'carol-fav-a.jpg', time);
-        const second = await uploadPhoto(carol, 'carol-fav-b.jpg', time - 86400);
+        const first = await uploadPhoto(grace, 'grace-fav-a.jpg', time);
+        const second = await uploadPhoto(grace, 'grace-fav-b.jpg', time - 86400);
         for (const id of [first, second]) {
-            expect((await carol.post(`/api/favorite/${id}`)).ok()).toBe(true);
+            expect((await grace.post(`/api/favorite/${id}`)).ok()).toBe(true);
         }
 
         await gotoGrid(page, '/favorites');
@@ -136,7 +135,7 @@ test.describe('favorites', () => {
         await gotoGrid(page, '/favorites');
         await expect(tile(page, first)).toHaveCount(0);
         await expect(tile(page, second)).toBeVisible();
-        await carol.dispose();
+        await grace.dispose();
     });
 });
 
@@ -151,10 +150,10 @@ test.describe('large files', () => {
     });
 });
 
-// The selection bar on the grid pages. erin is used by no other spec (Mobile would race with
+// The selection bar on the grid pages. hank is used by no other spec (Mobile would race with
 // Desktop on her favourites, so these run on desktop only).
 test.describe('selection on the grid pages', () => {
-    test.skip(({ isMobile }) => isMobile, 'Mutates erin\'s photos');
+    test.skip(({ isMobile }) => isMobile, 'Mutates hank\'s photos');
 
     const toast = (page: Page, text: string) => page.getByTestId('toast').filter({ hasText: text });
 
@@ -166,12 +165,12 @@ test.describe('selection on the grid pages', () => {
     }
 
     test('favorites: the bar removes the selected photos from the favorites', async ({ page, playwright, baseURL }) => {
-        await loginAs(page, 'erin');
-        const erin = await apiAs(playwright, baseURL, 'erin');
+        await loginAs(page, 'hank');
+        const hank = await apiAs(playwright, baseURL, 'hank');
         const time = Date.UTC(2036, 0, 1) / 1000;
-        const ids = [await uploadPhoto(erin, 'erin-fav-a.jpg', time), await uploadPhoto(erin, 'erin-fav-b.jpg', time - 86400)];
+        const ids = [await uploadPhoto(hank, 'hank-fav-a.jpg', time), await uploadPhoto(hank, 'hank-fav-b.jpg', time - 86400)];
         try {
-            for (const id of ids) expect((await erin.post(`/api/favorite/${id}`)).ok()).toBe(true);
+            for (const id of ids) expect((await hank.post(`/api/favorite/${id}`)).ok()).toBe(true);
             await gotoGrid(page, '/favorites');
             await select(page, ...ids);
 
@@ -180,21 +179,21 @@ test.describe('selection on the grid pages', () => {
             await expect(toast(page, 'Removed 2 photos from favorites')).toBeVisible();
             for (const id of ids) await expect(tile(page, id)).toHaveCount(0);
             await expect(page.getByTestId('selection-bar')).toBeHidden();
-            expect(await (await erin.get('/api/favorite')).json()).not.toEqual(expect.arrayContaining([ids[0]]));
+            expect(await (await hank.get('/api/favorite')).json()).not.toEqual(expect.arrayContaining([ids[0]]));
         } finally {
             for (const id of ids) {
-                await erin.post('/api/trash', { data: [id] });
-                await erin.delete(`/api/delete/${id}`);
+                await hank.post('/api/trash', { data: [id] });
+                await hank.delete(`/api/delete/${id}`);
             }
-            await erin.dispose();
+            await hank.dispose();
         }
     });
 
     test('large files: the bar offers the usual actions and Delete can be undone', async ({ page, playwright, baseURL }) => {
-        await loginAs(page, 'erin');
-        const erin = await apiAs(playwright, baseURL, 'erin');
+        await loginAs(page, 'hank');
+        const hank = await apiAs(playwright, baseURL, 'hank');
         // Over 50 MiB: the fixture plus padding
-        const id = await uploadPhoto(erin, 'erin-large.jpg', Date.UTC(2036, 0, 1) / 1000, undefined, 51 * 1024 * 1024);
+        const id = await uploadPhoto(hank, 'hank-large.jpg', Date.UTC(2036, 0, 1) / 1000, undefined, 51 * 1024 * 1024);
         try {
             await gotoGrid(page, '/large-files');
             await select(page, id);
@@ -212,9 +211,9 @@ test.describe('selection on the grid pages', () => {
             await moved.getByRole('button', { name: 'Undo' }).click();
             await expect(tile(page, id)).toBeVisible();
         } finally {
-            await erin.post('/api/trash', { data: [id] });
-            await erin.delete(`/api/delete/${id}`);
-            await erin.dispose();
+            await hank.post('/api/trash', { data: [id] });
+            await hank.delete(`/api/delete/${id}`);
+            await hank.dispose();
         }
     });
 });

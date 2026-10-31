@@ -52,7 +52,6 @@ function setContent(content) {
 }
 
 /**
- * Opens the dialog.
  * @param {{html?: string, node?: Node, template?: HTMLTemplateElement, url?: string, onClose?: (returnValue: string) => void}} options
  *   `html` must be trusted markup: escape user data with `escapeHtml` or pass a Node.
  * @returns {Promise<void>} resolves once the dialog is open

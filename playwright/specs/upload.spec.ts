@@ -8,7 +8,7 @@ import { withExifDate } from '../harness/exif.mjs';
 import { folderId } from '../harness/seed';
 
 // Uploads change the uploader's timeline, which other specs assert on for alice and bob. So every
-// test that uploads does it as carol (who owns no seeded photos), with dates in the 2040s that no
+// test that uploads does it as ivan (who owns no seeded photos), with dates in the 2040s that no
 // other spec uses, with unique file contents (the server deduplicates by hash), and only in the
 // desktop project. Tests that upload nothing run on both devices.
 
@@ -196,14 +196,14 @@ test.describe('upload page', () => {
     });
 
     test('a folder shared with upload permission can be picked', async ({ page, folders }) => {
-        // carol is the grantee: a folder shared with bob would show up in bob's picker for other specs
+        // ivan is the grantee: a folder shared with bob would show up in bob's picker for other specs
         const name = folders.name('Drop box');
         const id = await folders.create('alice', name);
         const alice = await folders.as('alice');
-        const share = await alice.post('/api/sharing', { data: { folder_id: id, grantee_id: 'carol', can_upload: true } });
+        const share = await alice.post('/api/sharing', { data: { folder_id: id, grantee_id: 'ivan', can_upload: true } });
         expect(share.ok()).toBe(true);
 
-        await loginAs(page, 'carol');
+        await loginAs(page, 'ivan');
         await openUpload(page, `/upload?folder_id=${id}`);
         await expect(page.getByTestId('upload-destination-summary')).toContainText(`Uploading to: ${name}`);
         await expect(page.getByTestId('upload-destination-summary')).toContainText('Shared');
@@ -218,7 +218,7 @@ test.describe('upload page', () => {
     });
 });
 
-/** What a test created through the page as carol (photos from `/api/upload`, folders from `/api/folders`) */
+/** What a test created through the page as ivan (photos from `/api/upload`, folders from `/api/folders`) */
 interface Created {
     photos: Promise<number | undefined>[];
     folders: Promise<number | undefined>[];
@@ -240,7 +240,7 @@ function trackCreated(page: Page, created: Created) {
 test.describe('uploading', () => {
     test.describe.configure({ mode: 'serial' });
     test.beforeEach(({ isMobile }) => {
-        test.skip(isMobile, 'Uploads change carol\'s photos');
+        test.skip(isMobile, 'Uploads change ivan\'s photos');
     });
 
     let created: Created;
@@ -253,17 +253,17 @@ test.describe('uploading', () => {
     test.afterEach(async ({ page, isMobile }) => {
         if (isMobile) return;
         // A fresh session of the test's own: the test may have cleared its cookies
-        await loginAs(page, 'carol');
-        const carol = page.request;
+        await loginAs(page, 'ivan');
+        const ivan = page.request;
         const photoIds = (await Promise.all(created.photos)).filter((id): id is number => id !== undefined);
         if (photoIds.length > 0) {
-            expect((await carol.post('/api/trash', { data: photoIds })).ok()).toBe(true);
+            expect((await ivan.post('/api/trash', { data: photoIds })).ok()).toBe(true);
             for (const id of photoIds) {
-                expect((await carol.delete(`/api/delete/${id}`)).ok()).toBe(true);
+                expect((await ivan.delete(`/api/delete/${id}`)).ok()).toBe(true);
             }
         }
         for (const id of (await Promise.all(created.folders)).filter((id): id is number => id !== undefined)) {
-            expect([200, 204]).toContain((await carol.delete(`/api/folders/${id}`)).status());
+            expect([200, 204]).toContain((await ivan.delete(`/api/folders/${id}`)).status());
         }
     });
 
@@ -281,7 +281,7 @@ test.describe('uploading', () => {
         });
 
         trackCreated(page, created);
-        await loginAs(page, 'carol');
+        await loginAs(page, 'ivan');
         await openUpload(page);
         await addFiles(page, [
             photoFile('march-a.jpg', '2045:03:10 09:00:00', id),
@@ -331,10 +331,10 @@ test.describe('uploading', () => {
     test('photos go into an existing folder and into a new one', async ({ page, folders }, testInfo) => {
         const id = unique(testInfo);
         const existingName = folders.name('Uploads');
-        const existingId = await folders.create('carol', existingName);
+        const existingId = await folders.create('ivan', existingName);
 
         trackCreated(page, created);
-        await loginAs(page, 'carol');
+        await loginAs(page, 'ivan');
         await openUpload(page);
         await folderCard(page, existingName).click();
         await expect(page.getByTestId('dest-selected-name')).toHaveText(existingName);
@@ -373,7 +373,7 @@ test.describe('uploading', () => {
     test('server errors are retried, client errors fail with their message', async ({ page }, testInfo) => {
         const id = unique(testInfo);
         trackCreated(page, created);
-        await loginAs(page, 'carol');
+        await loginAs(page, 'ivan');
         await openUpload(page);
 
         let attempts = 0;
@@ -413,7 +413,7 @@ test.describe('uploading', () => {
     test('cancelling stops the queue and the summary shows what was uploaded', async ({ page }, testInfo) => {
         const id = unique(testInfo);
         trackCreated(page, created);
-        await loginAs(page, 'carol');
+        await loginAs(page, 'ivan');
         await openUpload(page);
 
         // Only "first.jpg" gets through; the other uploads hang until they are cancelled
@@ -441,7 +441,7 @@ test.describe('uploading', () => {
         test(`an expired session cancels the queue and redirects to the login page once (${leave ? 'leaving' : 'staying'})`, async ({ page }, testInfo) => {
             const id = unique(testInfo);
             trackCreated(page, created);
-            await loginAs(page, 'carol');
+            await loginAs(page, 'ivan');
             await openUpload(page);
 
             const dialogs: string[] = [];

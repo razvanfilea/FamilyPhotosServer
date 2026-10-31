@@ -49,8 +49,6 @@ pub struct SectionView {
     /// `"June 2024"`
     pub label_with_year: String,
     pub count: i64,
-    /// First photo of the section in context order, 0 for flat contexts
-    pub cover_photo_id: i64,
     /// Index of the first photo of the section in the whole context
     pub start_index: i64,
     /// The photos rendered with the page, a prefix of the section. Empty for sections that are
@@ -148,31 +146,29 @@ fn month_labels(month: &str) -> (String, String) {
 }
 
 /// Builds the grid of `ctx` for `user_id`: the sections with their counts, which the browser turns
-/// into reserved heights, and the first [`PAGE_SIZE`] tiles. The user must be allowed to see `ctx`
-/// (checked here, a missing folder is a 404).
+/// into reserved heights, and the first [`PAGE_SIZE`] tiles. The caller has checked that the user
+/// may see `ctx` (a folder page does it when it loads the folder).
 pub async fn build_grid_view(
     state: AppStateRef,
     user_id: &str,
     ctx: &PhotoListContext,
     prefs: &Prefs,
 ) -> HttpResult<GridView> {
-    ctx.authorize(user_id, &state.read_pool).await?;
-
     // One transaction, so the counts and the photos come from the same snapshot
     let mut tx = state.read_pool.begin().await?;
     let flat = !ctx.is_month_sectioned();
 
     let summaries = if flat {
         let count = tx.context_count(user_id, ctx).await?;
-        vec![(None, count, 0)]
+        vec![(None, count)]
     } else {
         tx.context_month_summaries(user_id, ctx)
             .await?
             .into_iter()
-            .map(|summary| (Some(summary.month), summary.count, summary.cover_photo_id))
+            .map(|summary| (Some(summary.month), summary.count))
             .collect()
     };
-    let total: i64 = summaries.iter().map(|(_, count, _)| count).sum();
+    let total: i64 = summaries.iter().map(|(_, count)| count).sum();
 
     // The photos of the first sections are rendered inline. Sections follow the context order,
     // so one slice covers all of them.
@@ -183,7 +179,7 @@ pub async fn build_grid_view(
 
     let mut sections = Vec::with_capacity(summaries.len());
     let mut start_index = 0;
-    for (month, count, cover_photo_id) in summaries {
+    for (month, count) in summaries {
         if count == 0 {
             continue;
         }
@@ -197,7 +193,6 @@ pub async fn build_grid_view(
             label,
             label_with_year,
             count,
-            cover_photo_id,
             start_index,
             tiles: build_tiles(ctx, &inline[first..last], start_index, now),
         });
@@ -254,18 +249,7 @@ pub async fn month_page(
 
     // The section's first index and size are recomputed here, never taken from the client
     let (start_index, count) = match month.as_deref() {
-        Some(month) => {
-            let mut start_index = 0;
-            let mut count = 0;
-            for summary in tx.context_month_summaries(&user.id, &ctx).await? {
-                if summary.month == month {
-                    count = summary.count;
-                    break;
-                }
-                start_index += summary.count;
-            }
-            (start_index, count)
-        }
+        Some(month) => tx.context_month_bounds(&user.id, &ctx, month).await?,
         None => (0, tx.context_count(&user.id, &ctx).await?),
     };
 
@@ -311,7 +295,7 @@ pub async fn month_picker(
 
     let rows = state
         .read_pool
-        .context_month_summaries(&user.id, &ctx)
+        .context_month_covers(&user.id, &ctx)
         .await?
         .into_iter()
         .map(|summary| MonthPickerRow {
@@ -496,7 +480,6 @@ mod tests {
         assert_eq!(tiles[0].1, ids[1]);
         assert_eq!(tiles[1].1, ids[0]);
         assert_eq!(tiles[2].1, ids[2]);
-        assert_eq!(grid.sections[0].cover_photo_id, ids[1]);
         assert!(grid.sections.iter().all(|s| s.next_offset().is_none()));
     }
 
@@ -599,20 +582,6 @@ mod tests {
         let tile = &grid.sections[0].tiles[0];
         assert_eq!(tile.badge, "4 days");
         assert_eq!(tile.badge_kind, "error");
-    }
-
-    #[sqlx::test]
-    async fn test_build_grid_view_unknown_folder_is_not_found(pool: SqlitePool) {
-        let app = TestApp::new(pool).await;
-
-        let result = build_grid_view(
-            app.state,
-            "alice",
-            &PhotoListContext::Folder(999),
-            &Prefs::default(),
-        )
-        .await;
-        assert!(matches!(result, Err(HttpError::NotFound)));
     }
 
     #[test]

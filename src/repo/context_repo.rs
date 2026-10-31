@@ -15,8 +15,9 @@ pub const LARGE_FILE_MIN_SIZE: i64 = 50 * 1024 * 1024;
 /// Maximum number of ids returned by [`ContextRepo::context_ids`]
 pub const CONTEXT_IDS_LIMIT: i64 = 10_000;
 
-/// The month expression used for grouping. Must be identical in every month query.
-const MONTH_EXPR: &str = "strftime('%Y-%m', p.created_at)";
+/// The month expression used for grouping. `created_at` is always UTC ISO text, so its first 7
+/// characters are the month. Must agree with the range [`push_month_filter`] uses.
+const MONTH_EXPR: &str = "substr(p.created_at, 1, 7)";
 
 const YEARS_AGO_EXPR: &str =
     "(cast(strftime('%Y', 'now') as integer) - cast(strftime('%Y', p.created_at) as integer))";
@@ -41,6 +42,13 @@ pub struct MonthSummary {
     /// `YYYY-MM`
     pub month: String,
     pub count: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, FromRow)]
+pub struct MonthCover {
+    /// `YYYY-MM`
+    pub month: String,
+    pub count: i64,
     /// The first photo of the month in context order
     pub cover_photo_id: i64,
 }
@@ -50,6 +58,7 @@ pub struct MemorySummary {
     pub years_ago: u32,
     pub count: i64,
     pub cover_photo_id: i64,
+    pub cover_thumb_hash: Option<Vec<u8>>,
 }
 
 /// Pushes a boolean expression that is true when `me` has `access` to the photo `p`.
@@ -108,11 +117,9 @@ fn push_predicate(qb: &mut QueryBuilder<Sqlite>, me: &str, ctx: &PhotoListContex
                 .push(" and p.trashed_on is null");
         }
         PhotoListContext::Favorites => {
-            qb.push(
-                "exists (select 1 from favorite_photos f where f.photo_id = p.id and f.user_id = ",
-            )
-            .push_bind(me.to_owned())
-            .push(") and ");
+            qb.push("p.id in (select photo_id from favorite_photos where user_id = ")
+                .push_bind(me.to_owned())
+                .push(") and ");
             push_access(qb, me, PhotoAccess::Read);
             qb.push(" and p.trashed_on is null");
         }
@@ -177,12 +184,22 @@ fn push_select_photos(qb: &mut QueryBuilder<Sqlite>, me: &str, ctx: &PhotoListCo
     push_from_where(qb, me, ctx);
 }
 
+/// The month after `month` (`YYYY-MM`, validated by the caller)
+fn next_month(month: &str) -> String {
+    let year: u32 = month[..4].parse().expect("validated month");
+    match month[5..].parse::<u32>().expect("validated month") {
+        12 => format!("{:04}-01", year + 1),
+        number => format!("{year:04}-{:02}", number + 1),
+    }
+}
+
+/// Restricts the query to one month with a range, which the `created_at` indexes can serve
 fn push_month_filter(qb: &mut QueryBuilder<Sqlite>, month: Option<&str>) {
     if let Some(month) = month {
-        qb.push(" and ")
-            .push(MONTH_EXPR)
-            .push(" = ")
-            .push_bind(month.to_owned());
+        qb.push(" and p.created_at >= ")
+            .push_bind(month.to_owned())
+            .push(" and p.created_at < ")
+            .push_bind(next_month(month));
     }
 }
 
@@ -212,6 +229,41 @@ pub trait ContextRepo<'c>: SqliteExecutor<'c> {
         me: &str,
         ctx: &PhotoListContext,
     ) -> sqlx::Result<Vec<MonthSummary>> {
+        let mut qb = QueryBuilder::new("select ");
+        qb.push(MONTH_EXPR).push(" as month, count(*) as count");
+        push_from_where(&mut qb, me, ctx);
+        qb.push(" group by month order by month desc");
+
+        qb.build_query_as().fetch_all(self).await
+    }
+
+    /// Index of the first photo of `month` in the context and the number of photos in it.
+    /// Month-sectioned contexts only (newest first): the index counts the photos newer than the month.
+    async fn context_month_bounds(
+        self,
+        me: &str,
+        ctx: &PhotoListContext,
+        month: &str,
+    ) -> sqlx::Result<(i64, i64)> {
+        let next = next_month(month);
+        let mut qb = QueryBuilder::new("select coalesce(sum(p.created_at >= ");
+        qb.push_bind(next.clone())
+            .push("), 0), coalesce(sum(p.created_at >= ")
+            .push_bind(month.to_owned())
+            .push(" and p.created_at < ")
+            .push_bind(next)
+            .push("), 0)");
+        push_from_where(&mut qb, me, ctx);
+
+        qb.build_query_as().fetch_one(self).await
+    }
+
+    /// Month sections with the first photo of each, newest month first.
+    async fn context_month_covers(
+        self,
+        me: &str,
+        ctx: &PhotoListContext,
+    ) -> sqlx::Result<Vec<MonthCover>> {
         let mut qb = QueryBuilder::new(
             "select month, count(*) as count, max(case when rn = 1 then id end) as cover_photo_id from (select p.id, ",
         );
@@ -322,7 +374,7 @@ pub trait ContextRepo<'c>: SqliteExecutor<'c> {
         filter: PhotoFilter,
     ) -> sqlx::Result<Vec<MemorySummary>> {
         let mut qb = QueryBuilder::new(
-            "select years_ago, count(*) as count, max(case when rn = 1 then id end) as cover_photo_id from (select p.id, ",
+            "select years_ago, count(*) as count, max(case when rn = 1 then id end) as cover_photo_id, max(case when rn = 1 then thumb_hash end) as cover_thumb_hash from (select p.id, p.thumb_hash, ",
         );
         qb.push(YEARS_AGO_EXPR)
             .push(" as years_ago, row_number() over (partition by ")
@@ -354,6 +406,7 @@ mod tests {
     use crate::repo::tests::{Dataset, insert_photo, insert_users, photo};
     use sqlx::SqlitePool;
     use std::collections::HashMap;
+    use time::macros::datetime;
     use time::{Duration, OffsetDateTime};
 
     const ME: &str = "alice";
@@ -376,10 +429,29 @@ mod tests {
         for pair in summaries.windows(2) {
             assert!(pair[0].month > pair[1].month, "months must be newest first");
         }
+        let covers = pool.context_month_covers(ME, ctx).await.unwrap();
+        assert_eq!(
+            covers
+                .iter()
+                .map(|c| (&c.month, c.count))
+                .collect::<Vec<_>>(),
+            summaries
+                .iter()
+                .map(|s| (&s.month, s.count))
+                .collect::<Vec<_>>()
+        );
 
         if ctx.is_month_sectioned() {
             let mut concatenated = Vec::new();
-            for summary in &summaries {
+            let mut start_index = 0;
+            for (summary, cover) in summaries.iter().zip(&covers) {
+                let bounds = pool
+                    .context_month_bounds(ME, ctx, &summary.month)
+                    .await
+                    .unwrap();
+                assert_eq!(bounds, (start_index, summary.count), "{}", summary.month);
+                start_index += summary.count;
+
                 // Small pages to exercise offsets
                 let mut offset = 0;
                 loop {
@@ -396,7 +468,7 @@ mod tests {
                 assert_eq!(offset, summary.count, "month {}", summary.month);
 
                 let month_photos = &concatenated[concatenated.len() - summary.count as usize..];
-                assert_eq!(month_photos[0].photo.id, summary.cover_photo_id);
+                assert_eq!(month_photos[0].photo.id, cover.cover_photo_id);
 
                 let ids = pool
                     .context_ids(ME, ctx, Some(&summary.month))
@@ -528,6 +600,60 @@ mod tests {
         let count = async |filter| pool.context_count("bob", &Timeline(filter)).await.unwrap();
         assert_eq!(count(PhotoFilter::Shared).await, 0);
         assert_eq!(count(PhotoFilter::Personal).await, 5);
+    }
+
+    #[test]
+    fn test_next_month() {
+        for (month, next) in [
+            ("2024-06", "2024-07"),
+            ("2024-09", "2024-10"),
+            ("2024-11", "2024-12"),
+            ("2024-12", "2025-01"),
+            ("0999-12", "1000-01"),
+        ] {
+            assert_eq!(next_month(month), next, "{month}");
+        }
+    }
+
+    /// Month pages are text ranges on `created_at`, so photos at the edges of a month, with a
+    /// fraction of a second, and from an offset that was normalized to UTC must land in the right
+    /// month and agree with the summaries.
+    #[sqlx::test]
+    async fn test_month_edges(pool: SqlitePool) {
+        insert_users(&pool).await;
+        let times = [
+            datetime!(2024-05-31 23:59:59.999 UTC),
+            datetime!(2024-06-01 00:00:00 UTC),
+            datetime!(2024-06-30 23:59:59 UTC),
+            datetime!(2024-07-01 00:00:00 UTC),
+            datetime!(2024-12-31 23:59:59 UTC),
+            datetime!(2025-01-01 00:00:00 UTC),
+        ];
+        for (index, created_at) in times.into_iter().enumerate() {
+            let photo = Photo {
+                created_at,
+                ..photo(Some(ME), &format!("{index}.jpg"))
+            };
+            insert_photo(&pool, photo).await;
+        }
+
+        let ctx = PhotoListContext::Timeline(PhotoFilter::Personal);
+        let summaries = pool.context_month_summaries(ME, &ctx).await.unwrap();
+        let actual: Vec<_> = summaries
+            .iter()
+            .map(|s| (s.month.as_str(), s.count))
+            .collect();
+        assert_eq!(
+            actual,
+            [
+                ("2025-01", 1),
+                ("2024-12", 1),
+                ("2024-07", 1),
+                ("2024-06", 2),
+                ("2024-05", 1)
+            ]
+        );
+        check_invariants(&pool, &ctx).await;
     }
 
     #[sqlx::test]

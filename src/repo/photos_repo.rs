@@ -7,7 +7,7 @@ use sqlx::{
     FromRow, QueryBuilder, Sqlite, SqliteExecutor, SqliteTransaction, query, query_as, query_scalar,
 };
 use thiserror::Error;
-use time::OffsetDateTime;
+use time::{OffsetDateTime, UtcOffset};
 
 pub use crate::model::photo_access::PhotoAccess;
 
@@ -41,6 +41,24 @@ impl PhotoWithFolderRow {
     }
 }
 
+/// `created_at` is stored as UTC text (`...Z`): month queries compare it as text.
+fn utc(time: OffsetDateTime) -> OffsetDateTime {
+    time.to_offset(UtcOffset::UTC)
+}
+
+/// A photo with what the info panel shows besides the file's metadata
+pub struct PhotoInfoRecord {
+    pub photo: Photo,
+    pub folder_name: Option<String>,
+    /// The display name of the owner, `None` for public photos
+    pub owner_name: Option<String>,
+    pub can_delete: bool,
+    pub is_favorite: bool,
+}
+
+/// How many ids to bind in one `in (...)`
+pub const MAX_BOUND_IDS: usize = 500;
+
 pub trait PhotosRepo<'c>: SqliteExecutor<'c> {
     async fn get_accessible_photo(
         self,
@@ -71,10 +89,23 @@ pub trait PhotosRepo<'c>: SqliteExecutor<'c> {
         .await
     }
 
+    #[cfg(test)]
     async fn get_photo(self, id: i64) -> sqlx::Result<Option<Photo>> {
         query_as!(Photo, "select * from photos where id = $1", id)
             .fetch_optional(self)
             .await
+    }
+
+    /// The photos with these ids, in no particular order (unknown ids are skipped). The ids are
+    /// bound as parameters, so call it with chunks of at most [`MAX_BOUND_IDS`].
+    async fn get_photos_by_ids(self, ids: &[i64]) -> sqlx::Result<Vec<Photo>> {
+        let mut qb = QueryBuilder::<Sqlite>::new("select * from photos where id in (");
+        let mut separated = qb.separated(", ");
+        for id in ids {
+            separated.push_bind(*id);
+        }
+        separated.push_unseparated(")");
+        qb.build_query_as().fetch_all(self).await
     }
 
     async fn get_all_photo_ids(self) -> sqlx::Result<Vec<i64>> {
@@ -82,13 +113,25 @@ pub trait PhotosRepo<'c>: SqliteExecutor<'c> {
     }
 
     async fn get_photos_by_user(self, user_id: Option<&str>) -> sqlx::Result<Vec<Photo>> {
-        query_as!(
-            Photo,
-            "select * from photos where (($1 is null and user_id is null) or user_id = $1) order by created_at desc",
-            user_id
-        )
-            .fetch_all(self)
-            .await
+        match user_id {
+            Some(user_id) => {
+                query_as!(
+                    Photo,
+                    "select * from photos where user_id = $1 order by created_at desc, id",
+                    user_id
+                )
+                .fetch_all(self)
+                .await
+            }
+            None => {
+                query_as!(
+                    Photo,
+                    "select * from photos where user_id is null order by created_at desc, id"
+                )
+                .fetch_all(self)
+                .await
+            }
+        }
     }
 
     async fn get_photos_in_folder(self, folder_id: i64) -> sqlx::Result<Vec<Photo>> {
@@ -134,6 +177,52 @@ pub trait PhotosRepo<'c>: SqliteExecutor<'c> {
         )
         .fetch_all(self)
         .await
+    }
+
+    /// The photo with its folder, owner, favorite flag and `PhotoAccess::Delete` flag, if `user_id`
+    /// has `PhotoAccess::Read` access, in one query.
+    async fn get_photo_info(self, id: i64, user_id: &str) -> sqlx::Result<Option<PhotoInfoRecord>> {
+        let row = query!(
+            r#"select p.id, p.user_id, p.name, p.created_at as "created_at: OffsetDateTime", p.file_size,
+                p.folder_id, p.thumb_hash, p.trashed_on as "trashed_on: OffsetDateTime",
+                f.name as "folder_name?", u.name as "owner_name?",
+                (p.user_id is null or p.user_id = $2 or coalesce(fp.can_delete, false)) as "can_delete!: bool",
+                exists (select 1 from favorite_photos where photo_id = p.id and user_id = $2) as "is_favorite!: bool"
+            from photos p
+            left join folders f on f.id = p.folder_id
+            left join users u on u.id = p.user_id
+            left join folder_permissions fp
+                on fp.folder_id = p.folder_id and fp.grantee_id = $2
+            where p.id = $1 and (
+                p.user_id is null
+                or p.user_id = $2
+                or (
+                    fp.grantee_id is not null
+                    and (fp.expires_at is null or datetime(fp.expires_at) > datetime('now'))
+                )
+            )"#,
+            id,
+            user_id,
+        )
+        .fetch_optional(self)
+        .await?;
+
+        Ok(row.map(|row| PhotoInfoRecord {
+            photo: Photo {
+                id: row.id,
+                user_id: row.user_id,
+                name: row.name,
+                created_at: row.created_at,
+                file_size: row.file_size,
+                folder_id: row.folder_id,
+                thumb_hash: row.thumb_hash,
+                trashed_on: row.trashed_on,
+            },
+            folder_name: row.folder_name,
+            owner_name: row.owner_name,
+            can_delete: row.can_delete,
+            is_favorite: row.is_favorite,
+        }))
     }
 
     async fn get_accessible_photo_with_folder(
@@ -203,7 +292,12 @@ impl<'c> PhotosTransactionRepo<'c> for SqliteTransaction<'c> {
 
         let photos = query_as!(
             Photo,
-            "select * from photos where user_id is null or user_id = $1 order by created_at desc",
+            r#"select id as "id!", user_id as "user_id?", name as "name!", created_at as "created_at!: OffsetDateTime", file_size as "file_size!", folder_id as "folder_id?", thumb_hash as "thumb_hash?", trashed_on as "trashed_on?: OffsetDateTime"
+            from photos where user_id is null
+            union all
+            select id, user_id, name, created_at, file_size, folder_id, thumb_hash, trashed_on
+            from photos where user_id = $1
+            order by created_at desc, id"#,
             user_id,
         )
         .fetch_all(self.as_mut())
@@ -249,12 +343,13 @@ impl<'c> PhotosTransactionRepo<'c> for SqliteTransaction<'c> {
     }
 
     async fn insert_photo(&mut self, photo: &Photo) -> sqlx::Result<Photo> {
+        let created_at = utc(photo.created_at);
         let photo = query_as!(
             Photo,
             "insert into photos (user_id, name, created_at, file_size, folder_id, trashed_on) values ($1, $2, $3, $4, $5, $6) returning id, user_id as \"user_id?\", name, created_at, file_size, folder_id as \"folder_id?\", thumb_hash, trashed_on",
             photo.user_id,
             photo.name,
-            photo.created_at,
+            created_at,
             photo.file_size,
             photo.folder_id,
             photo.trashed_on
@@ -286,7 +381,7 @@ impl<'c> PhotosTransactionRepo<'c> for SqliteTransaction<'c> {
             .push_values(photos, |mut b, photo| {
                 b.push_bind(&photo.user_id)
                     .push_bind(&photo.name)
-                    .push_bind(photo.created_at)
+                    .push_bind(utc(photo.created_at))
                     .push_bind(photo.file_size)
                     .push_bind(photo.folder_id)
                     .push_bind(photo.trashed_on)
@@ -310,12 +405,13 @@ impl<'c> PhotosTransactionRepo<'c> for SqliteTransaction<'c> {
             .fetch_one(self.as_mut())
             .await?;
 
+        let created_at = utc(photo.created_at);
         query!(
             "update photos set user_id = $2, name = $3, created_at = $4, file_size = $5, folder_id = $6, trashed_on = $7 where id = $1",
             photo.id,
             photo.user_id,
             photo.name,
-            photo.created_at,
+            created_at,
             photo.file_size,
             photo.folder_id,
             photo.trashed_on
@@ -381,13 +477,8 @@ impl<'c> PhotosTransactionRepo<'c> for SqliteTransaction<'c> {
         qb.build().execute(self.as_mut()).await?;
 
         // Fetch updated photos for event log
-        let mut qb: QueryBuilder<Sqlite> = QueryBuilder::new("select * from photos where id in (");
-        let mut sep = qb.separated(", ");
-        for (id, _) in photos {
-            sep.push_bind(*id);
-        }
-        sep.push_unseparated(")");
-        let updated_photos: Vec<Photo> = qb.build_query_as().fetch_all(self.as_mut()).await?;
+        let ids: Vec<i64> = photos.iter().map(|(id, _)| *id).collect();
+        let updated_photos = self.as_mut().get_photos_by_ids(&ids).await?;
 
         self.insert_creation_event_logs(&updated_photos).await?;
         self.as_mut()
@@ -593,6 +684,11 @@ mod tests {
         );
 
         assert_eq!(pool.get_all_photo_ids().await?.len(), 17);
+        let by_ids = pool
+            .get_photos_by_ids(&[data.id("own_1"), 999_999, data.id("public_a")])
+            .await?;
+        assert_eq!(name_set(&by_ids), HashSet::from(["own_1", "public_a"]));
+        assert!(pool.get_photos_by_ids(&[]).await?.is_empty());
         // Newest first
         assert_eq!(
             names(&pool.get_photos_by_user(Some("alice")).await?),
@@ -634,6 +730,47 @@ mod tests {
             ])
         );
 
+        Ok(())
+    }
+
+    /// Month queries compare `created_at` as text, so every write path must store UTC `...Z`
+    #[sqlx::test]
+    async fn test_created_at_is_stored_as_utc(pool: SqlitePool) -> sqlx::Result<()> {
+        use time::macros::datetime;
+
+        insert_users(&pool).await;
+        let local = datetime!(2024-06-01 01:30:15.5 +02:00);
+        let stored = || async {
+            query_scalar!(r#"select created_at as "created_at: String" from photos order by id"#)
+                .fetch_all(&pool)
+                .await
+        };
+
+        let inserted = insert_photo(
+            &pool,
+            Photo {
+                created_at: local,
+                ..photo(Some("alice"), "a.jpg")
+            },
+        )
+        .await;
+        let mut tx = pool.begin().await?;
+        tx.insert_photos(&[Photo {
+            created_at: local,
+            ..photo(Some("alice"), "b.jpg")
+        }])
+        .await?;
+        tx.update_photo(&Photo {
+            created_at: datetime!(2024-07-01 00:30 -05:00),
+            ..inserted
+        })
+        .await?;
+        tx.commit().await?;
+
+        assert_eq!(
+            stored().await?,
+            ["2024-07-01T05:30:00Z", "2024-05-31T23:30:15.5Z"]
+        );
         Ok(())
     }
 

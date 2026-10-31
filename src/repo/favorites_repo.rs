@@ -12,17 +12,6 @@ pub trait FavoritesRepo<'c>: SqliteExecutor<'c> {
         .map(|vec| vec.into_iter().collect())
     }
 
-    async fn check_favorite(self, photo_id: i64, user_id: &str) -> sqlx::Result<bool> {
-        query_scalar!(
-            "select exists(select 1 from favorite_photos where photo_id = $1 and user_id = $2)",
-            photo_id,
-            user_id
-        )
-        .fetch_one(self)
-        .await
-        .map(|exists| exists != 0)
-    }
-
     async fn check_favorites_for_ids(
         self,
         user_id: &str,
@@ -87,7 +76,7 @@ mod tests {
             ids.push(insert_photo(&pool, photo(Some("alice"), name)).await.id);
         }
         assert!(pool.get_favorite_photos("alice").await?.is_empty());
-        assert!(!pool.check_favorite(ids[0], "alice").await?);
+        assert!(!pool.get_favorite_photos("alice").await?.contains(&ids[0]));
 
         pool.insert_favorite(ids[0], "alice").await?;
         pool.insert_favorite(ids[2], "alice").await?;
@@ -104,8 +93,8 @@ mod tests {
             pool.get_favorite_photos("bob").await?,
             HashSet::from([ids[1]])
         );
-        assert!(pool.check_favorite(ids[0], "alice").await?);
-        assert!(!pool.check_favorite(ids[0], "bob").await?);
+        assert!(pool.get_favorite_photos("alice").await?.contains(&ids[0]));
+        assert!(!pool.get_favorite_photos("bob").await?.contains(&ids[0]));
         assert!(pool.check_favorites_for_ids("alice", &[]).await?.is_empty());
         assert_eq!(
             pool.check_favorites_for_ids("alice", &[ids[0], ids[1]])
@@ -121,7 +110,7 @@ mod tests {
             HashSet::from([ids[2]])
         );
         pool.insert_favorite(ids[0], "alice").await?;
-        assert!(pool.check_favorite(ids[0], "alice").await?);
+        assert!(pool.get_favorite_photos("alice").await?.contains(&ids[0]));
 
         Ok(())
     }

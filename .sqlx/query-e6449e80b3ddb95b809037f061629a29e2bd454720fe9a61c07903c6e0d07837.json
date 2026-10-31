@@ -1,0 +1,148 @@
+{
+  "db_name": "SQLite",
+  "query": "select p.id, p.user_id, p.name, p.created_at as \"created_at: OffsetDateTime\", p.file_size,\n                p.folder_id, p.thumb_hash, p.trashed_on as \"trashed_on: OffsetDateTime\",\n                f.name as \"folder_name?\", u.name as \"owner_name?\",\n                (p.user_id is null or p.user_id = $2 or coalesce(fp.can_delete, false)) as \"can_delete!: bool\",\n                exists (select 1 from favorite_photos where photo_id = p.id and user_id = $2) as \"is_favorite!: bool\"\n            from photos p\n            left join folders f on f.id = p.folder_id\n            left join users u on u.id = p.user_id\n            left join folder_permissions fp\n                on fp.folder_id = p.folder_id and fp.grantee_id = $2\n            where p.id = $1 and (\n                p.user_id is null\n                or p.user_id = $2\n                or (\n                    fp.grantee_id is not null\n                    and (fp.expires_at is null or datetime(fp.expires_at) > datetime('now'))\n                )\n            )",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "photos",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "user_id",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "photos",
+            "name": "user_id"
+          }
+        }
+      },
+      {
+        "name": "name",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "photos",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "created_at: OffsetDateTime",
+        "ordinal": 3,
+        "type_info": "Datetime",
+        "origin": {
+          "Table": {
+            "table": "photos",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "name": "file_size",
+        "ordinal": 4,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "photos",
+            "name": "file_size"
+          }
+        }
+      },
+      {
+        "name": "folder_id",
+        "ordinal": 5,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "photos",
+            "name": "folder_id"
+          }
+        }
+      },
+      {
+        "name": "thumb_hash",
+        "ordinal": 6,
+        "type_info": "Blob",
+        "origin": {
+          "Table": {
+            "table": "photos",
+            "name": "thumb_hash"
+          }
+        }
+      },
+      {
+        "name": "trashed_on: OffsetDateTime",
+        "ordinal": 7,
+        "type_info": "Datetime",
+        "origin": {
+          "Table": {
+            "table": "photos",
+            "name": "trashed_on"
+          }
+        }
+      },
+      {
+        "name": "folder_name?",
+        "ordinal": 8,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "folders",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "owner_name?",
+        "ordinal": 9,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "users",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "can_delete!: bool",
+        "ordinal": 10,
+        "type_info": "Bool",
+        "origin": "Expression"
+      },
+      {
+        "name": "is_favorite!: bool",
+        "ordinal": 11,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      true,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "e6449e80b3ddb95b809037f061629a29e2bd454720fe9a61c07903c6e0d07837"
+}

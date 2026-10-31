@@ -177,13 +177,11 @@ async fn upload_photo(
     };
 
     let mut photo_path = state.storage.resolve_photo(photo.partial_path(folder_name));
-    if let Some(parent) = photo_path.parent()
-        && !parent.exists()
-    {
+    if let Some(parent) = photo_path.parent() {
         fs::create_dir_all(parent).await?;
     }
 
-    if photo_path.exists() {
+    if fs::try_exists(&photo_path).await? {
         photo.name = format!(
             "{}.{}",
             uuid::Uuid::new_v4(),
