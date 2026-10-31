@@ -1,18 +1,25 @@
 {% import "macros/ui.html" as ui %}
 
-{# Create or rename a folder; the `folder-name-form` component submits it (assets/js/folders/name-dialog.js) #}
+{# Create or rename a folder. HTMX posts the form (`/ui/folders[/{id}]`) and swaps in this form again with the reason when the
+   server refuses it (422); the `folder-name-form` component (assets/js/folders/name-dialog.js) only keeps the
+   button and the visibility warning in line, and hands the choice back when `return_only` #}
 <form class="fp-folder-form" data-component="folder-name-form" data-testid="folder-name-form" autocomplete="off"
-      data-initial-name="{{ name }}" data-initial-public="{{ is_public }}"
+      data-initial-public="{{ is_public }}"
+      {%- if return_only %} data-return
+      {%- else %}{% if let Some(id) = folder_id %} hx-post="/ui/folders/{{ id }}"{% else %} hx-post="/ui/folders"{% endif %}
+      hx-status:422="swap:outerHTML" hx-disable="find [data-testid=folder-name-confirm]"
+      {%- endif %}
       data-warning-to-family="All photos in this folder will become visible to the whole family."
       data-warning-to-personal="This folder and its photos will become private to you."
-      {%- if renaming %} data-renaming{% endif %}>
-    <h2 id="folder-name-title" class="text-lg font-semibold">{% if renaming %}Edit folder{% else %}New folder{% endif %}</h2>
+      {%- if folder_id.is_some() %} data-renaming{% endif %}>
+    <h2 id="folder-name-title" class="text-lg font-semibold">{% if folder_id.is_some() %}Edit folder{% else %}New folder{% endif %}</h2>
 
     <div class="fp-field mt-4">
         <label class="fp-field__label" for="folder-name-input">Folder name</label>
         <input id="folder-name-input" name="name" type="text" class="input input-bordered w-full" maxlength="100"
                value="{{ name }}" autofocus data-testid="folder-name-input">
-        <p class="text-sm text-error" role="alert" hidden data-role="error" data-testid="folder-name-error"></p>
+        <p class="text-sm text-error" role="alert"{% if error.is_none() %} hidden{% endif %} data-role="error"
+           data-testid="folder-name-error">{% if let Some(error) = error %}{{ error }}{% endif %}</p>
     </div>
 
     <div class="fp-field mt-4">
@@ -31,7 +38,7 @@
     <div class="modal-action">
         <button type="button" class="btn btn-ghost" data-dialog-close data-testid="folder-name-cancel">Cancel</button>
         <button type="submit" class="btn btn-primary" data-testid="folder-name-confirm" disabled>
-            {% if renaming %}Save{% else %}Create{% endif %}
+            {% if folder_id.is_some() %}Save{% else %}Create{% endif %}
         </button>
     </div>
 </form>

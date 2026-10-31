@@ -5,7 +5,7 @@ use crate::repo::users_repo::UsersRepository;
 use axum::Router;
 use axum::http::{HeaderValue, header};
 use axum::middleware;
-use axum::routing::get;
+use axum::routing::{get, post};
 use axum_login::login_required;
 use tower_http::set_header::SetResponseHeaderLayer;
 
@@ -57,6 +57,32 @@ pub fn router(app_state: AppStateRef) -> Router {
         .route("/ui/dialogs/shortcuts", get(shortcuts::shortcuts_dialog))
         .route("/ui/folders/list", get(folders::list_fragment))
         .route("/ui/dialogs/folder-name", get(folders::folder_name_dialog))
+        .route(
+            "/ui/dialogs/folder-delete/{folder_id}",
+            get(folders::folder_delete_dialog),
+        )
+        .route("/ui/folders", post(folders::create_folder))
+        .route(
+            "/ui/folders/{folder_id}",
+            post(folders::update_folder).delete(folders::delete_folder),
+        )
+        .route(
+            "/ui/sharing/folder/{folder_id}/members",
+            post(sharing::add_member),
+        )
+        .route(
+            "/ui/sharing/share/{share_id}/permission",
+            post(sharing::set_permission),
+        )
+        .route(
+            "/ui/sharing/share/{share_id}/expiry",
+            post(sharing::set_expiry),
+        )
+        .route(
+            "/ui/sharing/share/{share_id}",
+            axum::routing::delete(sharing::remove_member),
+        )
+        .route("/ui/settings/password", post(settings::change_password))
         .route(
             "/ui/dialogs/sharing/{folder_id}",
             get(sharing::sharing_dialog),

@@ -7,11 +7,13 @@ import { initDialog, isDialogOpen, openDialog } from './core/dialog.js';
 import { register as registerShortcut } from './core/keyboard.js';
 import { errorMessage, redirectToLogin } from './core/api.js';
 import { t } from './core/strings.js';
+import { initFlashToasts } from './core/flash.js';
 import './components/shell.js';
 // The destination picker (and the folder browser and name dialog it uses) is opened from dialogs on many pages
 import './destination-picker/picker.js';
 
 function initHtmxErrors() {
+    // Forms that report their own failures (the login form)
     const silent = (element) => element?.closest?.('[data-silent-errors]') != null;
 
     // An HTTP error status (the response is not swapped: see `noSwap` in base.html)
@@ -21,18 +23,16 @@ function initHtmxErrors() {
             redirectToLogin();
             return;
         }
-        if (!silent(event.target)) {
-            toast(errorMessage(response.status, text), { type: 'error' });
-        }
+        // A refused form (422) is swapped in with its reason, so it needs no toast
+        if (response.status === 422 && /** @type {Element} */ (event.target).closest?.('[hx-status\\:422]')) return;
+        if (!silent(event.target)) toast(errorMessage(response.status, text), { type: 'error' });
     });
 
     // No response at all (HTMX 4 reports every failure here; a request replaced by `hx-sync` is aborted on purpose)
     document.body.addEventListener('htmx:error', (event) => {
         const { ctx, error } = event.detail;
         if (!ctx?.request || ctx.response || error?.name === 'AbortError') return;
-        if (!silent(event.target)) {
-            toast(t('networkError'), { type: 'error' });
-        }
+        if (!silent(event.target)) toast(t('networkError'), { type: 'error' });
     });
 }
 
@@ -73,6 +73,7 @@ function initShortcuts() {
 initToasts();
 initDialog();
 initHtmxErrors();
+initFlashToasts();
 keepPageOnViewerTraversal();
 // The login page has no shell to navigate to
 if (document.getElementById('main')) {

@@ -2,12 +2,11 @@
 // opened on top of other dialogs, e.g. from the destination picker inside the move dialog.
 
 import { register } from '../core/registry.js';
-import { postJson, api, ApiError } from '../core/api.js';
 import { popScope, pushScope } from '../core/keyboard.js';
 
 const SCOPE = 'folder-name-dialog';
 
-/** @type {WeakMap<HTMLDialogElement, {submit: string, folderId?: number, resolve: (result: object|null) => void}>} */
+/** @type {WeakMap<HTMLDialogElement, {resolve: (result: object|null) => void}>} */
 const sessions = new WeakMap();
 
 function createDialog() {
@@ -22,24 +21,22 @@ function createDialog() {
 }
 
 /**
- * Opens the dialog to create a folder, or to rename one (`folderId`).
+ * Opens the dialog to create a folder, or to rename one (`folderId`). The form is HTMX's: it posts
+ * to `/ui/folders[/{id}]` and the response redirects (or shows the reason in the form again).
  *
- * `submit` says what confirming does: `'create'` creates the folder (`POST /api/folders`),
- * `'rename'` updates it (`PATCH /api/folders/{id}`), and `'return'` only hands back the choice
- * without calling the API (the destination picker creates the folder when the photos are moved).
+ * With `returnOnly` confirming only hands back the choice, without any request (the destination
+ * picker creates the folder when the photos are moved).
  *
- * @param {{folderId?: number, initialName?: string, initialPublic?: boolean, submit?: 'create'|'rename'|'return'}} options
- * @returns {Promise<{id?: number, name: string, isPublic: boolean}|null>} null if it was dismissed
+ * @param {{folderId?: number, initialName?: string, initialPublic?: boolean, returnOnly?: boolean}} options
+ * @returns {Promise<{name: string, isPublic: boolean}|null>} the choice in `returnOnly` mode; null if it was dismissed
  */
-export function openFolderNameDialog({ folderId, initialName = '', initialPublic = false, submit = 'create' } = {}) {
+export function openFolderNameDialog({ folderId, initialName = '', initialPublic = false, returnOnly = false } = {}) {
     return new Promise((resolve) => {
         const dialog = createDialog();
         const box = dialog.querySelector('.modal-box');
         let result = null;
 
         sessions.set(dialog, {
-            submit,
-            folderId,
             resolve: (value) => {
                 result = value;
                 dialog.close();
@@ -57,18 +54,14 @@ export function openFolderNameDialog({ folderId, initialName = '', initialPublic
 
         document.body.append(dialog);
         const query = folderId === undefined
-            ? { name: initialName, public: initialPublic }
+            ? { name: initialName, public: initialPublic, ...(returnOnly && { return: true }) }
             : { folder_id: folderId };
 
         (async () => {
-            try {
-                await window.htmx.ajax('GET', `/ui/dialogs/folder-name?${new URLSearchParams(/** @type {any} */ (query))}`, {
-                    target: box,
-                    swap: 'innerHTML',
-                });
-            } catch {
-                // Reported below
-            }
+            await window.htmx.ajax('GET', `/ui/dialogs/folder-name?${new URLSearchParams(/** @type {any} */ (query))}`, {
+                target: box,
+                swap: 'innerHTML',
+            });
             // A failed request leaves the dialog empty; the global handler already showed the toast
             if (!box.firstElementChild) {
                 dialog.remove();
@@ -83,22 +76,17 @@ export function openFolderNameDialog({ folderId, initialName = '', initialPublic
 
 register('folder-name-form', (/** @type {HTMLFormElement} */ form) => {
     const dialog = form.closest('dialog');
-    const session = sessions.get(dialog);
     const input = /** @type {HTMLInputElement} */ (form.elements.namedItem('name'));
-    const confirm = form.querySelector('[data-testid="folder-name-confirm"]');
+    const confirm = /** @type {HTMLButtonElement} */ (form.querySelector('[data-testid="folder-name-confirm"]'));
     const error = form.querySelector('[data-role="error"]');
     const warning = form.querySelector('[data-role="warning"]');
     const renaming = form.hasAttribute('data-renaming');
-    const initialName = form.dataset.initialName;
     const initialPublic = form.dataset.initialPublic === 'true';
-    let busy = false;
 
-    const isPublic = () => form.querySelector('input[name="folder-visibility"]:checked')?.value === 'family';
-    const trimmedName = () => input.value.trim();
+    const isPublic = () => /** @type {HTMLInputElement|null} */ (form.querySelector('input[name="folder-visibility"]:checked'))?.value === 'family';
 
     const update = () => {
-        confirm.disabled = busy || trimmedName() === '';
-        error.hidden = true;
+        confirm.disabled = input.value.trim() === '';
 
         const changed = renaming && isPublic() !== initialPublic;
         warning.hidden = !changed;
@@ -106,45 +94,24 @@ register('folder-name-form', (/** @type {HTMLFormElement} */ form) => {
             warning.textContent = isPublic() ? form.dataset.warningToFamily : form.dataset.warningToPersonal;
         }
     };
-    form.addEventListener('input', update);
-    form.addEventListener('change', update);
+    const edited = () => {
+        error.hidden = true;
+        update();
+    };
+    form.addEventListener('input', edited);
+    form.addEventListener('change', edited);
     update();
+    // Back from a refusal: the cursor goes to the name that was refused
+    if (!error.hidden) {
+        input.focus();
+        input.select();
+    }
 
-    form.addEventListener('submit', async (event) => {
-        event.preventDefault();
-        if (confirm.disabled) return;
-
-        const name = trimmedName();
-        const outcome = { name, isPublic: isPublic() };
-
-        if (session.submit === 'return') {
-            session.resolve(outcome);
-            return;
-        }
-        if (renaming && name === initialName && outcome.isPublic === initialPublic) {
-            session.resolve(null);
-            return;
-        }
-
-        busy = true;
-        confirm.disabled = true;
-        confirm.classList.add('btn-disabled');
-        try {
-            const folder = renaming
-                ? await api(`/api/folders/${session.folderId}`, {
-                    method: 'PATCH',
-                    json: { name, is_public: outcome.isPublic },
-                    silent: true,
-                })
-                : await postJson('/api/folders', { name, is_public: outcome.isPublic }, { silent: true });
-            session.resolve({ ...outcome, id: folder.id, name: folder.name });
-        } catch (failure) {
-            if (!(failure instanceof ApiError)) throw failure;
-            error.textContent = failure.message;
-            busy = false;
-            confirm.classList.remove('btn-disabled');
-            confirm.disabled = false;
-            error.hidden = false;
-        }
-    });
+    // Without a request: the picker takes the choice
+    if (form.hasAttribute('data-return')) {
+        form.addEventListener('submit', (event) => {
+            event.preventDefault();
+            if (!confirm.disabled) sessions.get(dialog).resolve({ name: input.value.trim(), isPublic: isPublic() });
+        });
+    }
 });

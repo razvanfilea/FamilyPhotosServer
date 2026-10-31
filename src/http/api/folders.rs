@@ -14,15 +14,16 @@ use crate::{
         auth::AuthenticatedUser,
         error::{HttpError, HttpResult, is_unique_violation},
     },
+    model::user::User,
     repo::{FolderPermissionsRepo, FoldersRepo},
     utils::file_names::validate_folder_name,
 };
 
 #[derive(Serialize)]
-struct FolderResponse {
-    id: i64,
-    owner_id: Option<String>,
-    name: String,
+pub(crate) struct FolderResponse {
+    pub id: i64,
+    pub owner_id: Option<String>,
+    pub name: String,
 }
 
 pub fn router() -> Router<AppStateRef> {
@@ -42,11 +43,22 @@ async fn create_folder(
     AuthenticatedUser(user): AuthenticatedUser,
     Json(new_folder): Json<NewFolderRequest>,
 ) -> HttpResult<impl IntoResponse> {
-    let name = validate_folder_name(&new_folder.name)
-        .map_err(|message| HttpError::BadRequest(message.to_string()))?;
+    let folder = create_folder_for(state, &user, &new_folder.name, new_folder.is_public).await?;
+    Ok(Json(folder))
+}
+
+/// Creates a folder (or returns the existing one with that name). Shared with the web UI's form.
+pub(crate) async fn create_folder_for(
+    state: AppStateRef,
+    user: &User,
+    name: &str,
+    is_public: bool,
+) -> HttpResult<FolderResponse> {
+    let name =
+        validate_folder_name(name).map_err(|message| HttpError::BadRequest(message.to_string()))?;
     let name = name.as_str();
 
-    let owner_id = if new_folder.is_public {
+    let owner_id = if is_public {
         None
     } else {
         Some(user.id.as_str())
@@ -58,11 +70,11 @@ async fn create_folder(
         .await?
         .ok_or(HttpError::BadRequest("Failed to create folder".to_string()))?;
 
-    Ok(Json(FolderResponse {
+    Ok(FolderResponse {
         id: folder_id,
         owner_id: owner_id.map(ToOwned::to_owned),
         name: name.to_owned(),
-    }))
+    })
 }
 
 fn folder_exists() -> HttpError {
@@ -89,6 +101,19 @@ async fn update_folder(
     Path(folder_id): Path<i64>,
     Json(request): Json<UpdateFolderRequest>,
 ) -> HttpResult<impl IntoResponse> {
+    let folder =
+        update_folder_for(state, &user, folder_id, request.name, request.is_public).await?;
+    Ok(Json(folder))
+}
+
+/// Renames a folder and/or changes its visibility. Shared with the web UI's form.
+pub(crate) async fn update_folder_for(
+    state: AppStateRef,
+    user: &User,
+    folder_id: i64,
+    name: Option<String>,
+    is_public: Option<bool>,
+) -> HttpResult<FolderResponse> {
     let mut tx = state.write_pool.begin().await?;
 
     let folder = tx
@@ -106,13 +131,12 @@ async fn update_folder(
     }
 
     // A blank name means "don't rename" (as before)
-    let new_name = request
-        .name
+    let new_name = name
         .filter(|n| !n.trim().is_empty())
         .map(|n| validate_folder_name(&n))
         .transpose()
         .map_err(|message| HttpError::BadRequest(message.to_string()))?;
-    let new_owner_id = request.is_public.map(|is_public| {
+    let new_owner_id = is_public.map(|is_public| {
         if is_public {
             None
         } else {
@@ -121,11 +145,11 @@ async fn update_folder(
     });
 
     if new_name.is_none() && new_owner_id.is_none() {
-        return Ok(Json(FolderResponse {
+        return Ok(FolderResponse {
             id: folder_id,
             owner_id: folder.owner_id.clone(),
             name: folder.name.clone(),
-        }));
+        });
     }
 
     let source_owner = folder.owner_id.as_deref();
@@ -189,11 +213,11 @@ async fn update_folder(
         target_owner.is_none()
     );
 
-    Ok(Json(FolderResponse {
+    Ok(FolderResponse {
         id: folder_id,
         owner_id: target_owner.map(ToOwned::to_owned),
         name: target_name.to_owned(),
-    }))
+    })
 }
 
 /// Deletes a folder that has no photos at all (trashed ones included)
@@ -202,6 +226,16 @@ async fn delete_folder(
     AuthenticatedUser(user): AuthenticatedUser,
     Path(folder_id): Path<i64>,
 ) -> HttpResult<impl IntoResponse> {
+    delete_folder_for(state, &user, folder_id).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Deletes a folder that has no photos at all. Shared with the web UI.
+pub(crate) async fn delete_folder_for(
+    state: AppStateRef,
+    user: &User,
+    folder_id: i64,
+) -> HttpResult<()> {
     let mut tx = state.write_pool.begin().await?;
 
     let folder = tx
@@ -245,5 +279,5 @@ async fn delete_folder(
         "Folder deleted"
     );
 
-    Ok(StatusCode::NO_CONTENT)
+    Ok(())
 }

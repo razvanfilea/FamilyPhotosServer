@@ -113,10 +113,16 @@ test.describe('change password', () => {
 
         await fill(page, original, 'short');
         await expect(page.getByTestId('password-error')).toHaveText('Password must be at least 8 characters');
+        // The typed values stay and the cursor goes to the field the error is about
+        await expect(page.getByTestId('password-current')).toHaveValue(original);
+        await expect(page.getByTestId('password-new')).toHaveValue('short');
+        await expect(page.getByTestId('password-new')).toBeFocused();
         await fill(page, original, 'long-enough-1', 'long-enough-2');
         await expect(page.getByTestId('password-error')).toHaveText("The passwords don't match");
+        await expect(page.getByTestId('password-confirm')).toBeFocused();
         await fill(page, 'not-the-password', 'long-enough-1');
         await expect(page.getByTestId('password-error')).toHaveText('Current password is incorrect');
+        await expect(page.getByTestId('password-current')).toBeFocused();
         await page.getByTestId('password-new').fill('x');
         await expect(page.getByTestId('password-error')).toBeHidden();
     });

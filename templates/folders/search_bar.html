@@ -1,6 +1,13 @@
 {% import "macros/icons.html" as icons %}
 
 {# Search, sort order and view of a folder list; the `folder-browser` component wires them up #}
+{# The filter, sort order and view the list is fetched with (`hx-include` of the browser root); the component keeps them current #}
+<fieldset hidden data-role="state">
+    <input type="hidden" name="filter" value="{{ browser.filter }}">
+    <input type="hidden" name="sort" value="{{ browser.sort }}">
+    <input type="hidden" name="view" value="{{ browser.view }}">
+    {%- if browser.picker %}<input type="hidden" name="picker" value="true">{% endif %}
+</fieldset>
 <div class="fp-folder-controls">
     <label class="input input-bordered fp-folder-search">
         {% call icons::icon("search", false, "text-base-content/50") %}{% endcall %}

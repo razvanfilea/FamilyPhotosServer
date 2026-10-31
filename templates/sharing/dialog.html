@@ -1,10 +1,11 @@
 {% import "macros/icons.html" as icons %}
 {% import "macros/ui.html" as ui %}
 
-{# Who a folder is shared with; `sharing-dialog` (assets/js/sharing/sharing-dialog.js) applies the changes #}
+{# Who a folder is shared with. Every change is an HTMX request (`/ui/sharing/…`) whose answer is this dialog again;
+   the `sharing-dialog` component (assets/js/sharing/sharing-dialog.js) only toggles the menus. #}
 {% macro expiry_select(prefix, keep_label, testid) -%}
 <label class="fp-field__label" for="{{ prefix }}-expiry">Expiry</label>
-<select id="{{ prefix }}-expiry" class="select select-bordered select-sm w-full" data-role="expiry"
+<select id="{{ prefix }}-expiry" name="expiry" class="select select-bordered select-sm w-full" data-role="expiry"
         data-testid="{{ testid }}">
     {%- if keep_label != "" %}<option value="keep" selected>{{ keep_label }}</option>{% endif %}
     <option value="none"{% if keep_label == "" %} selected{% endif %}>No expiry</option>
@@ -15,10 +16,9 @@
 </select>
 {%- endmacro %}
 
-<div data-component="sharing-dialog" data-folder-id="{{ folder_id }}" data-member-count="{{ active_member_count }}"
-     data-can-modify="{{ can_modify }}" data-message-added="Member added"
-     data-message-updated="Permissions updated" data-message-removed="Member removed"
-     data-message-pick-date="Pick an expiry date" data-testid="sharing-dialog">
+<div id="sharing-dialog" data-component="sharing-dialog"
+     data-member-count="{{ active_member_count }}" data-can-modify="{{ can_modify }}"
+     hx-target:inherited="#sharing-dialog" hx-sync:inherited="#sharing-dialog:drop" data-testid="sharing-dialog">
     <h2 id="app-dialog-title" class="text-lg font-semibold">
         {%- if can_modify %}Manage access{% else %}People with access{% endif -%}
     </h2>
@@ -35,9 +35,7 @@
         </li>
 
         {%- for member in members %}
-        <li class="fp-sharing__member" data-testid="sharing-member" data-share-id="{{ member.share_id }}"
-            data-user-id="{{ member.user_id }}" data-can-upload="{{ member.can_upload }}"
-            data-can-delete="{{ member.can_delete }}">
+        <li class="fp-sharing__member" data-testid="sharing-member">
             <div class="fp-sharing__row">
                 {% call ui::avatar(member.display_name) %}{% endcall %}
                 <div class="fp-sharing__who">
@@ -48,17 +46,18 @@
                     {%- endif %}
                 </div>
                 {%- if can_modify %}
-                <button type="button" class="btn btn-ghost btn-circle" data-action="toggle-menu" aria-expanded="false"
+                <button type="button" class="btn btn-ghost btn-circle" data-action="toggle-menu" id="share-{{ member.share_id }}-menu" aria-expanded="{{ member.open }}"
                         aria-label="Edit {{ member.display_name }}'s access" data-testid="sharing-member-menu">
                     {% call icons::icon("more_vert") %}{% endcall %}
                 </button>
                 {%- endif %}
             </div>
             {%- if can_modify %}
-            <div class="fp-member-menu" data-role="menu" hidden>
+            <div class="fp-member-menu" data-role="menu"{% if !member.open %} hidden{% endif %}>
                 <div role="radiogroup" aria-label="Permission" class="fp-member-menu__options">
                     {%- for (key, label) in [("view", "View only"), ("upload", "Can upload"), ("upload-delete", "Can upload & delete")] %}
-                    <button type="button" role="radio" data-action="permission" data-permission="{{ key }}"
+                    <button type="button" role="radio" hx-post="/ui/sharing/share/{{ member.share_id }}/permission" id="share-{{ member.share_id }}-perm-{{ key }}"
+                            hx-vals='{"permission": "{{ key }}"}'
                             aria-checked="{{ crate::http::views::str_eq(key, member.permission) }}"
                             data-testid="sharing-permission-{{ key }}">
                         <span class="fp-check-slot">{% call icons::icon("check") %}{% endcall %}</span>
@@ -66,20 +65,20 @@
                     </button>
                     {%- endfor %}
                 </div>
-                <div class="fp-field" data-role="expiry-field">
+                <form class="fp-field" data-role="expiry-field" novalidate hx-post="/ui/sharing/share/{{ member.share_id }}/expiry">
                     {%- if let Some(expiry) = member.expiry_label %}
                     {% call expiry_select(member.share_id, expiry, "sharing-expiry") %}{% endcall %}
                     {%- else %}
                     {% call expiry_select(member.share_id, "", "sharing-expiry") %}{% endcall %}
                     {%- endif %}
                     <div class="flex gap-2" data-role="custom-expiry" hidden>
-                        <input type="date" class="input input-bordered input-sm grow" min="{{ today }}"
+                        <input type="date" name="expiry_date" class="input input-bordered input-sm grow" min="{{ today }}"
                                aria-label="Expiry date" data-role="expiry-date" data-testid="sharing-expiry-date">
-                        <button type="button" class="btn btn-primary btn-sm" data-action="set-expiry"
+                        <button type="submit" class="btn btn-primary btn-sm"
                                 data-testid="sharing-expiry-set">Set</button>
                     </div>
-                </div>
-                <button type="button" class="btn btn-ghost btn-sm text-error justify-start" data-action="remove"
+                </form>
+                <button type="button" class="btn btn-ghost btn-sm text-error justify-start" data-action="remove" id="share-{{ member.share_id }}-remove"
                         data-testid="sharing-remove">
                     {% call icons::icon("delete") %}{% endcall %}
                     Remove member
@@ -89,6 +88,7 @@
                     <div class="flex gap-2 justify-end">
                         <button type="button" class="btn btn-ghost btn-sm" data-action="cancel-remove">Cancel</button>
                         <button type="button" class="btn btn-error btn-sm" data-action="confirm-remove"
+                                hx-delete="/ui/sharing/share/{{ member.share_id }}"
                                 data-testid="sharing-remove-confirm">Remove</button>
                     </div>
                 </div>
@@ -104,26 +104,28 @@
             {% call icons::icon("add", false, "text-primary") %}{% endcall %}
             <span class="fp-sharing__name">Add members</span>
         </summary>
-        <div class="fp-sharing__add-panel">
+        <form class="fp-sharing__add-panel" novalidate>
+            {#- Enter in the date field must submit nothing: the people are buttons that post the form (with their id), and a disabled default button blocks implicit submission #}
+            <button type="submit" disabled hidden aria-hidden="true" tabindex="-1"></button>
             <div class="fp-field" data-role="expiry-field">
                 {% call expiry_select("add", "", "sharing-add-expiry") %}{% endcall %}
                 <div class="flex gap-2" data-role="custom-expiry" hidden>
-                    <input type="date" class="input input-bordered input-sm grow" min="{{ today }}"
+                    <input type="date" name="expiry_date" class="input input-bordered input-sm grow" min="{{ today }}"
                            aria-label="Expiry date" data-role="expiry-date" data-testid="sharing-add-expiry-date">
                 </div>
             </div>
             <ul class="fp-sharing__list" role="list">
                 {%- for person in addable %}
                 <li>
-                    <button type="button" class="fp-sharing__person" data-action="add" data-user-id="{{ person.id }}"
-                            data-testid="sharing-add-user">
+                    <button type="button" class="fp-sharing__person" hx-post="/ui/sharing/folder/{{ folder_id }}/members"
+                            hx-vals='{"user_id": "{{ person.id }}"}' data-testid="sharing-add-user">
                         {% call ui::avatar(person.display_name) %}{% endcall %}
                         <span class="fp-sharing__name">{{ person.display_name }}</span>
                     </button>
                 </li>
                 {%- endfor %}
             </ul>
-        </div>
+        </form>
     </details>
     {%- endif %}
 

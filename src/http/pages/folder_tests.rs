@@ -19,32 +19,32 @@ use tempfile::TempDir;
 use time::{Duration, OffsetDateTime};
 use tower::ServiceExt;
 
-const PASSWORD: &str = "password";
+pub(super) const PASSWORD: &str = "password";
 
 /// Hashing is slow in debug builds, so hash once
 static PASSWORD_HASH: LazyLock<String> = LazyLock::new(|| generate_hash_from_password(PASSWORD));
 
-struct Response {
-    status: StatusCode,
-    headers: HeaderMap,
-    body: String,
+pub(super) struct Response {
+    pub(super) status: StatusCode,
+    pub(super) headers: HeaderMap,
+    pub(super) body: String,
 }
 
 impl Response {
-    fn json(&self) -> Value {
+    pub(super) fn json(&self) -> Value {
         serde_json::from_str(&self.body).unwrap_or_else(|e| panic!("{e}: {}", self.body))
     }
 }
 
-struct App {
-    router: Router,
-    state: AppStateRef,
-    dir: TempDir,
+pub(super) struct App {
+    pub(super) router: Router,
+    pub(super) state: AppStateRef,
+    pub(super) dir: TempDir,
 }
 
 impl App {
     /// alice, bob and carol, with an empty storage
-    async fn new(pool: SqlitePool) -> Self {
+    pub(super) async fn new(pool: SqlitePool) -> Self {
         let dir = TempDir::new().unwrap();
         let storage = StorageResolver::new(dir.path().join("storage"), dir.path().join("previews"));
         let session_store = SessionStore::new(pool.clone(), pool.clone());
@@ -70,11 +70,11 @@ impl App {
         }
     }
 
-    fn pool(&self) -> &SqlitePool {
+    pub(super) fn pool(&self) -> &SqlitePool {
         &self.state.write_pool
     }
 
-    async fn send(&self, request: Request<Body>) -> Response {
+    pub(super) async fn send(&self, request: Request<Body>) -> Response {
         let response = self.router.clone().oneshot(request).await.unwrap();
         let status = response.status();
         let headers = response.headers().clone();
@@ -87,7 +87,7 @@ impl App {
     }
 
     /// Logs in and returns the session cookie
-    async fn login(&self, user_id: &str) -> String {
+    pub(super) async fn login(&self, user_id: &str) -> String {
         let response = self
             .send(
                 Request::post("/api/login")
@@ -106,7 +106,7 @@ impl App {
             .to_string()
     }
 
-    async fn request(
+    pub(super) async fn request(
         &self,
         cookie: &str,
         method: Method,
@@ -126,16 +126,45 @@ impl App {
         self.send(request.unwrap()).await
     }
 
-    async fn get(&self, cookie: &str, uri: &str) -> Response {
+    pub(super) async fn get(&self, cookie: &str, uri: &str) -> Response {
         self.request(cookie, Method::GET, uri, None).await
     }
 
-    async fn delete_folder(&self, cookie: &str, id: i64) -> Response {
+    /// A form post (or delete) like HTMX sends it
+    pub(super) async fn form(
+        &self,
+        cookie: &str,
+        method: Method,
+        uri: &str,
+        body: &str,
+    ) -> Response {
+        self.send(
+            Request::builder()
+                .method(method)
+                .uri(uri)
+                .header(header::COOKIE, cookie)
+                .header("hx-request", "true")
+                .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+                .body(Body::from(body.to_string()))
+                .unwrap(),
+        )
+        .await
+    }
+
+    pub(super) async fn folder_name(&self, id: i64) -> Option<String> {
+        sqlx::query_scalar("select name from folders where id = ?")
+            .bind(id)
+            .fetch_optional(self.pool())
+            .await
+            .unwrap()
+    }
+
+    pub(super) async fn delete_folder(&self, cookie: &str, id: i64) -> Response {
         self.request(cookie, Method::DELETE, &format!("/api/folders/{id}"), None)
             .await
     }
 
-    async fn put_share(&self, cookie: &str, id: i64, body: Value) -> Response {
+    pub(super) async fn put_share(&self, cookie: &str, id: i64, body: Value) -> Response {
         self.request(
             cookie,
             Method::PUT,
@@ -145,11 +174,17 @@ impl App {
         .await
     }
 
-    async fn folder(&self, owner: Option<&str>, name: &str) -> i64 {
+    pub(super) async fn folder(&self, owner: Option<&str>, name: &str) -> i64 {
         create_test_folder(self.pool(), owner, name).await.id
     }
 
-    async fn photo(&self, owner: Option<&str>, folder_id: i64, name: &str, trashed: bool) -> i64 {
+    pub(super) async fn photo(
+        &self,
+        owner: Option<&str>,
+        folder_id: i64,
+        name: &str,
+        trashed: bool,
+    ) -> i64 {
         let photo = Photo {
             folder_id: Some(folder_id),
             trashed_on: trashed.then(OffsetDateTime::now_utc),
@@ -159,7 +194,7 @@ impl App {
     }
 }
 
-fn has_testid(html: &str, testid: &str) -> bool {
+pub(super) fn has_testid(html: &str, testid: &str) -> bool {
     html.contains(&format!(r#"data-testid="{testid}""#))
 }
 
@@ -696,8 +731,8 @@ async fn test_sharing_dialog(pool: SqlitePool) {
             .count(),
         1
     );
-    assert!(owner_view.contains(r#"data-user-id="carol""#));
-    assert!(!owner_view.contains(r#"data-user-id="alice""#));
+    assert!(owner_view.contains(r#""user_id": "carol""#));
+    assert!(!owner_view.contains(r#""user_id": "alice""#));
     assert!(owner_view.contains(r#"data-member-count="1""#));
 
     // An expired member is listed (to renew or remove), but not counted, like the folder badge
@@ -835,4 +870,306 @@ async fn test_destination_picker_and_move_dialog(pool: SqlitePool) {
         )
         .await;
     assert_eq!(response.status, StatusCode::UNAUTHORIZED);
+}
+
+pub(super) fn header_of<'a>(response: &'a Response, name: &str) -> &'a str {
+    response
+        .headers
+        .get(name)
+        .unwrap_or_else(|| panic!("no {name} header"))
+        .to_str()
+        .unwrap()
+}
+
+pub(super) fn triggers(response: &Response) -> Value {
+    serde_json::from_str(header_of(response, "hx-trigger")).unwrap()
+}
+
+#[sqlx::test]
+async fn test_ui_create_folder(pool: SqlitePool) {
+    let app = App::new(pool).await;
+    let alice = app.login("alice").await;
+
+    let response = app
+        .form(
+            &alice,
+            Method::POST,
+            "/ui/folders",
+            "name=Summer&folder-visibility=personal",
+        )
+        .await;
+    assert_eq!(response.status, StatusCode::OK, "{}", response.body);
+    let location = header_of(&response, "hx-redirect").to_string();
+    let id: i64 = location.strip_prefix("/folders/").unwrap().parse().unwrap();
+    assert_eq!(app.folder_name(id).await.as_deref(), Some("Summer"));
+    // Private to alice
+    assert!(app.get(&alice, &location).await.status.is_success());
+    let bob = app.login("bob").await;
+    assert_eq!(app.get(&bob, &location).await.status, StatusCode::NOT_FOUND);
+
+    // Family folders are public
+    let response = app
+        .form(
+            &alice,
+            Method::POST,
+            "/ui/folders",
+            "name=Everyone&folder-visibility=family",
+        )
+        .await;
+    let id: i64 = header_of(&response, "hx-redirect")
+        .strip_prefix("/folders/")
+        .unwrap()
+        .parse()
+        .unwrap();
+    assert!(
+        app.get(&bob, &format!("/folders/{id}"))
+            .await
+            .status
+            .is_success()
+    );
+
+    // A refused name comes back as the form with the reason and the typed values
+    let response = app
+        .form(
+            &alice,
+            Method::POST,
+            "/ui/folders",
+            "name=a%2Fb&folder-visibility=family",
+        )
+        .await;
+    assert_eq!(response.status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(response.body.contains("can&#39;t contain"));
+    assert!(response.body.contains(r#"value="a/b""#));
+    assert!(response.body.contains(r#"hx-post="/ui/folders""#));
+    assert!(!response.headers.contains_key("hx-redirect"));
+    let response = app
+        .form(
+            &alice,
+            Method::POST,
+            "/ui/folders",
+            "name=+++&folder-visibility=personal",
+        )
+        .await;
+    assert_eq!(response.status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(response.body.contains("cannot be empty"));
+
+    // Logged out: the fragment middleware sends the browser to the login page
+    let response = app
+        .send(
+            Request::post("/ui/folders")
+                .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+                .body(Body::from("name=x&folder-visibility=personal"))
+                .unwrap(),
+        )
+        .await;
+    assert_eq!(response.status, StatusCode::UNAUTHORIZED);
+    assert!(response.headers.contains_key("hx-redirect"));
+}
+
+#[sqlx::test]
+async fn test_ui_rename_folder(pool: SqlitePool) {
+    let app = App::new(pool).await;
+    let alice = app.login("alice").await;
+    let bob = app.login("bob").await;
+
+    let mine = app.folder(Some("alice"), "Holiday").await;
+    app.folder(Some("alice"), "Taken").await;
+    let shared = app.folder(Some("alice"), "Shared").await;
+    app.pool()
+        .create_share(shared, Some("bob"), true, true, None)
+        .await
+        .unwrap();
+    let family = app.folder(None, "Trip").await;
+    let uri = |id: i64| format!("/ui/folders/{id}");
+
+    let response = app
+        .form(
+            &alice,
+            Method::POST,
+            &uri(mine),
+            "name=Beach&folder-visibility=personal",
+        )
+        .await;
+    assert_eq!(response.status, StatusCode::OK, "{}", response.body);
+    assert_eq!(header_of(&response, "hx-refresh"), "true");
+    assert_eq!(
+        triggers(&response)["fp:flash-toast"]["message"],
+        "Folder renamed"
+    );
+    assert_eq!(app.folder_name(mine).await.as_deref(), Some("Beach"));
+
+    // Nothing changed: the dialog just closes
+    let response = app
+        .form(
+            &alice,
+            Method::POST,
+            &uri(mine),
+            "name=Beach&folder-visibility=personal",
+        )
+        .await;
+    assert_eq!(response.status, StatusCode::NO_CONTENT);
+    assert!(triggers(&response).get("fp:close-dialog").is_some());
+
+    // Refused: the form again, with the reason
+    let response = app
+        .form(
+            &alice,
+            Method::POST,
+            &uri(mine),
+            "name=Taken&folder-visibility=personal",
+        )
+        .await;
+    assert_eq!(response.status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(
+        response
+            .body
+            .contains("A folder with this name already exists")
+    );
+    assert!(
+        response
+            .body
+            .contains(&format!(r#"hx-post="/ui/folders/{mine}""#))
+    );
+    assert_eq!(app.folder_name(mine).await.as_deref(), Some("Beach"));
+    let response = app
+        .form(
+            &alice,
+            Method::POST,
+            &uri(mine),
+            "name=&folder-visibility=personal",
+        )
+        .await;
+    assert_eq!(response.status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(app.folder_name(mine).await.as_deref(), Some("Beach"));
+
+    // Visibility
+    let response = app
+        .form(
+            &alice,
+            Method::POST,
+            &uri(mine),
+            "name=Beach&folder-visibility=family",
+        )
+        .await;
+    assert_eq!(response.status, StatusCode::OK);
+    assert!(
+        app.get(&bob, &format!("/folders/{mine}"))
+            .await
+            .status
+            .is_success()
+    );
+
+    // Not alice's: private and hidden, shared with bob (whatever the permissions), unknown
+    for id in [shared, 9999] {
+        let response = app
+            .form(
+                &bob,
+                Method::POST,
+                &uri(id),
+                "name=Mine&folder-visibility=family",
+            )
+            .await;
+        assert_eq!(response.status, StatusCode::NOT_FOUND, "folder {id}");
+    }
+    let private = app.folder(Some("alice"), "Private").await;
+    let response = app
+        .form(
+            &bob,
+            Method::POST,
+            &uri(private),
+            "name=Mine&folder-visibility=personal",
+        )
+        .await;
+    assert_eq!(response.status, StatusCode::NOT_FOUND);
+    assert_eq!(app.folder_name(shared).await.as_deref(), Some("Shared"));
+    assert_eq!(app.folder_name(private).await.as_deref(), Some("Private"));
+
+    // Public folders belong to everyone
+    let response = app
+        .form(
+            &bob,
+            Method::POST,
+            &uri(family),
+            "name=Trip+2&folder-visibility=family",
+        )
+        .await;
+    assert_eq!(response.status, StatusCode::OK);
+    assert_eq!(app.folder_name(family).await.as_deref(), Some("Trip 2"));
+}
+
+#[sqlx::test]
+async fn test_ui_delete_folder(pool: SqlitePool) {
+    let app = App::new(pool).await;
+    let alice = app.login("alice").await;
+    let bob = app.login("bob").await;
+
+    let empty = app.folder(Some("alice"), "Empty \"one\"").await;
+    let full = app.folder(Some("alice"), "Full").await;
+    app.photo(Some("alice"), full, "a.jpg", false).await;
+    let shared = app.folder(Some("alice"), "Shared").await;
+    app.pool()
+        .create_share(shared, Some("bob"), true, true, None)
+        .await
+        .unwrap();
+
+    // The confirmation names the folder (escaped) and points at the delete route
+    let dialog = app
+        .get(&alice, &format!("/ui/dialogs/folder-delete/{empty}"))
+        .await;
+    assert_eq!(dialog.status, StatusCode::OK);
+    assert!(
+        dialog.body.contains("Empty &quot;one&quot;")
+            || dialog.body.contains("Empty &#34;one&#34;")
+    );
+    assert!(
+        dialog
+            .body
+            .contains(&format!(r#"hx-delete="/ui/folders/{empty}""#))
+    );
+    for id in [shared, full + 1000] {
+        let response = app
+            .get(&bob, &format!("/ui/dialogs/folder-delete/{id}"))
+            .await;
+        assert_eq!(response.status, StatusCode::NOT_FOUND);
+    }
+    assert_eq!(
+        app.get(&bob, &format!("/ui/dialogs/folder-delete/{empty}"))
+            .await
+            .status,
+        StatusCode::NOT_FOUND
+    );
+
+    // Somebody else's folders stay, even with delete permission
+    for id in [empty, shared] {
+        let response = app
+            .form(&bob, Method::DELETE, &format!("/ui/folders/{id}"), "")
+            .await;
+        assert_eq!(response.status, StatusCode::NOT_FOUND, "folder {id}");
+        assert!(app.folder_name(id).await.is_some());
+    }
+
+    // Photos keep a folder: a toast and the dialog closes
+    let response = app
+        .form(&alice, Method::DELETE, &format!("/ui/folders/{full}"), "")
+        .await;
+    assert_eq!(response.status, StatusCode::NO_CONTENT);
+    let events = triggers(&response);
+    assert_eq!(
+        events["fp:toast"]["message"],
+        "Move or delete the photos in this folder first"
+    );
+    assert_eq!(events["fp:toast"]["type"], "error");
+    assert!(events.get("fp:close-dialog").is_some());
+    assert!(app.folder_name(full).await.is_some());
+
+    let response = app
+        .form(&alice, Method::DELETE, &format!("/ui/folders/{empty}"), "")
+        .await;
+    assert_eq!(response.status, StatusCode::OK, "{}", response.body);
+    assert_eq!(header_of(&response, "hx-redirect"), "/folders");
+    assert_eq!(
+        triggers(&response)["fp:flash-toast"]["message"],
+        "Folder deleted"
+    );
+    assert_eq!(app.folder_name(empty).await, None);
 }

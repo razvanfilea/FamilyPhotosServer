@@ -1,15 +1,15 @@
 mod context;
 mod download;
 mod favorite;
-mod folders;
+pub(crate) mod folders;
 mod move_photos;
 pub mod photos_info;
 mod photos_misc;
-mod sharing;
+pub(crate) mod sharing;
 mod sync;
 mod trash;
 mod upload;
-mod users;
+pub(crate) mod users;
 
 #[cfg(test)]
 pub(crate) mod tests;

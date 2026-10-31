@@ -6,9 +6,7 @@
 {% block page_title %}Settings{% endblock %}
 
 {% block content %}
-<div class="fp-settings" data-component="settings" data-testid="settings-page" data-message-saved="Saved"
-     data-message-password-changed="Password changed" data-error-password-short="Password must be at least 8 characters"
-     data-error-password-mismatch="The passwords don't match">
+<div class="fp-settings" data-component="settings" data-testid="settings-page" data-message-saved="Saved">
 
     <section class="fp-settings-section" aria-labelledby="settings-account">
         <h2 id="settings-account" class="fp-settings-section__title">Account</h2>
@@ -73,28 +71,8 @@
 
     <section class="fp-settings-section" aria-labelledby="settings-security">
         <h2 id="settings-security" class="fp-settings-section__title">Security</h2>
-        <form class="fp-settings-card fp-password-form" data-slot="password-form" data-testid="password-form" novalidate>
-            <h3 class="fp-password-form__title">Change password</h3>
-            <label class="fp-field">
-                <span class="fp-field__label">Current password</span>
-                <input type="password" name="current_password" class="input" autocomplete="current-password" required
-                       data-testid="password-current">
-            </label>
-            <label class="fp-field">
-                <span class="fp-field__label">New password</span>
-                <input type="password" name="new_password" class="input" autocomplete="new-password" minlength="8" required
-                       data-testid="password-new">
-            </label>
-            <label class="fp-field">
-                <span class="fp-field__label">Confirm new password</span>
-                <input type="password" name="confirm_password" class="input" autocomplete="new-password" required
-                       data-testid="password-confirm">
-            </label>
-            <p class="fp-field__error" role="alert" data-slot="password-error" data-testid="password-error" hidden></p>
-            <div>
-                <button type="submit" class="btn btn-primary" data-testid="password-submit">Change password</button>
-            </div>
-        </form>
+        {% let error = None::<String> %}{% let field = "" %}
+        {% include "settings/password_form.html" %}
     </section>
 
     <section class="fp-settings-section" aria-labelledby="settings-about">

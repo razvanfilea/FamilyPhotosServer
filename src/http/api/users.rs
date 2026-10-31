@@ -4,7 +4,7 @@ use crate::http::error::{HttpError, HttpResult};
 use crate::http::fragments::safe_redirect_path;
 use crate::http::template_into_response::TemplateIntoResponse;
 use crate::http::utils::{AuthSession, WantsHtml};
-use crate::model::user::{SimpleUser, UserCredentials};
+use crate::model::user::{SimpleUser, User, UserCredentials};
 use crate::utils::password_hash::{generate_hash_from_password, validate_credentials};
 use askama::Template;
 use axum::extract::State;
@@ -150,11 +150,25 @@ async fn change_password(
     AuthenticatedUser(user): AuthenticatedUser,
     Json(request): Json<ChangePasswordRequest>,
 ) -> HttpResult<impl IntoResponse> {
-    let ChangePasswordRequest {
-        current_password,
-        new_password,
-    } = request;
+    change_password_for(
+        state,
+        &auth,
+        &user,
+        request.current_password,
+        request.new_password,
+    )
+    .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
 
+/// Checks the current password and sets the new one. Shared with the web UI's settings form.
+pub(crate) async fn change_password_for(
+    state: AppStateRef,
+    auth: &AuthSession,
+    user: &User,
+    current_password: String,
+    new_password: String,
+) -> HttpResult<()> {
     let current_hash = user.password_hash.clone();
     let is_correct =
         task::spawn_blocking(move || validate_credentials(current_password, current_hash))
@@ -195,7 +209,7 @@ async fn change_password(
         .map_err(|e| HttpError::Internal(e.to_string()))?;
 
     debug!("Password changed for user: {}", user.id);
-    Ok(StatusCode::NO_CONTENT)
+    Ok(())
 }
 
 pub async fn logout(auth: AuthSession, WantsHtml(wants_html): WantsHtml) -> Response {

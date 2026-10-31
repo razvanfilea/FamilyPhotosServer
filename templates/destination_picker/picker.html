@@ -3,7 +3,9 @@
 
 {# Where photos go: the user's root, the family gallery, an existing folder or a new one. The
    `destination-picker` component (assets/js/destination-picker/picker.js) exposes the choice. #}
-<div class="fp-picker fp-folder-browser" hx-sync="this:replace" data-component="folder-browser destination-picker" data-picker
+<div class="fp-picker fp-folder-browser" hx-sync="this:replace"
+     hx-get="/ui/folders/list" hx-trigger="fp:folders-refresh" hx-target="find [data-role=list]"
+     hx-include="find [data-role=state]" data-component="folder-browser destination-picker" data-picker
      data-mode="{{ picker.mode }}" data-filter="{{ browser.filter }}" data-selection="root"
      {%- if let Some(folder) = picker.initial_folder %}
      data-initial-folder-id="{{ folder.id }}" data-initial-folder-name="{{ folder.name }}"

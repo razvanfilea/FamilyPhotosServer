@@ -59,62 +59,88 @@ fn path_of_url(url: &str) -> Option<String> {
     safe_redirect_path(path).map(ToOwned::to_owned)
 }
 
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "Foundation for the fragment routes of later packages"
-    )
-)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ToastKind {
     Success,
     Error,
-    Info,
 }
 
 impl ToastKind {
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "Foundation for the fragment routes of later packages"
-        )
-    )]
     fn as_str(self) -> &'static str {
         match self {
             Self::Success => "success",
             Self::Error => "error",
-            Self::Info => "info",
         }
     }
 }
 
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "Foundation for the fragment routes of later packages"
-    )
-)]
+/// An `HX-Trigger` response header with the client events a fragment response fires (on the
+/// element that made the request). The handlers are in `assets/js/core/` (`toast.js`, `dialog.js`,
+/// `flash.js`).
+#[derive(Debug, Default)]
+pub struct Triggers(serde_json::Map<String, serde_json::Value>);
+
+impl Triggers {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Show a toast now
+    pub fn toast(mut self, message: &str, kind: ToastKind) -> Self {
+        self.0.insert(
+            "fp:toast".into(),
+            json!({ "message": message, "type": kind.as_str() }),
+        );
+        self
+    }
+
+    /// Show a toast on the next page, for responses that navigate (`HX-Redirect`)
+    pub fn flash_toast(mut self, message: &str, kind: ToastKind) -> Self {
+        self.0.insert(
+            "fp:flash-toast".into(),
+            json!({ "message": message, "type": kind.as_str() }),
+        );
+        self
+    }
+
+    /// Close the app dialog
+    pub fn close_dialog(mut self) -> Self {
+        self.0.insert("fp:close-dialog".into(), json!({}));
+        self
+    }
+
+    pub fn into_headers(self) -> HeaderMap {
+        let payload = serde_json::Value::Object(self.0).to_string();
+        let mut headers = HeaderMap::new();
+        let value = HeaderValue::from_str(&escape_non_ascii(&payload))
+            .expect("Escaped JSON is always a valid header value");
+        headers.insert("hx-trigger", value);
+        headers
+    }
+}
+
 /// Headers that make `assets/js/core/toast.js` show a toast when HTMX receives the response
 pub fn toast_trigger(message: &str, kind: ToastKind) -> HeaderMap {
-    let payload = json!({ "fp:toast": { "message": message, "type": kind.as_str() } }).to_string();
+    Triggers::new().toast(message, kind).into_headers()
+}
 
+/// Headers that make the browser go to `location` (no swap), e.g. after creating a folder
+pub fn redirect(location: &str) -> HeaderMap {
     let mut headers = HeaderMap::new();
-    let value = HeaderValue::from_str(&escape_non_ascii(&payload))
-        .expect("Escaped JSON is always a valid header value");
-    headers.insert("hx-trigger", value);
+    headers.insert(
+        "hx-redirect",
+        HeaderValue::from_str(location).expect("Redirect locations are plain ASCII paths"),
+    );
     headers
 }
 
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "Foundation for the fragment routes of later packages"
-    )
-)]
+/// Headers that make HTMX reload the current page (keeping its query, e.g. an open viewer)
+pub fn refresh() -> HeaderMap {
+    let mut headers = HeaderMap::new();
+    headers.insert("hx-refresh", HeaderValue::from_static("true"));
+    headers
+}
+
 /// Header values must be visible ASCII, so escape everything else as JSON `\uXXXX` sequences
 fn escape_non_ascii(json: &str) -> String {
     let mut escaped = String::with_capacity(json.len());
@@ -179,10 +205,8 @@ mod tests {
         assert_eq!(parsed["fp:toast"]["message"], "Moved to „Vacanță”");
         assert_eq!(parsed["fp:toast"]["type"], "success");
 
-        for (kind, name) in [(ToastKind::Error, "error"), (ToastKind::Info, "info")] {
-            let headers = toast_trigger("x", kind);
-            let value = headers.get("hx-trigger").unwrap().to_str().unwrap();
-            assert!(value.contains(&format!(r#""type":"{name}""#)));
-        }
+        let headers = toast_trigger("x", ToastKind::Error);
+        let value = headers.get("hx-trigger").unwrap().to_str().unwrap();
+        assert!(value.contains(r#""type":"error""#));
     }
 }

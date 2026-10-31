@@ -1,0 +1,8 @@
+{# Asks before deleting an empty folder; the button deletes it through HTMX (`DELETE /ui/folders/{id}`), which answers with a redirect to the folder list or a toast #}
+<h2 id="app-dialog-title" class="text-lg font-semibold">Delete folder</h2>
+<div class="py-4 text-base-content/80"><p>Delete the empty folder “{{ name }}”?</p></div>
+<div class="modal-action">
+    <button type="button" class="btn btn-ghost" data-dialog-close data-testid="confirm-cancel">Cancel</button>
+    <button type="button" class="btn btn-error" hx-delete="/ui/folders/{{ id }}" hx-swap="none" hx-disable="this"
+            data-testid="confirm-accept">Delete</button>
+</div>

@@ -48,7 +48,7 @@ function setContent(content) {
 
 /**
  * @param {{html?: string, node?: Node, template?: HTMLTemplateElement, url?: string, onClose?: (returnValue: string) => void}} options
- *   `html` must be trusted markup: escape user data with `escapeHtml` or pass a Node.
+ *   `html` must be trusted markup; pass a Node for user data.
  * @returns {Promise<void>} resolves once the dialog is open
  */
 export async function openDialog({ html, node, template, url, onClose } = {}) {
@@ -131,13 +131,6 @@ export function confirm({ title, body = '', confirmLabel = 'OK', cancelLabel, da
     });
 }
 
-/** Escapes text for use inside HTML strings given to `openDialog` / `confirm`. */
-export function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
 export function initDialog() {
     const dialog = dialogElement();
 
@@ -155,6 +148,13 @@ export function initDialog() {
 
     dialog.addEventListener('click', (event) => {
         if (!busy && /** @type {Element} */ (event.target).closest('[data-dialog-close]')) closeDialog();
+    });
+
+    // `HX-Trigger: {"fp:close-dialog": {}}`: closes the dialog the request came from
+    document.body.addEventListener('fp:close-dialog', (event) => {
+        const own = /** @type {Element} */ (event.target).closest?.('dialog');
+        if (own) own.close();
+        else closeDialog();
     });
 
     document.body.addEventListener('htmx:after:swap', (event) => {

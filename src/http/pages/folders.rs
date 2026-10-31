@@ -1,7 +1,9 @@
 use crate::http::AppStateRef;
+use crate::http::api::folders::{create_folder_for, delete_folder_for, update_folder_for};
 use crate::http::auth::AuthenticatedUser;
 use crate::http::context::PhotoListContext;
 use crate::http::error::{HttpError, HttpResult};
+use crate::http::fragments::{self, ToastKind, Triggers};
 use crate::http::page_context::{Nav, PageContext};
 use crate::http::pages::errors::{not_found, not_found_page};
 use crate::http::pages::grid::{GridView, build_grid_view};
@@ -11,8 +13,11 @@ use crate::http::utils::AuthSession;
 use crate::http::views::plural;
 use crate::model::photo_filter::PhotoFilter;
 use crate::repo::{FolderCard, FolderType, FoldersRepo};
+use crate::utils::file_names::validate_folder_name;
 use askama::Template;
+use axum::Form;
 use axum::extract::{Path, Query, State};
+use axum::http::StatusCode;
 use axum::response::{IntoResponse, Redirect, Response};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
@@ -279,7 +284,6 @@ struct FolderPageTemplate {
 struct FolderPageView {
     id: i64,
     name: String,
-    is_public: bool,
     photo_count: i64,
     /// The `PhotoListContext` key of the photo grid
     context_key: String,
@@ -322,7 +326,6 @@ impl FolderPageView {
         Self {
             id: card.id,
             name: card.name.clone(),
-            is_public: card.owner_id.is_none(),
             photo_count: card.photo_count,
             context_key: PhotoListContext::Folder(card.id).key(),
             badge_label,
@@ -372,10 +375,14 @@ pub async fn folder_page(
 #[derive(Template)]
 #[template(path = "folders/name_dialog.html")]
 struct FolderNameDialogTemplate {
-    /// Renaming an existing folder instead of creating one
-    renaming: bool,
+    /// Renaming this folder (`None`: creating one)
+    folder_id: Option<i64>,
+    /// Only hand the choice back to the page (the destination picker creates the folder later)
+    return_only: bool,
     name: String,
     is_public: bool,
+    /// Why the last submit was refused
+    error: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -386,6 +393,8 @@ pub struct FolderNameQuery {
     name: Option<String>,
     #[serde(default)]
     public: bool,
+    #[serde(default, rename = "return")]
+    return_only: bool,
 }
 
 /// `GET /ui/dialogs/folder-name`: the form to create or rename a folder
@@ -396,27 +405,162 @@ pub async fn folder_name_dialog(
 ) -> HttpResult<Response> {
     let Some(folder_id) = query.folder_id else {
         return FolderNameDialogTemplate {
-            renaming: false,
+            folder_id: None,
+            return_only: query.return_only,
             name: query.name.unwrap_or_default(),
             is_public: query.public,
+            error: None,
         }
         .try_into_response();
     };
 
-    // Same rule as `PATCH /api/folders/{id}`
-    let card = state
-        .read_pool
-        .get_folder_card(&user.id, folder_id)
-        .await?
-        .filter(|card| card.folder_type != FolderType::Shared)
-        .ok_or(HttpError::NotFound)?;
-
+    let card = editable_folder(state, &user.id, folder_id).await?;
     FolderNameDialogTemplate {
-        renaming: true,
+        folder_id: Some(folder_id),
+        return_only: false,
         name: card.name,
         is_public: card.owner_id.is_none(),
+        error: None,
     }
     .try_into_response()
+}
+
+/// The folder if the user may rename it or delete it. Same rule as `PATCH /api/folders/{id}`:
+/// not folders shared with the user.
+async fn editable_folder(
+    state: AppStateRef,
+    user_id: &str,
+    folder_id: i64,
+) -> HttpResult<FolderCard> {
+    state
+        .read_pool
+        .get_folder_card(user_id, folder_id)
+        .await?
+        .filter(|card| card.folder_type != FolderType::Shared)
+        .ok_or(HttpError::NotFound)
+}
+
+#[derive(Debug, Deserialize)]
+pub struct FolderForm {
+    name: String,
+    /// `personal` or `family`
+    #[serde(rename = "folder-visibility")]
+    visibility: String,
+}
+
+impl FolderForm {
+    fn is_public(&self) -> bool {
+        self.visibility == "family"
+    }
+}
+
+/// The form again with the reason, for `hx-status:422` to swap in
+fn refused(folder_id: Option<i64>, form: FolderForm, error: HttpError) -> HttpResult<Response> {
+    let (HttpError::BadRequest(message) | HttpError::Conflict(message)) = error else {
+        return Err(error);
+    };
+    let is_public = form.is_public();
+    let body = FolderNameDialogTemplate {
+        folder_id,
+        return_only: false,
+        name: form.name,
+        is_public,
+        error: Some(message),
+    }
+    .try_into_response()?;
+    Ok((StatusCode::UNPROCESSABLE_ENTITY, body).into_response())
+}
+
+/// `POST /ui/folders`: creates a folder (or finds the one with that name) and opens it
+pub async fn create_folder(
+    AuthenticatedUser(user): AuthenticatedUser,
+    State(state): State<AppStateRef>,
+    Form(form): Form<FolderForm>,
+) -> HttpResult<Response> {
+    match create_folder_for(state, &user, &form.name, form.is_public()).await {
+        Ok(folder) => Ok(fragments::redirect(&format!("/folders/{}", folder.id)).into_response()),
+        Err(error) => refused(None, form, error),
+    }
+}
+
+/// `POST /ui/folders/{id}`: renames a folder and/or changes who can see it, then reloads the page
+pub async fn update_folder(
+    AuthenticatedUser(user): AuthenticatedUser,
+    State(state): State<AppStateRef>,
+    Path(folder_id): Path<i64>,
+    Form(form): Form<FolderForm>,
+) -> HttpResult<Response> {
+    let card = editable_folder(state, &user.id, folder_id).await?;
+    let name = match validate_folder_name(&form.name) {
+        Ok(name) => name,
+        Err(message) => {
+            return refused(Some(folder_id), form, HttpError::BadRequest(message.into()));
+        }
+    };
+
+    if name == card.name && form.is_public() == card.owner_id.is_none() {
+        // Nothing to change
+        let headers = Triggers::new().close_dialog().into_headers();
+        return Ok((StatusCode::NO_CONTENT, headers).into_response());
+    }
+
+    match update_folder_for(state, &user, folder_id, Some(name), Some(form.is_public())).await {
+        Ok(_) => {
+            let headers = Triggers::new()
+                .flash_toast("Folder renamed", ToastKind::Success)
+                .into_headers();
+            Ok((headers, fragments::refresh()).into_response())
+        }
+        // Not the owner (a public folder can be edited by anyone)
+        Err(HttpError::Unauthorized) => Err(HttpError::NotFound),
+        Err(error) => refused(Some(folder_id), form, error),
+    }
+}
+
+#[derive(Template)]
+#[template(path = "folders/delete_dialog.html")]
+struct FolderDeleteDialogTemplate {
+    id: i64,
+    name: String,
+}
+
+/// `GET /ui/dialogs/folder-delete/{id}`: asks before deleting an (empty) folder
+pub async fn folder_delete_dialog(
+    AuthenticatedUser(user): AuthenticatedUser,
+    State(state): State<AppStateRef>,
+    Path(folder_id): Path<i64>,
+) -> HttpResult<Response> {
+    let card = editable_folder(state, &user.id, folder_id).await?;
+    FolderDeleteDialogTemplate {
+        id: folder_id,
+        name: card.name,
+    }
+    .try_into_response()
+}
+
+/// `DELETE /ui/folders/{id}`: deletes a folder without photos and goes back to the folder list
+pub async fn delete_folder(
+    AuthenticatedUser(user): AuthenticatedUser,
+    State(state): State<AppStateRef>,
+    Path(folder_id): Path<i64>,
+) -> HttpResult<Response> {
+    match delete_folder_for(state, &user, folder_id).await {
+        Ok(()) => {
+            let headers = Triggers::new()
+                .flash_toast("Folder deleted", ToastKind::Success)
+                .into_headers();
+            Ok((headers, fragments::redirect("/folders")).into_response())
+        }
+        Err(HttpError::Conflict(message) | HttpError::BadRequest(message)) => {
+            let headers = Triggers::new()
+                .toast(&message, ToastKind::Error)
+                .close_dialog()
+                .into_headers();
+            Ok((StatusCode::NO_CONTENT, headers).into_response())
+        }
+        Err(HttpError::Unauthorized) => Err(HttpError::NotFound),
+        Err(error) => Err(error),
+    }
 }
 
 /// Old bookmarks used `/folder/{id}`

@@ -73,4 +73,3 @@ export async function api(path, { method = 'GET', json, body, query, headers, si
 
 export const getJson = (path, options) => api(path, { ...options, method: 'GET' });
 export const postJson = (path, json, options) => api(path, { ...options, method: 'POST', json });
-export const deleteJson = (path, options) => api(path, { ...options, method: 'DELETE' });
