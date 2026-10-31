@@ -9,7 +9,7 @@ let booted = false;
 
 /**
  * @param {string} name
- * @param {(element: HTMLElement) => (() => void) | void} factory returns an optional cleanup
+ * @param {(element: any) => (() => void) | void} factory returns an optional cleanup; `any` so factories can type their own element
  */
 export function register(name, factory) {
     if (factories.has(name)) {

@@ -104,7 +104,7 @@
             {% call icons::icon("add", false, "text-primary") %}{% endcall %}
             <span class="fp-sharing__name">Add members</span>
         </summary>
-        <form class="fp-sharing__add-panel" novalidate hx-boost="false">
+        <form class="fp-sharing__add-panel" novalidate>
             {#- Enter in the date field must submit nothing: the people are buttons that post the form (with their id), and a disabled default button blocks implicit submission #}
             <button type="submit" disabled hidden aria-hidden="true" tabindex="-1"></button>
             <div class="fp-field" data-role="expiry-field">

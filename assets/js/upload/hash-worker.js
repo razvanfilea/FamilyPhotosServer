@@ -29,6 +29,6 @@ self.addEventListener('message', async (event) => {
         }
         self.postMessage({ id, hash: blake3.digest('hex') });
     } catch (error) {
-        self.postMessage({ id, error: String(error?.message ?? error) });
+        self.postMessage({ id, error: String(error instanceof Error ? error.message : error) });
     }
 });

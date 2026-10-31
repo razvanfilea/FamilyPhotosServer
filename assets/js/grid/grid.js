@@ -7,7 +7,7 @@
 // and the viewer use: no globals.
 
 import { register } from '../core/registry.js';
-import { api } from '../core/api.js';
+import { api, isAbortError } from '../core/api.js';
 import { EVENTS, emit, on } from '../core/events.js';
 import { plural } from '../core/format.js';
 import { setPref } from '../core/prefs.js';
@@ -173,7 +173,7 @@ register('photo-grid', (root) => {
                 if (!insertPage(section, html ?? '')) state.failedAt = Date.now();
             }
         } catch (error) {
-            if (error.name !== 'AbortError') state.failedAt = Date.now();
+            if (!isAbortError(error)) state.failedAt = Date.now();
         } finally {
             const aborted = controller.signal.aborted;
             state.request = null;

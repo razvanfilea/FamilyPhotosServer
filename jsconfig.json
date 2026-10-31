@@ -10,6 +10,8 @@
     "noEmit": true,
     "skipLibCheck": true,
     "strict": false,
+    "strictFunctionTypes": true,
+    "useUnknownInCatchVariables": true,
     "noImplicitThis": true,
     "strictBindCallApply": true,
     "noFallthroughCasesInSwitch": true,

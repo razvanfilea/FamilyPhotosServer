@@ -8,7 +8,7 @@
 // Counts in the toasts are always those of the photos that really changed. Failed photos stay
 // selected.
 
-import { ApiError, api, postJson } from '../core/api.js';
+import { ApiError, api, isAbortError, postJson } from '../core/api.js';
 import { confirm } from '../core/dialog.js';
 import { EVENTS, emit } from '../core/events.js';
 import { toast } from '../core/toast.js';
@@ -46,7 +46,7 @@ async function postChunks(path, ids) {
         try {
             await postJson(path, part, { silent: true });
         } catch (error) {
-            return { done, error };
+            return { done, error: error instanceof Error ? error : new Error(String(error)) };
         }
         done.push(...part);
     }
@@ -221,7 +221,7 @@ async function share(selection) {
     try {
         await navigator.share({ files: await Promise.all(ids.map(fetchFile)) });
     } catch (error) {
-        if (error.name !== 'AbortError') toast(s('shareFailed'), { type: 'error' });
+        if (!isAbortError(error)) toast(s('shareFailed'), { type: 'error' });
     }
 }
 

@@ -7,7 +7,7 @@
 // deep link (`data-initial-photo`), or by `openViewer()` from `./index.js`.
 
 import { register } from '../core/registry.js';
-import { ApiError, api, getJson, postJson } from '../core/api.js';
+import { ApiError, api, getJson, isAbortError, postJson } from '../core/api.js';
 import { EVENTS, emit, on } from '../core/events.js';
 import { formatDate } from '../core/format.js';
 import { isDialogOpen } from '../core/dialog.js';
@@ -565,7 +565,7 @@ register('viewer', (root) => {
         } catch (error) {
             if (token !== openToken) return;
             const notFound = error instanceof ApiError && error.status === 404;
-            if (error.status !== 401) toast(notFound ? strings.photoNotFound : t('genericError'), { type: 'error' });
+            if ((error instanceof ApiError ? error.status : 0) !== 401) toast(notFound ? strings.photoNotFound : t('genericError'), { type: 'error' });
             close();
             return;
         }
@@ -879,7 +879,7 @@ register('viewer', (root) => {
             const blob = await response.blob();
             await navigator.share({ files: [new File([blob], photo.name, { type: blob.type })] });
         } catch (error) {
-            if (error.name === 'AbortError') return;
+            if (isAbortError(error)) return;
             // E.g. the user activation expired while a large file downloaded
             await copyLink();
         }
