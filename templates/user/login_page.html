@@ -18,7 +18,7 @@
 
     <form class="fp-login__form" data-component="login-form" data-silent-errors data-testid="login-form"
           hx-post="/api/login" hx-target="#login-error" hx-swap="outerHTML"
-          hx-disabled-elt="find button[type=submit]">
+          hx-disable="find button[type=submit]">
         <input type="hidden" name="next" value="{{ next }}">
         <h2 class="fp-login__heading">Sign in</h2>
         <p class="fp-login__hint">Use your Family Photos account.</p>

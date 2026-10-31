@@ -14,21 +14,48 @@ import './destination-picker/picker.js';
 function initHtmxErrors() {
     const silent = (element) => element?.closest?.('[data-silent-errors]') != null;
 
-    document.body.addEventListener('htmx:responseError', (event) => {
-        const { xhr, elt } = event.detail;
-        if (xhr.status === 401) {
+    // An HTTP error status (the response is not swapped: see `noSwap` in base.html)
+    document.body.addEventListener('htmx:response:error', (event) => {
+        const { response, text } = event.detail.ctx;
+        if (response.status === 401) {
             redirectToLogin();
             return;
         }
-        if (!silent(elt)) {
-            toast(errorMessage(xhr.status, xhr.responseText), { type: 'error' });
+        if (!silent(event.target)) {
+            toast(errorMessage(response.status, text), { type: 'error' });
         }
     });
 
-    document.body.addEventListener('htmx:sendError', (event) => {
-        if (!silent(event.detail.elt)) {
+    // No response at all (HTMX 4 reports every failure here; a request replaced by `hx-sync` is aborted on purpose)
+    document.body.addEventListener('htmx:error', (event) => {
+        const { ctx, error } = event.detail;
+        if (!ctx?.request || ctx.response || error?.name === 'AbortError') return;
+        if (!silent(event.target)) {
             toast(t('networkError'), { type: 'error' });
         }
+    });
+}
+
+/**
+ * HTMX restores the page on a history traversal whose entry it created. The viewer's entries
+ * (`?photo=…&ctx=…`) belong to the page underneath, which must stay as it is: only a traversal that
+ * changes the page itself is left to HTMX.
+ */
+function keepPageOnViewerTraversal() {
+    const pageOf = (url) => {
+        const parsed = new URL(url, location.origin);
+        parsed.searchParams.delete('photo');
+        parsed.searchParams.delete('ctx');
+        return parsed.pathname + parsed.search;
+    };
+    let current = pageOf(location.href);
+    document.addEventListener('htmx:after:history:update', () => {
+        current = pageOf(location.href);
+    });
+    document.addEventListener('htmx:before:history:restore', (event) => {
+        const next = pageOf(event.detail.path);
+        if (next === current) event.preventDefault();
+        else current = next;
     });
 }
 
@@ -46,6 +73,7 @@ function initShortcuts() {
 initToasts();
 initDialog();
 initHtmxErrors();
+keepPageOnViewerTraversal();
 // The login page has no shell to navigate to
 if (document.getElementById('main')) {
     initShortcuts();

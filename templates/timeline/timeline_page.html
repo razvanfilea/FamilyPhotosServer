@@ -9,8 +9,8 @@
 
 {% block content %}
 <div id="timeline-content" data-testid="timeline-content">
-    <div class="timeline-filters" data-component="timeline-filters" hx-target="#timeline-content"
-         hx-select="#timeline-content" hx-swap="outerHTML show:window:top" hx-push-url="true">
+    <div class="timeline-filters" data-component="timeline-filters" hx-target:inherited="#timeline-content"
+         hx-select:inherited="#timeline-content" hx-swap:inherited="outerHTML scroll:top scrollTarget:html" hx-push-url:inherited="true">
         {% call ui::filter_chips(filter.as_str(), "/") %}{% endcall %}
     </div>
     {% include "timeline/memories.html" %}

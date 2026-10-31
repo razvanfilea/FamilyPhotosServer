@@ -456,7 +456,7 @@ register('upload-page', (root) => {
     });
 
     // The showcase slot arrives with the picker
-    pickerHost.addEventListener('htmx:afterSettle', () => {
+    pickerHost.addEventListener('htmx:after:settle', () => {
         showcaseDirty = true;
         frame ||= requestAnimationFrame(flush);
     });

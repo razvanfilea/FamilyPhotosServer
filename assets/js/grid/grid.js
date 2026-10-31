@@ -6,7 +6,7 @@
 // The element API, `element.fpGrid`, is what the fast scroller, the month picker, the selection
 // and the viewer use: no globals.
 
-import { register, unmount } from '../core/registry.js';
+import { register } from '../core/registry.js';
 import { api } from '../core/api.js';
 import { EVENTS, emit, on } from '../core/events.js';
 import { plural } from '../core/format.js';
@@ -206,7 +206,6 @@ register('photo-grid', (root) => {
     function unload(section) {
         const grid = gridOf(section);
         thumbs.unobserve(grid);
-        unmount(grid);
         grid.replaceChildren();
         section.dataset.loaded = 'false';
         ensureRoving();
@@ -447,7 +446,6 @@ register('photo-grid', (root) => {
             const remaining = Number(section.dataset.count) - count;
             if (remaining <= 0) {
                 stateOf(section).request?.abort();
-                unmount(section);
                 section.remove();
                 settleWaiters(section, true);
             } else {
@@ -517,7 +515,6 @@ register('photo-grid', (root) => {
         for (const section of old) {
             stateOf(section).request?.abort();
             thumbs.unobserve(section);
-            unmount(section);
         }
         const sections = [...fresh.querySelectorAll(':scope > .month')];
         root.replaceChildren(...sections);
