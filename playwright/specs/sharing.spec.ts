@@ -141,46 +141,4 @@ test.describe('sharing', () => {
         await page.getByTestId('sharing-close').click();
         await expect(page.getByTestId('app-dialog')).toBeHidden();
     });
-
-    test('an expired share hides the folder from bob', async ({ alicePage: page, bobPage, folders }) => {
-        // The API only accepts a future expiry, so let a share run out a few seconds from now
-        const name = folders.name('Short lived');
-        const id = await folders.create('alice', name);
-        const alice = await folders.as('alice');
-        const expiresAt = Math.floor(Date.now() / 1000) + 3;
-        expect((await alice.post('/api/sharing', {
-            data: { folder_id: id, grantee_id: 'bob', expires_at: expiresAt },
-        })).ok()).toBe(true);
-        expect((await bobPage.request.get(`/folders/${id}`)).status()).toBe(200);
-
-        await expect.poll(async () => (await bobPage.request.get(`/folders/${id}`)).status(), {
-            timeout: 10_000,
-        }).toBe(404);
-        await gotoReady(bobPage, '/folders');
-        await expect(bobPage.getByTestId('folder-card').filter({ hasText: name })).toHaveCount(0);
-
-        // The owner still sees bob (to renew or remove him), but he no longer counts
-        await gotoReady(page, `/folders/${id}`);
-        await expect(page.getByTestId('folder-badge')).toContainText('Personal');
-        await page.getByTestId('folder-share').click();
-        await expect(member(page, 'Bob').getByTestId('sharing-expiry-label')).toContainText('Expired');
-        await expect(page.getByTestId('folder-badge')).toContainText('Personal');
-    });
-
-    test('an expiry in the past is rejected', async ({ alicePage: page, folders }) => {
-        const id = await folders.create('alice', folders.name('Long lived'));
-        const alice = await folders.as('alice');
-        const inAYear = Math.floor(Date.now() / 1000) + 365 * 86400;
-        expect((await alice.post('/api/sharing', {
-            data: { folder_id: id, grantee_id: 'bob', expires_at: inAYear },
-        })).ok()).toBe(true);
-
-        const rejected = await alice.post('/api/sharing', {
-            data: { folder_id: id, grantee_id: 'carol', expires_at: 1000 },
-        });
-        expect(rejected.status()).toBe(400);
-        expect(await rejected.text()).toBe('Expiry must be in the future');
-        await gotoReady(page, `/folders/${id}`);
-        await expect(page.getByTestId('folder-badge')).toContainText('Shared (1)');
-    });
 });

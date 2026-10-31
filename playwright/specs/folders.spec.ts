@@ -261,7 +261,8 @@ test.describe('folder management', () => {
         await expect(page).toHaveURL(/\/folders$/);
         await expect(page.getByTestId('toast')).toHaveText(/Folder deleted/);
         await expect(card(page, name)).toHaveCount(0);
-        expect((await page.request.get(`/folders/${id}`)).status()).toBe(404);
+        // SQLite may hand the freed id to a folder a parallel spec creates, so check the name, not the status
+        expect(await (await page.request.get(`/folders/${id}`)).text()).not.toContain(name);
     });
 
     test('a folder that only has trashed photos can not be deleted', async ({ alicePage: page, folders }) => {
