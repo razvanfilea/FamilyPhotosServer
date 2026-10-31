@@ -72,7 +72,7 @@ register('destination-picker', (root) => {
     family.addEventListener('click', () => set({ kind: 'root', isPublic: true }));
 
     create.addEventListener('click', async () => {
-        const folder = await openFolderNameDialog({ submit: 'return' });
+        const folder = await openFolderNameDialog({ returnOnly: true });
         if (folder) set({ kind: 'new', name: folder.name, isPublic: folder.isPublic });
     });
 

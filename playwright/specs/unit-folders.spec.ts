@@ -5,7 +5,6 @@ import {
     DEFAULT_DESTINATION, destinationForFilter, selectionKind, typeLabel,
 } from '../../assets/js/destination-picker/rules.js';
 import { resolveDestination } from '../../assets/js/destination-picker/destination.js';
-import { dateExpiry, presetExpiry } from '../../assets/js/sharing/expiry.js';
 import { errorMessage } from '../../assets/js/core/api.js';
 
 test.describe('folder search', () => {
@@ -49,27 +48,6 @@ test.describe('destination picker rules', () => {
         expect(await resolveDestination({ kind: 'root', isPublic: true })).toEqual({ makePublic: true });
         expect(await resolveDestination({ kind: 'root', isPublic: false })).toEqual({ makePublic: false });
         expect(await resolveDestination(folder)).toEqual({ folderId: 3 });
-    });
-});
-
-test.describe('share expiry', () => {
-    const now = Date.UTC(2026, 0, 31, 12, 0, 0);
-
-    test('presets', () => {
-        expect(presetExpiry('none', now)).toBeNull();
-        expect(presetExpiry('day', now)).toBe(now / 1000 + 86400);
-        expect(presetExpiry('week', now)).toBe(now / 1000 + 7 * 86400);
-        // One calendar month: 31 Jan → 3 Mar (Feb has 28 days and the date overflows)
-        expect(presetExpiry('month', now)).toBe(Date.UTC(2026, 2, 3, 12, 0, 0) / 1000);
-        // @ts-expect-error 'year' isn't a preset: the invalid input is the point of this check
-        expect(() => presetExpiry('year', now)).toThrow();
-    });
-
-    test('a custom date expires at the end of that day (UTC)', () => {
-        expect(dateExpiry('2026-10-12')).toBe(Date.UTC(2026, 9, 12, 23, 59, 59) / 1000);
-        expect(dateExpiry('')).toBeNull();
-        expect(dateExpiry('12/10/2026')).toBeNull();
-        expect(dateExpiry('2026-13-45')).toBeNull();
     });
 });
 

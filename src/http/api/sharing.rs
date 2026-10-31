@@ -12,6 +12,7 @@ use tracing::info;
 
 use crate::http::error::{HttpError, HttpResult, is_unique_violation};
 use crate::model::folder_permission::{CreateShareRequest, ShareResponse};
+use crate::model::user::User;
 use crate::repo::{FolderPermissionsRepo, FoldersRepo};
 use crate::{
     http::{AppStateRef, auth::AuthenticatedUser},
@@ -77,6 +78,15 @@ async fn create_share(
     AuthenticatedUser(user): AuthenticatedUser,
     Json(request): Json<CreateShareRequest>,
 ) -> HttpResult<impl IntoResponse> {
+    Ok(Json(create_share_for(state, &user, request).await?))
+}
+
+/// Shares a folder. Shared with the web UI's sharing dialog.
+pub(crate) async fn create_share_for(
+    state: AppStateRef,
+    user: &User,
+    request: CreateShareRequest,
+) -> HttpResult<ShareResponse> {
     if let Some(expires_at) = request.expires_at {
         ensure_in_the_future(expires_at)?;
     }
@@ -127,7 +137,7 @@ async fn create_share(
     );
 
     let folder_map = HashMap::from([(folder.id, folder.name)]);
-    Ok(Json(ShareResponse::from_permission(share, &folder_map)))
+    Ok(ShareResponse::from_permission(share, &folder_map))
 }
 
 async fn update_share(
@@ -136,6 +146,18 @@ async fn update_share(
     Path(share_id): Path<i64>,
     Json(request): Json<UpdateShareRequest>,
 ) -> HttpResult<impl IntoResponse> {
+    Ok(Json(
+        update_share_for(state, &user, share_id, request).await?,
+    ))
+}
+
+/// Changes the permissions and/or the expiry of a share. Shared with the web UI.
+pub(crate) async fn update_share_for(
+    state: AppStateRef,
+    user: &User,
+    share_id: i64,
+    request: UpdateShareRequest,
+) -> HttpResult<ShareResponse> {
     // `Some(None)` removes the expiry, `None` (field absent, as sent by Android) keeps it
     let new_expiry = match request.expires_at {
         None => None,
@@ -183,7 +205,7 @@ async fn update_share(
     );
 
     let folder_map = HashMap::from([(share.folder_id, folder.name)]);
-    Ok(Json(ShareResponse::from_permission(share, &folder_map)))
+    Ok(ShareResponse::from_permission(share, &folder_map))
 }
 
 async fn revoke_share(
@@ -191,6 +213,15 @@ async fn revoke_share(
     AuthenticatedUser(user): AuthenticatedUser,
     Path(share_id): Path<i64>,
 ) -> HttpResult<impl IntoResponse> {
+    revoke_share_for(state, &user, share_id).await
+}
+
+/// Revokes a share. Shared with the web UI.
+pub(crate) async fn revoke_share_for(
+    state: AppStateRef,
+    user: &User,
+    share_id: i64,
+) -> HttpResult<()> {
     let mut tx = state.write_pool.begin().await?;
 
     let Some(folder) = tx.get_folder_by_share_id(share_id).await? else {

@@ -14,7 +14,9 @@
 {% endblock %}
 
 {% block content %}
-<div class="fp-folder-browser" hx-sync="this:replace" data-component="folder-browser" data-filter="{{ browser.filter }}"
+<div class="fp-folder-browser" hx-sync="this:replace"
+     hx-get="/ui/folders/list" hx-trigger="fp:folders-refresh" hx-target="find [data-role=list]"
+     hx-include="find [data-role=state]" data-component="folder-browser" data-filter="{{ browser.filter }}"
      data-testid="folder-browser">
     <div class="fp-folder-browser__chips">
         {% call ui::filter_chips(browser.filter, "/folders") %}{% endcall %}

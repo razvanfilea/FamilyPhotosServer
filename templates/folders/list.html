@@ -3,7 +3,7 @@
 {% import "folders/card.html" as cards %}
 
 {# The folder cards. Re-fetched from `/ui/folders/list` when the filter, sort order or view change. #}
-<div {% if !browser.picker %}id="folder-list" {% endif %}class="fp-folder-list" data-role="list"
+<div {% if !browser.picker %}id="folder-list" {% endif %}class="fp-folder-list" data-role="list" data-component="folder-list"
      data-view="{{ browser.view }}" data-count="{{ browser.cards.len() }}" data-testid="folder-list">
     {%- if browser.cards.is_empty() %}
     {%- if browser.picker %}

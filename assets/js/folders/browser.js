@@ -13,6 +13,10 @@ import { matchesQuery } from './search.js';
 /** Fired on the browser element after the user picked another filter chip: {filter} */
 export const FILTER_CHANGE_EVENT = 'fp:folder-filter-change';
 
+/** Fired on the browser element to fetch its list again (the root's `hx-trigger`) */
+const REFRESH_EVENT = 'fp:folders-refresh';
+const LIST_LOADED_EVENT = 'fp:folder-list-loaded';
+
 const CHIP_ICONS = { all: 'photo_library', personal: 'person', family: 'family_restroom', shared: 'group' };
 
 function setIcon(container, name) {
@@ -53,19 +57,6 @@ register('folder-browser', (root) => {
         if (noMatch) noMatch.hidden = visible > 0;
     }
 
-    function drawCovers() {
-        for (const canvas of list().querySelectorAll('canvas[data-thumbhash]')) {
-            const hash = canvas.dataset.thumbhash;
-            if (!hash || canvas.dataset.drawn) continue;
-            canvas.dataset.drawn = '';
-            try {
-                drawThumbHash(canvas, hash);
-            } catch {
-                // A malformed hash leaves the cover grey
-            }
-        }
-    }
-
     /** Keeps the search in the URL; `savedPref` drops the overrides, which the prefs now hold */
     function updateUrl({ savedPref = false } = {}) {
         if (picker) return;
@@ -80,12 +71,12 @@ register('folder-browser', (root) => {
         history.replaceState(history.state, '', queryString ? `${location.pathname}?${queryString}` : location.pathname);
     }
 
-    async function refresh() {
-        const query = new URLSearchParams({ filter: state.filter, sort: state.sort, view: state.view });
-        if (picker) query.set('picker', 'true');
-        await window.htmx.ajax('GET', `/ui/folders/list?${query}`, { source: root, target: list(), swap: 'outerHTML' });
-        drawCovers();
-        applySearch();
+    /** Fetches the list again: the root's `hx-get` fires on this event and includes the state fields */
+    function refresh() {
+        for (const [name, value] of Object.entries(state)) {
+            root.querySelector(`[data-role="state"] [name="${name}"]`).value = value;
+        }
+        emit(root, REFRESH_EVENT);
     }
 
     root.addEventListener('click', (event) => {
@@ -153,6 +144,22 @@ register('folder-browser', (root) => {
         }
     });
 
-    drawCovers();
+    // The list arrives with each refresh
+    root.addEventListener(LIST_LOADED_EVENT, applySearch);
     applySearch();
+});
+
+/** Draws the cover thumbnails of a list, which then tells its browser to apply the search */
+register('folder-list', (listElement) => {
+    for (const canvas of listElement.querySelectorAll('canvas[data-thumbhash]')) {
+        const hash = canvas.dataset.thumbhash;
+        if (!hash || canvas.dataset.drawn) continue;
+        canvas.dataset.drawn = '';
+        try {
+            drawThumbHash(canvas, hash);
+        } catch {
+            // A malformed hash leaves the cover grey
+        }
+    }
+    emit(listElement, LIST_LOADED_EVENT);
 });

@@ -25,17 +25,15 @@
 
 {% block topbar_actions %}
 {% call grids::zoom_controls(grid.zoom) %}{% endcall %}
-<div class="fp-folder-actions" data-component="folder-actions" data-folder-id="{{ folder.id }}"
-     data-folder-name="{{ folder.name }}" data-public="{{ folder.is_public }}"
-     data-message-renamed="Folder renamed" data-message-deleted="Folder deleted"
-     data-delete-title="Delete folder" data-delete-body="Delete the empty folder “{name}”?"
-     data-delete-confirm="Delete">
+<div class="fp-folder-actions" data-component="folder-actions" data-folder-id="{{ folder.id }}">
     {%- if folder.can_share %}
-    <button type="button" class="btn btn-ghost btn-circle" data-action="share" aria-label="Share folder"
+    <button type="button" class="btn btn-ghost btn-circle" aria-label="Share folder"
+            hx-get="/ui/dialogs/sharing/{{ folder.id }}" hx-target="#app-dialog-content" hx-swap="innerHTML"
             data-testid="folder-share">{% call icons::icon("group") %}{% endcall %}</button>
     {%- endif %}
     {%- if folder.can_view_access %}
-    <button type="button" class="btn btn-ghost btn-circle" data-action="share" aria-label="People with access"
+    <button type="button" class="btn btn-ghost btn-circle" aria-label="People with access"
+            hx-get="/ui/dialogs/sharing/{{ folder.id }}" hx-target="#app-dialog-content" hx-swap="innerHTML"
             data-testid="folder-access">{% call icons::icon("group") %}{% endcall %}</button>
     {%- endif %}
     {%- if folder.can_edit %}
@@ -49,7 +47,8 @@
         </summary>
         <ul class="dropdown-content menu fp-menu w-56">
             <li>
-                <button type="button" class="text-error" data-action="delete" data-testid="folder-delete">
+                <button type="button" class="text-error" hx-get="/ui/dialogs/folder-delete/{{ folder.id }}"
+                        hx-target="#app-dialog-content" hx-swap="innerHTML" data-testid="folder-delete">
                     {% call icons::icon("delete") %}{% endcall %}
                     Delete folder
                 </button>

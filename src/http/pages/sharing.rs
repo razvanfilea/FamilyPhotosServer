@@ -1,16 +1,25 @@
 use crate::http::AppStateRef;
+use crate::http::api::sharing::{create_share_for, revoke_share_for, update_share_for};
 use crate::http::auth::AuthenticatedUser;
 use crate::http::error::{HttpError, HttpResult};
+use crate::http::fragments::{ToastKind, toast_trigger};
 use crate::http::template_into_response::TemplateIntoResponse;
 use crate::http::views::{DateStyle, format_date};
 use crate::model::folder_permission::FolderPermission;
+use crate::model::folder_permission::{CreateShareRequest, UpdateShareRequest};
 use crate::model::user::User;
 use crate::repo::{FolderPermissionsRepo, FolderType, FoldersRepo};
 use askama::Template;
+use axum::Form;
 use axum::extract::{Path, State};
+use axum::response::IntoResponse;
 use axum::response::Response;
+use serde::Deserialize;
 use std::collections::HashMap;
 use time::OffsetDateTime;
+use time::macros::format_description;
+use time::util::days_in_month;
+use time::{Date, Month};
 
 /// A person the folder is shared with
 #[derive(Debug, Clone)]
@@ -18,14 +27,14 @@ struct MemberView {
     share_id: i64,
     user_id: String,
     display_name: String,
-    can_upload: bool,
-    can_delete: bool,
     /// `view`, `upload` or `upload-delete`
     permission: &'static str,
     permission_label: &'static str,
     /// "Expires 12 Oct 2026" / "Expired 12 Oct 2026"
     expiry_label: Option<String>,
     expired: bool,
+    /// Its menu is open (the member just changed)
+    open: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -85,8 +94,6 @@ fn member_view(
             .get(user_id.as_str())
             .map_or_else(|| user_id.clone(), |user| user.name.clone()),
         user_id,
-        can_upload: share.can_upload,
-        can_delete: share.can_delete,
         permission,
         permission_label,
         expiry_label: share.expires_at.map(|expires_at| {
@@ -94,6 +101,7 @@ fn member_view(
             format!("{verb} {}", format_date(expires_at, DateStyle::Day))
         }),
         expired,
+        open: false,
     }
 }
 
@@ -104,9 +112,19 @@ pub async fn sharing_dialog(
     State(state): State<AppStateRef>,
     Path(folder_id): Path<i64>,
 ) -> HttpResult<Response> {
+    render_dialog(state, &user.id, folder_id, None).await
+}
+
+/// The dialog, with the menu of `open_share` open
+async fn render_dialog(
+    state: AppStateRef,
+    user_id: &str,
+    folder_id: i64,
+    open_share: Option<i64>,
+) -> HttpResult<Response> {
     let card = state
         .read_pool
-        .get_folder_card(&user.id, folder_id)
+        .get_folder_card(user_id, folder_id)
         .await?
         .ok_or(HttpError::NotFound)?;
     let shares = state.read_pool.get_shares_for_folder(folder_id).await?;
@@ -119,7 +137,9 @@ pub async fn sharing_dialog(
         .into_iter()
         .filter_map(|share| {
             let grantee = share.grantee_id.clone()?;
-            Some(member_view(share, grantee, &users, now))
+            let mut member = member_view(share, grantee, &users, now);
+            member.open = open_share == Some(member.share_id);
+            Some(member)
         })
         .collect();
 
@@ -156,9 +176,203 @@ pub async fn sharing_dialog(
     .try_into_response()
 }
 
+/// The dialog after a change, with a toast
+async fn changed(
+    state: AppStateRef,
+    user: &User,
+    folder_id: i64,
+    open_share: Option<i64>,
+    message: &str,
+) -> HttpResult<Response> {
+    let dialog = render_dialog(state, &user.id, folder_id, open_share).await?;
+    Ok((toast_trigger(message, ToastKind::Success), dialog).into_response())
+}
+
+/// The expiry an expiry field asks for. `None`: leave it as it is.
+/// `Some(None)`: never expires.
+fn parse_expiry(
+    choice: &str,
+    date: &str,
+    now: OffsetDateTime,
+) -> HttpResult<Option<Option<OffsetDateTime>>> {
+    Ok(match choice {
+        "keep" => None,
+        "" | "none" => Some(None),
+        "day" => Some(Some(now + time::Duration::days(1))),
+        "week" => Some(Some(now + time::Duration::days(7))),
+        "month" => Some(Some(one_month_later(now))),
+        "custom" => {
+            let date = Date::parse(date, format_description!("[year]-[month]-[day]"))
+                .map_err(|_| HttpError::BadRequest("Pick an expiry date".to_string()))?;
+            // The end of that day (UTC, like all dates in the app)
+            Some(Some(
+                date.with_hms(23, 59, 59)
+                    .map_err(|e| HttpError::Internal(e.to_string()))?
+                    .assume_utc(),
+            ))
+        }
+        _ => return Err(HttpError::BadRequest("Invalid expiry".to_string())),
+    })
+}
+
+/// Same day next month, or the last day of a shorter month
+fn one_month_later(now: OffsetDateTime) -> OffsetDateTime {
+    let (year, month) = match now.month() {
+        Month::December => (now.year() + 1, Month::January),
+        month => (now.year(), month.next()),
+    };
+    let day = now.day().min(days_in_month(month, year));
+    Date::from_calendar_date(year, month, day).map_or(now, |date| now.replace_date(date))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AddMemberForm {
+    user_id: String,
+    #[serde(default)]
+    expiry: String,
+    #[serde(default)]
+    expiry_date: String,
+}
+
+/// `POST /ui/sharing/folder/{folder_id}/members`: shares the folder with a person (view only)
+pub async fn add_member(
+    AuthenticatedUser(user): AuthenticatedUser,
+    State(state): State<AppStateRef>,
+    Path(folder_id): Path<i64>,
+    Form(form): Form<AddMemberForm>,
+) -> HttpResult<Response> {
+    let expires_at =
+        parse_expiry(&form.expiry, &form.expiry_date, OffsetDateTime::now_utc())?.flatten();
+    create_share_for(
+        state,
+        &user,
+        CreateShareRequest {
+            folder_id,
+            grantee_id: Some(form.user_id),
+            can_upload: false,
+            can_delete: false,
+            expires_at,
+        },
+    )
+    .await?;
+    changed(state, &user, folder_id, None, "Member added").await
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PermissionForm {
+    /// `view`, `upload` or `upload-delete`
+    permission: String,
+}
+
+/// The folder of a share the user owns (anything else is not found)
+async fn owned_share_folder(state: AppStateRef, user: &User, share_id: i64) -> HttpResult<i64> {
+    let folder = state
+        .read_pool
+        .get_folder_by_share_id(share_id)
+        .await?
+        .filter(|folder| folder.owner_id.as_deref() == Some(user.id.as_str()))
+        .ok_or(HttpError::NotFound)?;
+    Ok(folder.id)
+}
+
+/// `POST /ui/sharing/share/{share_id}/permission`: what a member may do
+pub async fn set_permission(
+    AuthenticatedUser(user): AuthenticatedUser,
+    State(state): State<AppStateRef>,
+    Path(share_id): Path<i64>,
+    Form(form): Form<PermissionForm>,
+) -> HttpResult<Response> {
+    let (can_upload, can_delete) = match form.permission.as_str() {
+        "view" => (false, false),
+        "upload" => (true, false),
+        "upload-delete" => (true, true),
+        _ => return Err(HttpError::BadRequest("Invalid permission".to_string())),
+    };
+    let folder_id = owned_share_folder(state, &user, share_id).await?;
+    update_share_for(
+        state,
+        &user,
+        share_id,
+        UpdateShareRequest {
+            can_upload,
+            can_delete,
+            expires_at: None,
+        },
+    )
+    .await?;
+    changed(
+        state,
+        &user,
+        folder_id,
+        Some(share_id),
+        "Permissions updated",
+    )
+    .await
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ExpiryForm {
+    expiry: String,
+    #[serde(default)]
+    expiry_date: String,
+}
+
+/// `POST /ui/sharing/share/{share_id}/expiry`: when a member's access ends
+pub async fn set_expiry(
+    AuthenticatedUser(user): AuthenticatedUser,
+    State(state): State<AppStateRef>,
+    Path(share_id): Path<i64>,
+    Form(form): Form<ExpiryForm>,
+) -> HttpResult<Response> {
+    let folder_id = owned_share_folder(state, &user, share_id).await?;
+    let Some(expires_at) =
+        parse_expiry(&form.expiry, &form.expiry_date, OffsetDateTime::now_utc())?
+    else {
+        // "Keep": nothing to change
+        return render_dialog(state, &user.id, folder_id, Some(share_id)).await;
+    };
+    let share = state
+        .read_pool
+        .get_shares_for_folder(folder_id)
+        .await?
+        .into_iter()
+        .find(|share| share.id == share_id)
+        .ok_or(HttpError::NotFound)?;
+    update_share_for(
+        state,
+        &user,
+        share_id,
+        UpdateShareRequest {
+            can_upload: share.can_upload,
+            can_delete: share.can_delete,
+            expires_at: Some(expires_at.map(OffsetDateTime::unix_timestamp)),
+        },
+    )
+    .await?;
+    changed(
+        state,
+        &user,
+        folder_id,
+        Some(share_id),
+        "Permissions updated",
+    )
+    .await
+}
+
+/// `DELETE /ui/sharing/share/{share_id}`: ends a member's access
+pub async fn remove_member(
+    AuthenticatedUser(user): AuthenticatedUser,
+    State(state): State<AppStateRef>,
+    Path(share_id): Path<i64>,
+) -> HttpResult<Response> {
+    let folder_id = owned_share_folder(state, &user, share_id).await?;
+    revoke_share_for(state, &user, share_id).await?;
+    changed(state, &user, folder_id, None, "Member removed").await
+}
+
 #[cfg(test)]
 mod tests {
-    use super::share_expired;
+    use super::{parse_expiry, share_expired};
     use sqlx::SqlitePool;
     use time::OffsetDateTime;
     use time::macros::datetime;
@@ -192,5 +406,125 @@ mod tests {
                 "Rust, {expires_at}"
             );
         }
+    }
+
+    #[test]
+    fn test_parse_expiry() {
+        let now = datetime!(2026-01-31 12:00:00 UTC);
+        let parse = |choice, date| parse_expiry(choice, date, now).unwrap();
+
+        assert_eq!(parse("keep", ""), None);
+        assert_eq!(parse("none", ""), Some(None));
+        assert_eq!(
+            parse("day", ""),
+            Some(Some(datetime!(2026-02-01 12:00:00 UTC)))
+        );
+        assert_eq!(
+            parse("week", ""),
+            Some(Some(datetime!(2026-02-07 12:00:00 UTC)))
+        );
+        // A shorter month ends on its last day
+        assert_eq!(
+            parse("month", ""),
+            Some(Some(datetime!(2026-02-28 12:00:00 UTC)))
+        );
+        assert_eq!(
+            parse_expiry("month", "", datetime!(2026-12-15 08:00:00 UTC)).unwrap(),
+            Some(Some(datetime!(2027-01-15 08:00:00 UTC)))
+        );
+        // A date expires at the end of that day
+        assert_eq!(
+            parse("custom", "2026-10-12"),
+            Some(Some(datetime!(2026-10-12 23:59:59 UTC)))
+        );
+        for bad in ["", "12/10/2026", "2026-13-45"] {
+            assert!(parse_expiry("custom", bad, now).is_err(), "{bad:?}");
+        }
+        assert!(parse_expiry("year", "", now).is_err());
+    }
+}
+
+#[cfg(test)]
+mod ui_tests {
+    use crate::http::api::tests::TestServer;
+    use crate::repo::FolderPermissionsRepo;
+    use crate::repo::tests::create_test_folder;
+    use axum::http::{Method, StatusCode};
+    use sqlx::SqlitePool;
+
+    /// The browser specs add, change and remove members; these are the requests that must fail
+    #[sqlx::test]
+    async fn test_ui_sharing_refusals(pool: SqlitePool) {
+        let server = TestServer::new(pool).await;
+        let alice = server.login("alice").await;
+        let bob = server.login("bob").await;
+        let carol = server.login("carol").await;
+
+        let folder = create_test_folder(server.pool(), Some("alice"), "Holiday")
+            .await
+            .id;
+        let share = server
+            .pool()
+            .create_share(folder, Some("bob"), false, false, None)
+            .await;
+        let share = share.unwrap().id;
+        let family = create_test_folder(server.pool(), None, "Trip").await.id;
+        let add = format!("/ui/sharing/folder/{folder}/members");
+        let permission = format!("/ui/sharing/share/{share}/permission");
+        let expiry = format!("/ui/sharing/share/{share}/expiry");
+        let remove = format!("/ui/sharing/share/{share}");
+
+        for (uri, body, status, message) in [
+            (&add, "user_id=bob&expiry=none", StatusCode::CONFLICT, None),
+            (
+                &add,
+                "user_id=carol&expiry=custom&expiry_date=",
+                StatusCode::BAD_REQUEST,
+                Some("Pick an expiry date"),
+            ),
+            (
+                &permission,
+                "permission=admin",
+                StatusCode::BAD_REQUEST,
+                None,
+            ),
+            (
+                &expiry,
+                "expiry=custom&expiry_date=2001-01-01",
+                StatusCode::BAD_REQUEST,
+                Some("Expiry must be in the future"),
+            ),
+            // Public folders can't be shared with individuals
+            (
+                &format!("/ui/sharing/folder/{family}/members"),
+                "user_id=bob&expiry=none",
+                StatusCode::BAD_REQUEST,
+                None,
+            ),
+        ] {
+            let response = alice
+                .form(Method::POST, uri, body)
+                .await
+                .assert_status(status);
+            if let Some(message) = message {
+                assert_eq!(response.text(), message, "{body}");
+            }
+        }
+
+        // Members and strangers can't change anything: not found, nothing changed
+        let before = server.pool().get_shares_for_folder(folder).await.unwrap();
+        for client in [&bob, &carol] {
+            for (method, uri, body) in [
+                (Method::POST, &add, "user_id=carol&expiry=none"),
+                (Method::POST, &permission, "permission=upload-delete"),
+                (Method::POST, &expiry, "expiry=day"),
+                (Method::DELETE, &remove, ""),
+            ] {
+                let response = client.form(method, uri, body).await;
+                response.assert_status(StatusCode::NOT_FOUND);
+            }
+        }
+        let after = server.pool().get_shares_for_folder(folder).await.unwrap();
+        assert_eq!(format!("{after:?}"), format!("{before:?}"));
     }
 }

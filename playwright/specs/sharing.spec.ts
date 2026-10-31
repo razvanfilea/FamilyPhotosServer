@@ -116,6 +116,20 @@ test.describe('sharing', () => {
         await expect(member(page, 'Carol').getByTestId('sharing-expiry-label')).toHaveText('Expires 15 Jan 2099');
     });
 
+    test('Enter in the custom date field does not add anybody', async ({ alicePage: page, folders }) => {
+        const id = await folders.create('alice', folders.name('Enter key'));
+        await gotoReady(page, `/folders/${id}`);
+        await page.getByTestId('folder-share').click();
+        await page.getByTestId('sharing-add').click();
+        await page.getByTestId('sharing-add-expiry').selectOption('custom');
+        await page.getByTestId('sharing-add-expiry-date').fill('2099-01-15');
+        await page.getByTestId('sharing-add-expiry-date').press('Enter');
+        // Nothing is submitted: a member would show up, or a toast would explain
+        await expect(page.getByTestId('sharing-add-user').first()).toBeVisible();
+        await expect(page.getByTestId('sharing-member')).toHaveCount(0);
+        await expect(page.getByTestId('toast')).toHaveCount(0);
+    });
+
     test('a shared folder with nobody left to add hides the add section', async ({ alicePage: page, folders }) => {
         const id = await folders.create('alice', folders.name('Everyone'));
         const alice = await folders.as('alice');
