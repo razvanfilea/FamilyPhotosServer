@@ -5,30 +5,29 @@
 interface Htmx {
     ajax(verb: string, path: string, context?: string | Element | Record<string, unknown>): Promise<void>;
     process(element: Element): void;
-    remove(element: Element): void;
 }
 
 interface Window {
     htmx?: Htmx;
 }
 
-/** Detail of the `htmx:*` events the code listens to. */
+/** Detail of the `htmx:*` events the code listens to (`ctx` is HTMX's request context). */
 interface HtmxEventDetail {
-    elt: Element;
-    xhr: XMLHttpRequest;
-    parameters: FormData;
+    ctx: any;
+    error?: any;
     [key: string]: any;
 }
 
 // Custom events: `htmx:*` and the `fp:*` ones of assets/js/core/events.js (data in `detail`)
 interface GlobalEventHandlersEventMap {
-    'htmx:afterSettle': CustomEvent<HtmxEventDetail>;
-    'htmx:afterSwap': CustomEvent<HtmxEventDetail>;
-    'htmx:beforeCleanupElement': CustomEvent<HtmxEventDetail>;
-    'htmx:configRequest': CustomEvent<HtmxEventDetail>;
-    'htmx:load': CustomEvent<HtmxEventDetail>;
-    'htmx:responseError': CustomEvent<HtmxEventDetail>;
-    'htmx:sendError': CustomEvent<HtmxEventDetail>;
+    'htmx:after:process': CustomEvent<HtmxEventDetail>;
+    'htmx:after:settle': CustomEvent<HtmxEventDetail>;
+    'htmx:after:swap': CustomEvent<HtmxEventDetail>;
+    'htmx:config:request': CustomEvent<HtmxEventDetail>;
+    'htmx:error': CustomEvent<HtmxEventDetail>;
+    'htmx:after:history:update': CustomEvent<HtmxEventDetail>;
+    'htmx:before:history:restore': CustomEvent<HtmxEventDetail>;
+    'htmx:response:error': CustomEvent<HtmxEventDetail>;
     'fp:destination-change': CustomEvent<any>;
     'fp:flash-toast': CustomEvent<any>;
     'fp:folder-filter-change': CustomEvent<any>;

@@ -1,7 +1,7 @@
 // The create/rename folder dialog. It is a <dialog> of its own (not the app dialog), so it can be
 // opened on top of other dialogs, e.g. from the destination picker inside the move dialog.
 
-import { register, unmount } from '../core/registry.js';
+import { register } from '../core/registry.js';
 import { postJson, api, ApiError } from '../core/api.js';
 import { popScope, pushScope } from '../core/keyboard.js';
 
@@ -48,8 +48,6 @@ export function openFolderNameDialog({ folderId, initialName = '', initialPublic
 
         dialog.addEventListener('close', () => {
             popScope(SCOPE);
-            unmount(box);
-            window.htmx?.remove?.(dialog);
             dialog.remove();
             resolve(result);
         });

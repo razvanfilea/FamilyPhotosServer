@@ -1,6 +1,6 @@
 // Component registry: markup declares `data-component="name other"`, modules register a mount
 // function per name. Components are mounted once per element on page load and whenever HTMX
-// inserts content, and their cleanup runs when HTMX removes the element.
+// inserts content, and their cleanup runs when the element leaves the document (see `boot`).
 
 const factories = new Map();
 /** @type {WeakMap<Element, Map<string, (() => void) | undefined>>} */
@@ -33,6 +33,8 @@ function mountElement(element) {
             instances = new Map();
             mounted.set(element, instances);
         }
+        // Claimed before the factory runs: it may call `htmx.process`, which mounts again
+        instances.set(name, undefined);
         instances.set(name, factory(element) ?? undefined);
     }
 }
@@ -52,8 +54,8 @@ function unmountElement(element) {
     }
 }
 
-/** Runs the cleanups of `root` and its descendants. Call it before removing elements without HTMX. */
-export function unmount(root) {
+/** Runs the cleanups of `root` and its descendants */
+function unmount(root) {
     if (!(root instanceof Element)) return;
     root.querySelectorAll('[data-component]').forEach(unmountElement);
     unmountElement(root);
@@ -64,8 +66,16 @@ export function boot() {
     booted = true;
 
     mount(document.body);
-    document.addEventListener('htmx:load', (event) => mount(event.detail.elt));
-    document.addEventListener('htmx:afterSettle', (event) => mount(event.detail.elt));
-    // HTMX fires this for every element it removes, descendants included
-    document.addEventListener('htmx:beforeCleanupElement', (event) => unmountElement(event.detail.elt));
+    // HTMX processes every element it inserts (after settling) and every element the page loaded with
+    document.addEventListener('htmx:after:process', (event) => mount(/** @type {Element} */ (event.target)));
+    // Any removal (HTMX swaps, dialogs, grid unloading) runs the cleanups, so callers never unmount by
+    // hand. An element that is removed and re-inserted in a later task is unmounted for good: nothing
+    // mounts it again unless HTMX processes it. Same-task moves are skipped (it is connected again).
+    new MutationObserver((records) => {
+        for (const record of records) {
+            for (const node of record.removedNodes) {
+                if (node instanceof Element && !node.isConnected) unmount(node);
+            }
+        }
+    }).observe(document.body, { childList: true, subtree: true });
 }

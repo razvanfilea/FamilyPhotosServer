@@ -8,14 +8,15 @@
     <meta name="theme-color" content="#1A1C19">
     <meta name="color-scheme" content="dark">
     <meta name="htmx-config"
-          content='{"defaultSwapStyle":"outerHTML","globalViewTransitions":false,"scrollIntoViewOnBoost":false,"historyCacheSize":0,"allowEval":false,"includeIndicatorStyles":false}'>
+          content='{"defaultSwap":"outerHTML","transitions":false,"defaultTimeout":0,"noSwap":[204,304,"4xx","5xx"],"includeIndicatorCSS":false}'>
 
     <link rel="icon" type="image/png" sizes="32x32" href="/assets/fav/favicon-32x32.png">
     <link rel="apple-touch-icon" sizes="180x180" href="/assets/fav/apple-touch-icon.png">
     <link rel="manifest" href="/assets/manifest.webmanifest">
 
     <link rel="stylesheet" href="/assets/css/main.css?v={{ crate::http::AppState::ASSET_VERSION }}">
-    <script src="/assets/vendor/htmx.min.js?v={{ crate::http::AppState::ASSET_VERSION }}" defer></script>
+    {# Not deferred: HTMX 4 then starts on DOMContentLoaded, after the modules registered their components (deferred, it starts before them and can mount fragments first) #}
+    <script src="/assets/vendor/htmx.min.js?v={{ crate::http::AppState::ASSET_VERSION }}"></script>
     <script type="module" src="/assets/js/app.js"></script>
     {%- block head %}{% endblock %}
 

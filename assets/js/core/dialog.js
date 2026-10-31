@@ -3,7 +3,7 @@
 // into it with `hx-get="…" hx-target="#app-dialog-content" hx-swap="innerHTML"`; it opens once the
 // content is swapped in. Buttons with `data-dialog-close` close it.
 
-import { mount, unmount } from './registry.js';
+import { mount } from './registry.js';
 import { popScope, pushScope } from './keyboard.js';
 
 const SCOPE = 'dialog';
@@ -21,12 +21,7 @@ function setBusy(value) {
 }
 
 function clearContent() {
-    const content = contentElement();
-    for (const child of [...content.children]) {
-        unmount(child);
-        window.htmx?.remove?.(child);
-    }
-    content.replaceChildren();
+    contentElement().replaceChildren();
 }
 
 function show() {
@@ -62,7 +57,7 @@ export async function openDialog({ html, node, template, url, onClose } = {}) {
     onCloseCallback = onClose;
     previousCallback?.('');
     if (url) {
-        // Errors are reported by the global HTMX handlers; the dialog opens on htmx:afterSwap
+        // Errors are reported by the global HTMX handlers; the dialog opens on htmx:after:swap
         await window.htmx.ajax('GET', url, { target: '#app-dialog-content', swap: 'innerHTML' });
         return;
     }
@@ -162,7 +157,9 @@ export function initDialog() {
         if (!busy && /** @type {Element} */ (event.target).closest('[data-dialog-close]')) closeDialog();
     });
 
-    document.body.addEventListener('htmx:afterSwap', (event) => {
-        if (event.detail.target === contentElement()) show();
+    document.body.addEventListener('htmx:after:swap', (event) => {
+        const { ctx } = event.detail;
+        // Error responses aren't swapped (and 204 has nothing to show)
+        if (ctx.target === contentElement() && ctx.response.status < 300 && ctx.response.status !== 204) show();
     });
 }

@@ -67,11 +67,12 @@ register('login-form', (/** @type {HTMLFormElement} */ form) => {
     updateSubmit();
 
     // Like the Android app, user names are trimmed and lowercased before logging in
-    form.addEventListener('htmx:configRequest', (event) => {
-        event.detail.parameters.set('user_id', username.value.trim().toLowerCase());
+    form.addEventListener('htmx:config:request', (event) => {
+        event.detail.ctx.request.body.set('user_id', username.value.trim().toLowerCase());
     });
 
-    form.addEventListener('htmx:sendError', () => {
+    form.addEventListener('htmx:error', (event) => {
+        if (event.detail.ctx?.response || event.detail.error?.name === 'AbortError') return;
         const error = form.querySelector('[data-slot="network-error"]').content.cloneNode(true);
         document.getElementById('login-error').replaceWith(error);
     });
