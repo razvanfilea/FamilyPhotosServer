@@ -141,6 +141,30 @@ pub fn refresh() -> HeaderMap {
     headers
 }
 
+/// CSRF check for the fragment routes: a write whose `Origin` header is present must be same-origin
+/// (browsers always send `Origin` on cross-origin writes). Requests without one (scripts, tests) pass.
+pub async fn same_origin_writes(request: Request, next: Next) -> Response {
+    let method = request.method();
+    let is_write = !(method == axum::http::Method::GET
+        || method == axum::http::Method::HEAD
+        || method == axum::http::Method::OPTIONS);
+    if is_write && let Some(origin) = request.headers().get("origin") {
+        let header = |name: &str| request.headers().get(name).and_then(|v| v.to_str().ok());
+        let origin_host = origin
+            .to_str()
+            .ok()
+            .and_then(|origin| origin.split_once("://"))
+            .map(|(_, host)| host);
+        // Behind a proxy the original host may arrive as `X-Forwarded-Host`
+        let same = origin_host.is_some()
+            && (origin_host == header("host") || origin_host == header("x-forwarded-host"));
+        if !same {
+            return StatusCode::FORBIDDEN.into_response();
+        }
+    }
+    next.run(request).await
+}
+
 /// Header values must be visible ASCII, so escape everything else as JSON `\uXXXX` sequences
 fn escape_non_ascii(json: &str) -> String {
     let mut escaped = String::with_capacity(json.len());
