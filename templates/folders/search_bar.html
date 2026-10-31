@@ -13,8 +13,9 @@
     </label>
     <div class="fp-folder-controls__options">
         <details class="dropdown dropdown-end" data-component="dropdown">
-            <summary class="btn btn-ghost btn-sm" aria-label="Sort folders" data-testid="folder-sort">
+            <summary class="btn btn-ghost btn-sm" data-testid="folder-sort">
                 {% call icons::icon("sort") %}{% endcall %}
+                <span class="sr-only">Sort by</span>
                 <span data-role="sort-label">{{ browser.sort_label }}</span>
             </summary>
             <ul class="dropdown-content menu fp-menu w-56">

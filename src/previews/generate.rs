@@ -86,6 +86,9 @@ fn generate_image_preview(load_path: &Path, save_path: &Path) -> io::Result<()> 
     run_magick(
         load_path,
         save_path,
+        // Lets the JPEG decoder scale down while decoding: about twice as fast, and 2x the
+        // target size keeps the quality. Other formats ignore it.
+        &["-define", "jpeg:size=640x640"],
         &[
             "-auto-orient",
             "-thumbnail",
@@ -101,8 +104,14 @@ fn generate_image_preview(load_path: &Path, save_path: &Path) -> io::Result<()> 
 
 const SCREEN_SIZE: u32 = 2048;
 
-fn run_magick(load_path: &Path, save_path: &Path, args: &[&str]) -> io::Result<()> {
+fn run_magick(
+    load_path: &Path,
+    save_path: &Path,
+    input_args: &[&str],
+    args: &[&str],
+) -> io::Result<()> {
     let mut child = Command::new("magick")
+        .args(input_args)
         .arg(format!("{}[0]", load_path.display())) // [0] selects first frame for GIFs
         .args(args)
         .arg(format!("webp:{}", save_path.display()))
@@ -177,6 +186,7 @@ pub fn generate_screen_rendition(load_path: &Path, save_path: &Path) -> io::Resu
         run_magick(
             load_path,
             temp_path,
+            &[],
             &[
                 "-auto-orient",
                 "-resize",
@@ -211,36 +221,44 @@ pub struct ThumbHashImage {
     pub rgba: Vec<u8>,
 }
 
+/// The pixel data of a PAM image (what `magick ... pam:-` writes) with 4 channels of 8 bits.
+fn parse_rgba_pam(pam: &[u8]) -> io::Result<ThumbHashImage> {
+    const END_OF_HEADER: &[u8] = b"ENDHDR\n";
+    let invalid =
+        |what: &str| io::Error::new(io::ErrorKind::InvalidData, format!("invalid PAM: {what}"));
+
+    let header_end = pam
+        .windows(END_OF_HEADER.len())
+        .position(|window| window == END_OF_HEADER)
+        .ok_or_else(|| invalid("no header end"))?
+        + END_OF_HEADER.len();
+    let header = String::from_utf8_lossy(&pam[..header_end]);
+    let field = |name: &str| {
+        header
+            .lines()
+            .find_map(|line| line.strip_prefix(name)?.trim().parse::<usize>().ok())
+            .ok_or_else(|| invalid(name))
+    };
+    let (width, height) = (field("WIDTH")?, field("HEIGHT")?);
+    if field("DEPTH")? != 4 {
+        return Err(invalid("DEPTH"));
+    }
+
+    let rgba = pam
+        .get(header_end..header_end + width * height * 4)
+        .ok_or_else(|| invalid("truncated pixels"))?;
+    Ok(ThumbHashImage {
+        width,
+        height,
+        rgba: rgba.to_vec(),
+    })
+}
+
 pub fn generate_thumb_hash_raw_image(load_path: &Path) -> io::Result<ThumbHashImage> {
     let size = THUMB_HASH_IMAGE_SIZE;
 
-    // Get dimensions after resize (fit within box, preserve aspect ratio)
-    let dims_output = Command::new("magick")
-        .arg(load_path)
-        .args([
-            "-auto-orient",
-            "-resize",
-            &format!("{size}x{size}"),
-            "-format",
-            "%wx%h",
-            "info:",
-        ])
-        .output()?;
-
-    let dims_str = String::from_utf8_lossy(&dims_output.stdout);
-    let (w_str, h_str) = dims_str
-        .trim()
-        .split_once('x')
-        .ok_or_else(|| io::Error::other("failed to parse dimensions"))?;
-    let width: usize = w_str
-        .parse()
-        .map_err(|_| io::Error::other("invalid width"))?;
-    let height: usize = h_str
-        .parse()
-        .map_err(|_| io::Error::other("invalid height"))?;
-
-    // Get raw RGB pixels (no alpha needed for photos)
-    let child = Command::new("magick")
+    // The PAM header carries the dimensions, so one process gives both them and the pixels
+    let output = Command::new("magick")
         .arg(load_path)
         .args([
             "-auto-orient",
@@ -248,18 +266,38 @@ pub fn generate_thumb_hash_raw_image(load_path: &Path) -> io::Result<ThumbHashIm
             &format!("{size}x{size}"),
             "-colorspace",
             "sRGB",
+            "-alpha",
+            "set",
             "-depth",
             "8",
-            "rgba:-",
+            "pam:-",
         ])
-        .stdout(Stdio::piped())
-        .spawn()?;
+        .output()?;
 
-    let output = child.wait_with_output()?;
+    parse_rgba_pam(&output.stdout)
+}
 
-    Ok(ThumbHashImage {
-        width,
-        height,
-        rgba: output.stdout,
-    })
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_rgba_pam() {
+        let header = b"P7\nWIDTH 2\nHEIGHT 1\nDEPTH 4\nMAXVAL 255\nTUPLTYPE RGB_ALPHA\nENDHDR\n";
+        let pixels = [1, 2, 3, 255, 4, 5, 6, 255];
+        let pam = [header.as_slice(), &pixels].concat();
+
+        let image = parse_rgba_pam(&pam).unwrap();
+        assert_eq!((image.width, image.height), (2, 1));
+        assert_eq!(image.rgba, pixels);
+
+        let rgb_header = b"P7\nWIDTH 2\nHEIGHT 1\nDEPTH 3\nMAXVAL 255\nTUPLTYPE RGB\nENDHDR\n";
+        for (name, pam) in [
+            ("empty", Vec::new()),
+            ("truncated", pam[..pam.len() - 1].to_vec()),
+            ("rgb", [rgb_header.as_slice(), &pixels].concat()),
+        ] {
+            assert!(parse_rgba_pam(&pam).is_err(), "{name}");
+        }
+    }
 }

@@ -1,10 +1,10 @@
 {
   "db_name": "SQLite",
-  "query": "select * from photos where (($1 is null and user_id is null) or user_id = $1) order by created_at desc",
+  "query": "select id as \"id!\", user_id as \"user_id?\", name as \"name!\", created_at as \"created_at!: OffsetDateTime\", file_size as \"file_size!\", folder_id as \"folder_id?\", thumb_hash as \"thumb_hash?\", trashed_on as \"trashed_on?: OffsetDateTime\"\n            from photos where user_id is null\n            union all\n            select id, user_id, name, created_at, file_size, folder_id, thumb_hash, trashed_on\n            from photos where user_id = $1\n            order by created_at desc, id",
   "describe": {
     "columns": [
       {
-        "name": "id",
+        "name": "id!",
         "ordinal": 0,
         "type_info": "Integer",
         "origin": {
@@ -15,7 +15,7 @@
         }
       },
       {
-        "name": "user_id",
+        "name": "user_id?",
         "ordinal": 1,
         "type_info": "Text",
         "origin": {
@@ -26,7 +26,7 @@
         }
       },
       {
-        "name": "name",
+        "name": "name!",
         "ordinal": 2,
         "type_info": "Text",
         "origin": {
@@ -37,7 +37,7 @@
         }
       },
       {
-        "name": "created_at",
+        "name": "created_at!: OffsetDateTime",
         "ordinal": 3,
         "type_info": "Datetime",
         "origin": {
@@ -48,7 +48,7 @@
         }
       },
       {
-        "name": "file_size",
+        "name": "file_size!",
         "ordinal": 4,
         "type_info": "Integer",
         "origin": {
@@ -59,18 +59,18 @@
         }
       },
       {
-        "name": "trashed_on",
+        "name": "folder_id?",
         "ordinal": 5,
-        "type_info": "Datetime",
+        "type_info": "Integer",
         "origin": {
           "Table": {
             "table": "photos",
-            "name": "trashed_on"
+            "name": "folder_id"
           }
         }
       },
       {
-        "name": "thumb_hash",
+        "name": "thumb_hash?",
         "ordinal": 6,
         "type_info": "Blob",
         "origin": {
@@ -81,13 +81,13 @@
         }
       },
       {
-        "name": "folder_id",
+        "name": "trashed_on?: OffsetDateTime",
         "ordinal": 7,
-        "type_info": "Integer",
+        "type_info": "Datetime",
         "origin": {
           "Table": {
             "table": "photos",
-            "name": "folder_id"
+            "name": "trashed_on"
           }
         }
       }
@@ -106,5 +106,5 @@
       true
     ]
   },
-  "hash": "4a8c0f1fd00cb16f3c290b8143008356f2e1e934a83c58fbb77f6158ad40a39c"
+  "hash": "548deb56f9ecb589f2f814f67406f215a702cebacebaf1b413bd5e46c353f2ea"
 }

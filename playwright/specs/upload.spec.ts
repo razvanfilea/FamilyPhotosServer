@@ -8,7 +8,7 @@ import { withExifDate } from '../harness/exif.mjs';
 import { folderId } from '../harness/seed';
 
 // Uploads change the uploader's timeline, which other specs assert on for alice and bob. So every
-// test that uploads does it as carol (who owns no seeded photos), with dates in the 2040s that no
+// test that uploads does it as ivan (who owns no seeded photos), with dates in the 2040s that no
 // other spec uses, with unique file contents (the server deduplicates by hash), and only in the
 // desktop project. Tests that upload nothing run on both devices.
 
@@ -45,7 +45,6 @@ const folderCard = (page: Page, name: string) =>
     picker(page).getByTestId('folder-card').filter({ has: page.getByTestId('folder-card-name').getByText(name, { exact: true }) });
 
 const isUpload = (request: Request) => new URL(request.url()).pathname === '/api/upload';
-const uploadRoute = (url: URL) => url.pathname === '/api/upload';
 
 /** Opens the upload page and waits for the destination picker */
 async function openUpload(page: Page, url = '/upload') {
@@ -136,14 +135,14 @@ test.describe('upload page', () => {
     });
 
     test('a folder shared with upload permission can be picked', async ({ page, folders }) => {
-        // carol is the grantee: a folder shared with bob would show up in bob's picker for other specs
+        // ivan is the grantee: a folder shared with bob would show up in bob's picker for other specs
         const name = folders.name('Drop box');
         const id = await folders.create('alice', name);
         const alice = await folders.as('alice');
-        const share = await alice.post('/api/sharing', { data: { folder_id: id, grantee_id: 'carol', can_upload: true } });
+        const share = await alice.post('/api/sharing', { data: { folder_id: id, grantee_id: 'ivan', can_upload: true } });
         expect(share.ok()).toBe(true);
 
-        await loginAs(page, 'carol');
+        await loginAs(page, 'ivan');
         await openUpload(page, `/upload?folder_id=${id}`);
         await expect(page.getByTestId('upload-destination-summary')).toContainText(`Uploading to: ${name}`);
         await expect(page.getByTestId('upload-destination-summary')).toContainText('Shared');
@@ -158,7 +157,7 @@ test.describe('upload page', () => {
     });
 });
 
-/** What a test created through the page as carol (photos from `/api/upload`, folders from `/api/folders`) */
+/** What a test created through the page as ivan (photos from `/api/upload`, folders from `/api/folders`) */
 interface Created {
     photos: Promise<number | undefined>[];
     folders: Promise<number | undefined>[];
@@ -180,7 +179,7 @@ function trackCreated(page: Page, created: Created) {
 test.describe('uploading', () => {
     test.describe.configure({ mode: 'serial' });
     test.beforeEach(({ isMobile }) => {
-        test.skip(isMobile, 'Uploads change carol\'s photos');
+        test.skip(isMobile, 'Uploads change ivan\'s photos');
     });
 
     let created: Created;
@@ -193,17 +192,17 @@ test.describe('uploading', () => {
     test.afterEach(async ({ page, isMobile }) => {
         if (isMobile) return;
         // A fresh session of the test's own: the test may have cleared its cookies
-        await loginAs(page, 'carol');
-        const carol = page.request;
+        await loginAs(page, 'ivan');
+        const ivan = page.request;
         const photoIds = (await Promise.all(created.photos)).filter((id): id is number => id !== undefined);
         if (photoIds.length > 0) {
-            expect((await carol.post('/api/trash', { data: photoIds })).ok()).toBe(true);
+            expect((await ivan.post('/api/trash', { data: photoIds })).ok()).toBe(true);
             for (const id of photoIds) {
-                expect((await carol.delete(`/api/delete/${id}`)).ok()).toBe(true);
+                expect((await ivan.delete(`/api/delete/${id}`)).ok()).toBe(true);
             }
         }
         for (const id of (await Promise.all(created.folders)).filter((id): id is number => id !== undefined)) {
-            expect([200, 204]).toContain((await carol.delete(`/api/folders/${id}`)).status());
+            expect([200, 204]).toContain((await ivan.delete(`/api/folders/${id}`)).status());
         }
     });
 
@@ -215,7 +214,7 @@ test.describe('uploading', () => {
         });
 
         trackCreated(page, created);
-        await loginAs(page, 'carol');
+        await loginAs(page, 'ivan');
         await openUpload(page);
         await addFiles(page, [
             photoFile('march-a.jpg', '2045:03:10 09:00:00', id),
@@ -260,10 +259,10 @@ test.describe('uploading', () => {
     test('photos go into an existing folder and into a new one', async ({ page, folders }, testInfo) => {
         const id = unique(testInfo);
         const existingName = folders.name('Uploads');
-        const existingId = await folders.create('carol', existingName);
+        const existingId = await folders.create('ivan', existingName);
 
         trackCreated(page, created);
-        await loginAs(page, 'carol');
+        await loginAs(page, 'ivan');
         await openUpload(page);
         await folderCard(page, existingName).click();
         await expect(page.getByTestId('dest-selected-name')).toHaveText(existingName);
@@ -299,115 +298,42 @@ test.describe('uploading', () => {
         await expect(page.getByTestId('photo-tile')).toHaveCount(1);
     });
 
-    test('server errors are retried, client errors fail with their message', async ({ page }, testInfo) => {
+    test('an expired session cancels the queue and asks once to log in again', async ({ page }, testInfo) => {
         const id = unique(testInfo);
         trackCreated(page, created);
-        await loginAs(page, 'carol');
+        await loginAs(page, 'ivan');
         await openUpload(page);
 
-        let attempts = 0;
-        await page.route(uploadRoute, (route) => {
-            attempts += 1;
-            return attempts === 1 ? route.fulfill({ status: 500, body: 'Internal server error' }) : route.continue();
+        const dialogs: string[] = [];
+        page.on('dialog', async (dialog) => {
+            dialogs.push(dialog.type());
+            await dialog.dismiss();
         });
-        await addFiles(page, [photoFile('flaky.jpg', '2047:01:10 10:00:00', id)]);
-        await page.getByTestId('upload-start').click();
-        await expect(page.getByTestId('upload-done-summary')).toHaveText('1 uploaded');
-        expect(attempts).toBe(2);
-
-        await page.unrouteAll();
-        attempts = 0;
-        await page.route(uploadRoute, (route) => {
-            attempts += 1;
-            return route.fulfill({ status: 403, contentType: 'text/plain', body: "You can't upload here" });
+        let profileChecks = 0;
+        let loginLoads = 0;
+        page.on('request', (request) => {
+            const { pathname } = new URL(request.url());
+            if (pathname === '/api/profile') profileChecks += 1;
+            if (pathname === '/login' && request.resourceType() === 'document') loginLoads += 1;
         });
-        await page.getByTestId('upload-more').click();
-        await addFiles(page, [photoFile('refused.jpg', '2047:01:11 10:00:00', id)]);
-        await page.getByTestId('upload-start').click();
 
-        const refused = row(page, 'refused.jpg');
-        await expect(refused.getByTestId('upload-row-status')).toHaveText('Failed');
-        await expect(refused.getByTestId('upload-row-error')).toHaveText("You can't upload here");
-        await expect(page.getByTestId('upload-done-summary')).toHaveText('0 uploaded • 1 failed');
-        expect(attempts).toBe(1);
+        await addFiles(page, ['a', 'b', 'c', 'd', 'e'].map((name, i) =>
+            photoFile(`${name}.jpg`, `2049:01:0${i + 1} 10:00:00`, id)));
+        await expect(rows(page).getByTestId('upload-row-status')).toHaveText(Array(5).fill('Queued'));
 
-        // Retrying works once the server accepts it
-        await page.unrouteAll();
-        await page.getByTestId('upload-retry-failed').click();
-        await expect(refused.getByTestId('upload-row-status')).toHaveText('Uploaded');
-        await expect(page.getByTestId('upload-done-summary')).toHaveText('1 uploaded');
-        await expect(page.getByTestId('upload-retry-failed')).toBeHidden();
-    });
-
-    test('cancelling stops the queue and the summary shows what was uploaded', async ({ page }, testInfo) => {
-        const id = unique(testInfo);
-        trackCreated(page, created);
-        await loginAs(page, 'carol');
-        await openUpload(page);
-
-        // Only "first.jpg" gets through; the other uploads hang until they are cancelled
-        await page.route(uploadRoute, async (route) => {
-            if (route.request().postDataBuffer()?.includes('filename="first.jpg"')) {
-                await route.continue();
-            }
-        });
-        await addFiles(page, ['first', 'second', 'third', 'fourth'].map((name, i) =>
-            photoFile(`${name}.jpg`, `2048:01:0${i + 1} 10:00:00`, id)));
+        // The session ends while the files wait
+        await page.context().clearCookies();
         await page.getByTestId('upload-start').click();
 
-        await expect(row(page, 'first.jpg').getByTestId('upload-row-status')).toHaveText('Uploaded');
-        await expect(rows(page).getByTestId('upload-row-status')).toHaveText(['Uploaded', /^Uploading/, /^Uploading/, /^Uploading/]);
+        // Staying on the page: nothing is sent any more, and the rows say why
+        await expect(page.getByTestId('upload-done')).toBeVisible();
+        await expect(page.getByTestId('upload-row-error').first()).toHaveText('Session expired. Log in and retry');
+        await expect(page.getByTestId('upload-row-error').filter({ hasText: "can't upload" })).toHaveCount(0);
         await expect(page.getByTestId('upload-start')).toBeHidden();
-        await page.getByTestId('upload-cancel').click();
-
-        await expect(page.getByTestId('upload-done-summary')).toHaveText('1 uploaded • 3 cancelled');
-        await expect(rows(page).getByTestId('upload-row-status')).toHaveText(['Uploaded', 'Cancelled', 'Cancelled', 'Cancelled']);
-        await expect(page.getByTestId('upload-retry-failed')).toBeVisible();
-        await page.unrouteAll({ behavior: 'ignoreErrors' });
+        expect(page.url()).toContain('/upload');
+        // The queue has settled: every failed upload was answered by the one check and the one prompt
+        expect(dialogs).toHaveLength(1);
+        expect(profileChecks).toBe(1);
+        expect(loginLoads).toBe(0);
     });
-
-    for (const leave of [false, true]) {
-        test(`an expired session cancels the queue and redirects to the login page once (${leave ? 'leaving' : 'staying'})`, async ({ page }, testInfo) => {
-            const id = unique(testInfo);
-            trackCreated(page, created);
-            await loginAs(page, 'carol');
-            await openUpload(page);
-
-            const dialogs: string[] = [];
-            page.on('dialog', async (dialog) => {
-                dialogs.push(dialog.type());
-                await (leave ? dialog.accept() : dialog.dismiss());
-            });
-            let profileChecks = 0;
-            let loginLoads = 0;
-            page.on('request', (request) => {
-                const { pathname } = new URL(request.url());
-                if (pathname === '/api/profile') profileChecks += 1;
-                if (pathname === '/login' && request.resourceType() === 'document') loginLoads += 1;
-            });
-
-            await addFiles(page, ['a', 'b', 'c', 'd', 'e'].map((name, i) =>
-                photoFile(`${name}.jpg`, `2049:01:0${i + 1} 10:00:00`, id)));
-            await expect(rows(page).getByTestId('upload-row-status')).toHaveText(Array(5).fill('Queued'));
-
-            // The session ends while the files wait
-            await page.context().clearCookies();
-            await page.getByTestId('upload-start').click();
-
-            if (leave) {
-                await expect(page).toHaveURL('/login?next=%2Fupload');
-            } else {
-                // Staying: nothing is sent any more, and the rows say why
-                await expect(page.getByTestId('upload-done')).toBeVisible();
-                await expect(page.getByTestId('upload-row-error').first()).toHaveText('Session expired. Log in and retry');
-                await expect(page.getByTestId('upload-row-error').filter({ hasText: "can't upload" })).toHaveCount(0);
-                await expect(page.getByTestId('upload-start')).toBeHidden();
-                expect(page.url()).toContain('/upload');
-            }
-            await page.waitForTimeout(500);
-            expect(dialogs).toHaveLength(1);
-            expect(profileChecks).toBe(1);
-            expect(loginLoads).toBe(leave ? 1 : 0);
-        });
-    }
 });

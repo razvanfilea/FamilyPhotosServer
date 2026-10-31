@@ -166,9 +166,7 @@ async fn update_folder(
     let move_directory = source_path != target_path && tokio::fs::try_exists(&source_path).await?;
 
     if move_directory {
-        if let Some(parent) = target_path.parent()
-            && !parent.exists()
-        {
+        if let Some(parent) = target_path.parent() {
             tokio::fs::create_dir_all(parent).await?;
         }
 

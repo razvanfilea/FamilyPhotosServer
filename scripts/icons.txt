@@ -54,7 +54,6 @@ login
 visibility
 visibility_off
 keyboard
-keyboard_arrow_down
 add
 cancel
 folder_off

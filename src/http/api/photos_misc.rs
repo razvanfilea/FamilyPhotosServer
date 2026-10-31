@@ -87,7 +87,7 @@ async fn delete_photo(
     previews::remove_renditions(&state.storage, pf.photo.id).await;
 
     let photo_path = state.storage.resolve_photo(pf.partial_path());
-    if photo_path.exists() {
+    if fs::try_exists(&photo_path).await? {
         fs::remove_file(&photo_path).await?;
         info!("Removed file at {}", photo_path.display());
     } else {

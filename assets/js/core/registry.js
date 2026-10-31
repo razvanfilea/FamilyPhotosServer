@@ -37,7 +37,6 @@ function mountElement(element) {
     }
 }
 
-/** Mounts the registered components on `root` and its descendants. */
 export function mount(root) {
     if (!(root instanceof Element)) return;
     if (root.matches('[data-component]')) mountElement(root);

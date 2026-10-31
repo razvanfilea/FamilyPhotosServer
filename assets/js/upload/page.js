@@ -1,5 +1,3 @@
-// The upload page (templates/upload/upload_page.html).
-//
 // Files flow like this: picked or dropped files are filtered (files.js) and get a row. "Upload"
 // resolves the destination once (creating a new folder), then queue.js uploads the files, 3 at a
 // time, through transport.js. The server skips files it already has at the destination.
@@ -344,7 +342,6 @@ register('upload-page', (root) => {
         maybeFinish();
     }
 
-    /** Uploads failed or cancelled files again */
     function retry(toRetry) {
         if (state === 'running' || toRetry.length === 0) return;
         for (const item of toRetry) {

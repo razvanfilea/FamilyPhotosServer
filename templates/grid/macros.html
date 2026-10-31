@@ -14,22 +14,17 @@
              data-loaded="{{ !section.tiles.is_empty() }}" data-testid="month-section">
     {%- else %}
     {%- let month = section.month.as_deref().unwrap_or_default() %}
-    <section class="month" id="m-{{ month }}" data-month="{{ month }}" data-count="{{ section.count }}"
-             data-cover="{{ section.cover_photo_id }}" data-start-index="{{ section.start_index }}"
-             data-label="{{ section.label_with_year }}" data-loaded="{{ !section.tiles.is_empty() }}"
-             aria-labelledby="m-{{ month }}-h" data-testid="month-section">
+    {#- Attributes stay on one line each: this markup is repeated for every month of the library -#}
+    <section class="month" id="m-{{ month }}" data-month="{{ month }}" data-count="{{ section.count }}" data-start-index="{{ section.start_index }}" data-label="{{ section.label_with_year }}" data-loaded="{{ !section.tiles.is_empty() }}" aria-labelledby="m-{{ month }}-h" data-testid="month-section">
         <header class="month__header">
             <h2 id="m-{{ month }}-h" class="month__title" data-testid="month-title">{{ section.label }}</h2>
-            <button type="button" class="month__button month__select" data-action="month-select" data-testid="month-select"
-                    aria-pressed="false" aria-label="Select all photos from {{ section.label_with_year }}">
+            <button type="button" class="month__button month__select" data-action="month-select" data-testid="month-select" aria-pressed="false" aria-label="Select all photos from {{ section.label_with_year }}">
                 <span class="month__select-off">{% call icons::icon("radio_button_unchecked") %}{% endcall %}</span>
                 <span class="month__select-on">{% call icons::icon("check_circle", true) %}{% endcall %}</span>
             </button>
             {%- if grid.sections.len() > 2 %}
-            <button type="button" class="month__button" data-action="month-picker" data-testid="month-picker-open"
-                    aria-label="Choose a month" aria-haspopup="dialog"
-                    hx-get="/ui/grid/month-picker?ctx={{ grid.context_key }}" hx-target="#app-dialog-content" hx-swap="innerHTML">
-                {% call icons::icon("calendar_month") %}{% endcall %}
+            <button type="button" class="month__button" data-action="month-picker" data-testid="month-picker-open" aria-label="Choose a month" aria-haspopup="dialog" hx-get="/ui/grid/month-picker?ctx={{ grid.context_key }}" hx-target="#app-dialog-content" hx-swap="innerHTML">
+                {%- call icons::icon("calendar_month") %}{% endcall -%}
             </button>
             {%- endif %}
         </header>

@@ -1,4 +1,4 @@
-//! Handler tests of the folders and sharing work package: the folder pages, their fragments and
+//! Handler tests of the folders and sharing: the folder pages, their fragments and
 //! the `/api` endpoints they use, driven through the whole router.
 
 use crate::db::SessionStore;

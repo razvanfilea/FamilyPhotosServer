@@ -48,7 +48,7 @@ function folderPhotos(name: string): SeedPhoto[] {
         .sort((a, b) => b.createdAt - a.createdAt || b.id - a.id);
 }
 
-/** Uploads fixture files as carol with the given creation times, returns their ids in order */
+/** Uploads fixture files as judy with the given creation times, returns their ids in order */
 async function uploadAsCarol(
     request: APIRequestContext,
     files: { fixture: string, name: string, time: number }[],
@@ -271,10 +271,10 @@ test.describe('actions', () => {
     test.describe.configure({ mode: 'serial' });
 
     test('favourite toggles the star and persists', async ({ page, isMobile }) => {
-        test.skip(isMobile, 'Mutates carol\'s photos');
-        await loginAs(page, 'carol');
+        test.skip(isMobile, 'Mutates judy\'s photos');
+        await loginAs(page, 'judy');
         const [id] = await uploadAsCarol(page.request, [
-            { fixture: 'public/kite.jpg', name: 'carol-favorite.jpg', time: Date.UTC(2031, 0, 1) / 1000 },
+            { fixture: 'public/kite.jpg', name: 'judy-favorite.jpg', time: Date.UTC(2031, 0, 1) / 1000 },
         ]);
         await gotoViewer(page, `/?photo=${id}`, id);
         const star = page.getByTestId('viewer-favorite');
@@ -299,9 +299,9 @@ test.describe('actions', () => {
 
     test('shortcuts don\'t fire with Ctrl held', async ({ page, isMobile }) => {
         test.skip(isMobile, 'Keyboard');
-        await loginAs(page, 'carol');
+        await loginAs(page, 'judy');
         const [id] = await uploadAsCarol(page.request, [
-            { fixture: 'public/snow.jpg', name: 'carol-ctrl.jpg', time: Date.UTC(2033, 0, 1) / 1000 },
+            { fixture: 'public/snow.jpg', name: 'judy-ctrl.jpg', time: Date.UTC(2033, 0, 1) / 1000 },
         ]);
         let favoriteRequests = 0;
         page.on('request', (request) => {
@@ -321,13 +321,13 @@ test.describe('actions', () => {
     });
 
     test('trash moves to the next photo and removes the tile, Undo restores it', async ({ page, isMobile }) => {
-        test.skip(isMobile, 'Mutates carol\'s photos');
-        await loginAs(page, 'carol');
+        test.skip(isMobile, 'Mutates judy\'s photos');
+        await loginAs(page, 'judy');
         const base = Date.UTC(2032, 0, 10) / 1000;
         const [a, b, c] = await uploadAsCarol(page.request, [
-            { fixture: 'public/garden.jpg', name: 'carol-a.jpg', time: base },
-            { fixture: 'public/picnic.jpg', name: 'carol-b.jpg', time: base - 86400 },
-            { fixture: 'public/bikes.jpg', name: 'carol-c.jpg', time: base - 2 * 86400 },
+            { fixture: 'public/garden.jpg', name: 'judy-a.jpg', time: base },
+            { fixture: 'public/picnic.jpg', name: 'judy-b.jpg', time: base - 86400 },
+            { fixture: 'public/bikes.jpg', name: 'judy-c.jpg', time: base - 2 * 86400 },
         ]);
         await gotoGrid(page);
         await tile(page, b).click();
@@ -363,15 +363,15 @@ test.describe('actions', () => {
     });
 
     test('Undo after trashing the only photo of a folder brings it back', async ({ page, isMobile }) => {
-        test.skip(isMobile, 'Mutates carol\'s photos');
-        await loginAs(page, 'carol');
+        test.skip(isMobile, 'Mutates judy\'s photos');
+        await loginAs(page, 'judy');
         const created = await page.request.post('/api/folders', {
-            data: { name: `carol-undo-${Date.now()}`, is_public: false },
+            data: { name: `judy-undo-${Date.now()}`, is_public: false },
         });
         expect(created.ok()).toBe(true);
         const folder = (await created.json()).id as number;
         const [id] = await uploadAsCarol(page.request, [
-            { fixture: 'public/lake.jpg', name: 'carol-only.jpg', time: Date.UTC(2034, 0, 1) / 1000 },
+            { fixture: 'public/lake.jpg', name: 'judy-only.jpg', time: Date.UTC(2034, 0, 1) / 1000 },
         ], folder);
         await gotoGrid(page, `/folders/${folder}`);
         const count = page.getByTestId('folder-count');

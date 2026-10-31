@@ -23,7 +23,6 @@ export const EVENTS = Object.freeze({
 });
 
 /**
- * Dispatches a bubbling CustomEvent from `target`.
  * @returns {CustomEvent} the event, so callers can check `defaultPrevented`
  */
 export function emit(target, name, detail = {}, { cancelable = false } = {}) {
@@ -33,7 +32,6 @@ export function emit(target, name, detail = {}, { cancelable = false } = {}) {
 }
 
 /**
- * Listens for `name` on `target`.
  * @returns {() => void} a function removing the listener
  */
 export function on(target, name, handler, options) {

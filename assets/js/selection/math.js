@@ -53,7 +53,6 @@ export function autoScrollSpeed(y, top, bottom, zone = AUTO_SCROLL_ZONE) {
     return 0;
 }
 
-/** Splits `items` in arrays of at most `size` */
 export function chunk(items, size) {
     const chunks = [];
     for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));

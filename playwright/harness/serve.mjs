@@ -39,7 +39,7 @@ function createDatabase(path, { withSchema }) {
     if (!withSchema) {
         db.exec('pragma journal_mode = wal');
     } else {
-        const migrations = readdirSync(join(root, 'migrations')).filter((f) => f.endsWith('.sql')).sort();
+        const migrations = readdirSync(join(root, 'migrations')).filter((f) => f.endsWith('.sql') && !f.endsWith('.down.sql')).sort();
         for (const migration of migrations) {
             db.exec(readFileSync(join(root, 'migrations', migration), 'utf8'));
         }

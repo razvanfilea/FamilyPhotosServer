@@ -86,7 +86,6 @@ fn info_panel_view(info: PhotoInfo, user_id: &str) -> InfoPanelView {
     } = info;
     let mut rows = Vec::new();
 
-    // 1. Type and resolution
     rows.push(DetailRow {
         icon: if is_video(&photo.name) {
             "videocam"
@@ -100,7 +99,6 @@ fn info_panel_view(info: PhotoInfo, user_id: &str) -> InfoPanelView {
         testid: "viewer-info-type",
     });
 
-    // 2. Camera and exposure
     if let Some((title, summary)) = camera_lines(&details) {
         rows.push(DetailRow {
             icon: "photo_camera",
@@ -112,7 +110,6 @@ fn info_panel_view(info: PhotoInfo, user_id: &str) -> InfoPanelView {
         });
     }
 
-    // 3. Folder and size
     let size = (photo.file_size > 0).then(|| format_bytes(photo.file_size));
     rows.push(match folder {
         Some(folder) => DetailRow {
@@ -133,7 +130,6 @@ fn info_panel_view(info: PhotoInfo, user_id: &str) -> InfoPanelView {
         },
     });
 
-    // 4. Visibility, with the owner of photos shared by someone else
     let visibility = match owner {
         None => ("public", "Family".to_string()),
         Some(owner) if owner.user_id == user_id => ("lock", "Private".to_string()),

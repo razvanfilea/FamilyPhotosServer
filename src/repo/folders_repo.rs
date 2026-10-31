@@ -205,25 +205,26 @@ async fn folder_cards<'c>(
                 and (fp.expires_at is null or datetime(fp.expires_at) > datetime('now'))
             where (f.owner_id = $1 or f.owner_id is null or fp.grantee_id is not null)
                 and ($2 is null or f.id = $2)
-        ), ranked as (
-            select p.folder_id, p.id, p.thumb_hash, p.created_at,
-                row_number() over (partition by p.folder_id order by p.created_at desc, p.id desc) as rn,
-                count(*) over (partition by p.folder_id) as cnt
-            from photos p
-            where p.trashed_on is null and p.folder_id in (select id from accessible)
+        ), covers as (
+            select a.id as folder_id,
+                (select p.id from photos p where p.folder_id = a.id and p.trashed_on is null
+                    order by p.created_at desc, p.id desc limit 1) as cover_id,
+                (select count(*) from photos p where p.folder_id = a.id and p.trashed_on is null) as cnt
+            from accessible a
         )
         select a.id as "id!: i64", a.name as "name!", a.owner_id, u.name as owner_name,
             a.can_upload as "can_upload!: bool", a.can_delete as "can_delete!: bool",
-            coalesce(r.cnt, 0) as "photo_count!: i64",
-            r.id as cover_photo_id, r.thumb_hash as cover_thumb_hash,
-            r.created_at as "latest_photo_at: OffsetDateTime",
+            c.cnt as "photo_count!: i64",
+            c.cover_id as "cover_photo_id?", p.thumb_hash as "cover_thumb_hash?",
+            p.created_at as "latest_photo_at?: OffsetDateTime",
             case when a.owner_id = $1 then (
                 select count(*) from folder_permissions s
                 where s.folder_id = a.id and s.grantee_id is not null
                     and (s.expires_at is null or datetime(s.expires_at) > datetime('now'))
             ) else 0 end as "share_count!: i64"
         from accessible a
-        left join ranked r on r.folder_id = a.id and r.rn = 1
+        join covers c on c.folder_id = a.id
+        left join photos p on p.id = c.cover_id
         left join users u on u.id = a.owner_id"#,
         user_id,
         folder_id

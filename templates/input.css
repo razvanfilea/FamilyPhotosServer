@@ -80,6 +80,11 @@
         outline-offset: 2px;
     }
 
+    /* No double-tap zoom delay on iOS; the viewer image and the grid keep their own touch-action */
+    a, button, summary, label {
+        touch-action: manipulation;
+    }
+
     kbd {
         font-family: inherit;
     }

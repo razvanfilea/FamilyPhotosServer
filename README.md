@@ -62,6 +62,8 @@ This will generate a new user with the given username, display name and password
 
 ### Example Nginx Config with HTTPS
 
+The session cookie is `Secure`: browsers only keep it over HTTPS or on `localhost`, so a plain-HTTP deployment on another host can't stay logged in. Put the server behind an HTTPS proxy.
+
 ```
 http {
     upstream familyphotos {

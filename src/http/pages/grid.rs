@@ -49,8 +49,6 @@ pub struct SectionView {
     /// `"June 2024"`
     pub label_with_year: String,
     pub count: i64,
-    /// First photo of the section in context order, 0 for flat contexts
-    pub cover_photo_id: i64,
     /// Index of the first photo of the section in the whole context
     pub start_index: i64,
     /// The photos rendered with the page, a prefix of the section. Empty for sections that are
@@ -148,31 +146,29 @@ fn month_labels(month: &str) -> (String, String) {
 }
 
 /// Builds the grid of `ctx` for `user_id`: the sections with their counts, which the browser turns
-/// into reserved heights, and the first [`PAGE_SIZE`] tiles. The user must be allowed to see `ctx`
-/// (checked here, a missing folder is a 404).
+/// into reserved heights, and the first [`PAGE_SIZE`] tiles. The caller has checked that the user
+/// may see `ctx` (a folder page does it when it loads the folder).
 pub async fn build_grid_view(
     state: AppStateRef,
     user_id: &str,
     ctx: &PhotoListContext,
     prefs: &Prefs,
 ) -> HttpResult<GridView> {
-    ctx.authorize(user_id, &state.read_pool).await?;
-
     // One transaction, so the counts and the photos come from the same snapshot
     let mut tx = state.read_pool.begin().await?;
     let flat = !ctx.is_month_sectioned();
 
     let summaries = if flat {
         let count = tx.context_count(user_id, ctx).await?;
-        vec![(None, count, 0)]
+        vec![(None, count)]
     } else {
         tx.context_month_summaries(user_id, ctx)
             .await?
             .into_iter()
-            .map(|summary| (Some(summary.month), summary.count, summary.cover_photo_id))
+            .map(|summary| (Some(summary.month), summary.count))
             .collect()
     };
-    let total: i64 = summaries.iter().map(|(_, count, _)| count).sum();
+    let total: i64 = summaries.iter().map(|(_, count)| count).sum();
 
     // The photos of the first sections are rendered inline. Sections follow the context order,
     // so one slice covers all of them.
@@ -183,7 +179,7 @@ pub async fn build_grid_view(
 
     let mut sections = Vec::with_capacity(summaries.len());
     let mut start_index = 0;
-    for (month, count, cover_photo_id) in summaries {
+    for (month, count) in summaries {
         if count == 0 {
             continue;
         }
@@ -197,7 +193,6 @@ pub async fn build_grid_view(
             label,
             label_with_year,
             count,
-            cover_photo_id,
             start_index,
             tiles: build_tiles(ctx, &inline[first..last], start_index, now),
         });
@@ -254,18 +249,7 @@ pub async fn month_page(
 
     // The section's first index and size are recomputed here, never taken from the client
     let (start_index, count) = match month.as_deref() {
-        Some(month) => {
-            let mut start_index = 0;
-            let mut count = 0;
-            for summary in tx.context_month_summaries(&user.id, &ctx).await? {
-                if summary.month == month {
-                    count = summary.count;
-                    break;
-                }
-                start_index += summary.count;
-            }
-            (start_index, count)
-        }
+        Some(month) => tx.context_month_bounds(&user.id, &ctx, month).await?,
         None => (0, tx.context_count(&user.id, &ctx).await?),
     };
 
@@ -311,7 +295,7 @@ pub async fn month_picker(
 
     let rows = state
         .read_pool
-        .context_month_summaries(&user.id, &ctx)
+        .context_month_covers(&user.id, &ctx)
         .await?
         .into_iter()
         .map(|summary| MonthPickerRow {
@@ -328,113 +312,33 @@ pub async fn month_picker(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::SessionStore;
-    use crate::http::{AppState, router};
+    use crate::http::api::tests::TestServer;
     use crate::model::photo_filter::PhotoFilter;
-    use crate::model::user::User;
     use crate::repo::PhotosTransactionRepo;
     use crate::repo::tests::{create_test_folder, photo};
-    use crate::utils::password_hash::generate_hash_from_password;
-    use crate::utils::storage_resolver::StorageResolver;
-    use axum::Router;
-    use axum::body::{Body, to_bytes};
-    use axum::http::{Request, StatusCode, header};
+    use axum::http::{HeaderName, StatusCode};
     use sqlx::SqlitePool;
     use time::Duration;
     use time::macros::datetime;
-    use tower::ServiceExt;
 
-    struct TestApp {
-        router: Router,
-        state: AppStateRef,
-    }
-
-    impl TestApp {
-        async fn new(pool: SqlitePool) -> Self {
-            let dir = tempfile::tempdir().unwrap().keep();
-            let storage = StorageResolver::new(dir.join("storage"), dir.join("previews"));
-            let session_store = SessionStore::new(pool.clone(), pool.clone());
-            session_store.migrate().await.unwrap();
-
-            let state: AppStateRef =
-                Box::leak(Box::new(AppState::new(pool.clone(), pool, storage)));
-            let password_hash = generate_hash_from_password("secret");
-            for (id, name) in [("alice", "Alice"), ("bob", "Bob")] {
-                state
-                    .users_repo
-                    .insert_user(&User {
-                        id: id.to_string(),
-                        name: name.to_string(),
-                        password_hash: password_hash.clone(),
-                    })
-                    .await
-                    .unwrap();
-            }
-
-            Self {
-                router: router(state, session_store, Vec::new()),
-                state,
-            }
+    /// Inserts photos for alice at the given times, returns their ids in insertion order
+    async fn insert_photos(
+        server: &TestServer,
+        times: &[OffsetDateTime],
+        folder_id: Option<i64>,
+    ) -> Vec<i64> {
+        let mut tx = server.pool().begin().await.unwrap();
+        let mut ids = Vec::new();
+        for (i, time) in times.iter().enumerate() {
+            let photo = Photo {
+                folder_id,
+                created_at: *time,
+                ..photo(Some("alice"), &format!("photo-{i}.jpg"))
+            };
+            ids.push(tx.insert_photo(&photo).await.unwrap().id);
         }
-
-        async fn login(&self, user_id: &str) -> String {
-            let response = self
-                .router
-                .clone()
-                .oneshot(
-                    Request::post("/api/login")
-                        .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
-                        .body(Body::from(format!("user_id={user_id}&password=secret")))
-                        .unwrap(),
-                )
-                .await
-                .unwrap();
-            assert_eq!(response.status(), StatusCode::OK);
-            let cookie = response.headers().get(header::SET_COOKIE).unwrap();
-            cookie.to_str().unwrap().split(';').next().unwrap().into()
-        }
-
-        /// Returns the status, headers and body of a GET request
-        async fn get(
-            &self,
-            uri: &str,
-            cookie: Option<&str>,
-        ) -> (StatusCode, axum::http::HeaderMap, String) {
-            let mut request = Request::get(uri);
-            if let Some(cookie) = cookie {
-                request = request.header(header::COOKIE, cookie);
-            }
-            let response = self
-                .router
-                .clone()
-                .oneshot(request.body(Body::empty()).unwrap())
-                .await
-                .unwrap();
-            let status = response.status();
-            let headers = response.headers().clone();
-            let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
-            (status, headers, String::from_utf8(body.to_vec()).unwrap())
-        }
-
-        /// Inserts photos for alice at the given times, returns their ids in insertion order
-        async fn insert_photos(
-            &self,
-            times: &[OffsetDateTime],
-            folder_id: Option<i64>,
-        ) -> Vec<i64> {
-            let mut tx = self.state.write_pool.begin().await.unwrap();
-            let mut ids = Vec::new();
-            for (i, time) in times.iter().enumerate() {
-                let photo = Photo {
-                    folder_id,
-                    created_at: *time,
-                    ..photo(Some("alice"), &format!("photo-{i}.jpg"))
-                };
-                ids.push(tx.insert_photo(&photo).await.unwrap().id);
-            }
-            tx.commit().await.unwrap();
-            ids
-        }
+        tx.commit().await.unwrap();
+        ids
     }
 
     fn timeline() -> PhotoListContext {
@@ -455,10 +359,10 @@ mod tests {
 
     #[sqlx::test]
     async fn test_build_grid_view_indices_and_inline_tiles(pool: SqlitePool) {
-        let app = TestApp::new(pool).await;
-        let ids = app.insert_photos(&sample_times(), None).await;
+        let server = TestServer::new(pool).await;
+        let ids = insert_photos(&server, &sample_times(), None).await;
 
-        let grid = build_grid_view(app.state, "alice", &timeline(), &Prefs::default())
+        let grid = build_grid_view(server.state, "alice", &timeline(), &Prefs::default())
             .await
             .unwrap();
 
@@ -496,13 +400,12 @@ mod tests {
         assert_eq!(tiles[0].1, ids[1]);
         assert_eq!(tiles[1].1, ids[0]);
         assert_eq!(tiles[2].1, ids[2]);
-        assert_eq!(grid.sections[0].cover_photo_id, ids[1]);
         assert!(grid.sections.iter().all(|s| s.next_offset().is_none()));
     }
 
     #[sqlx::test]
     async fn test_build_grid_view_renders_only_the_first_page(pool: SqlitePool) {
-        let app = TestApp::new(pool).await;
+        let server = TestServer::new(pool).await;
         // 250 photos in one month, 3 in another
         let mut times: Vec<_> = (0..250)
             .map(|i| datetime!(2024-06-30 00:00:00 UTC) - Duration::minutes(i))
@@ -512,9 +415,9 @@ mod tests {
             datetime!(2024-05-02 10:00:00 UTC),
             datetime!(2024-05-01 10:00:00 UTC),
         ]);
-        app.insert_photos(&times, None).await;
+        insert_photos(&server, &times, None).await;
 
-        let grid = build_grid_view(app.state, "alice", &timeline(), &Prefs::default())
+        let grid = build_grid_view(server.state, "alice", &timeline(), &Prefs::default())
             .await
             .unwrap();
 
@@ -529,14 +432,14 @@ mod tests {
 
     #[sqlx::test]
     async fn test_build_grid_view_splits_the_inline_page_between_sections(pool: SqlitePool) {
-        let app = TestApp::new(pool).await;
+        let server = TestServer::new(pool).await;
         let mut times: Vec<_> = (0..150)
             .map(|i| datetime!(2024-06-30 00:00:00 UTC) - Duration::minutes(i))
             .collect();
         times.extend((0..100).map(|i| datetime!(2024-05-30 00:00:00 UTC) - Duration::minutes(i)));
-        app.insert_photos(&times, None).await;
+        insert_photos(&server, &times, None).await;
 
-        let grid = build_grid_view(app.state, "alice", &timeline(), &Prefs::default())
+        let grid = build_grid_view(server.state, "alice", &timeline(), &Prefs::default())
             .await
             .unwrap();
 
@@ -550,16 +453,16 @@ mod tests {
 
     #[sqlx::test]
     async fn test_build_grid_view_flat_and_empty(pool: SqlitePool) {
-        let app = TestApp::new(pool).await;
+        let server = TestServer::new(pool).await;
 
-        let grid = build_grid_view(app.state, "alice", &timeline(), &Prefs::default())
+        let grid = build_grid_view(server.state, "alice", &timeline(), &Prefs::default())
             .await
             .unwrap();
         assert_eq!(grid.total, 0);
         assert!(grid.sections.is_empty());
 
         let grid = build_grid_view(
-            app.state,
+            server.state,
             "alice",
             &PhotoListContext::LargeFiles,
             &Prefs::default(),
@@ -573,18 +476,18 @@ mod tests {
 
     #[sqlx::test]
     async fn test_build_grid_view_is_flat_for_trash(pool: SqlitePool) {
-        let app = TestApp::new(pool).await;
+        let server = TestServer::new(pool).await;
         let photo = Photo {
             created_at: datetime!(2024-06-08 14:00:00 UTC),
             trashed_on: Some(OffsetDateTime::now_utc() - Duration::days(26)),
             ..photo(Some("alice"), "trashed.jpg")
         };
-        let mut tx = app.state.write_pool.begin().await.unwrap();
+        let mut tx = server.pool().begin().await.unwrap();
         tx.insert_photo(&photo).await.unwrap();
         tx.commit().await.unwrap();
 
         let grid = build_grid_view(
-            app.state,
+            server.state,
             "alice",
             &PhotoListContext::Trash,
             &Prefs::default(),
@@ -601,103 +504,55 @@ mod tests {
         assert_eq!(tile.badge_kind, "error");
     }
 
-    #[sqlx::test]
-    async fn test_build_grid_view_unknown_folder_is_not_found(pool: SqlitePool) {
-        let app = TestApp::new(pool).await;
-
-        let result = build_grid_view(
-            app.state,
-            "alice",
-            &PhotoListContext::Folder(999),
-            &Prefs::default(),
-        )
-        .await;
-        assert!(matches!(result, Err(HttpError::NotFound)));
-    }
-
     #[test]
     fn test_tile_badge() {
         let now = datetime!(2024-07-01 12:00:00 UTC);
-        let photo = |trashed_on, file_size| Photo {
-            id: 1,
-            user_id: None,
-            name: "a.jpg".to_string(),
+        let photo = |trashed_days_ago: Option<i64>, file_size| Photo {
             created_at: now,
             file_size,
-            folder_id: None,
-            thumb_hash: None,
-            trashed_on,
+            trashed_on: trashed_days_ago.map(|days| now - Duration::days(days)),
+            ..photo(None, "a.jpg")
         };
-
-        let days_left = |days_ago: i64| {
-            tile_badge(
-                &PhotoListContext::Trash,
-                &photo(Some(now - Duration::days(days_ago)), 1),
-                now,
-            )
-            .unwrap()
-        };
-        assert_eq!(
-            days_left(0),
-            Badge {
-                text: "30 days".into(),
-                error: false
-            }
-        );
-        assert_eq!(
-            days_left(22),
-            Badge {
-                text: "8 days".into(),
-                error: false
-            }
-        );
-        assert_eq!(
-            days_left(23),
-            Badge {
-                text: "7 days".into(),
-                error: true
-            }
-        );
-        assert_eq!(
-            days_left(29),
-            Badge {
-                text: "1 day".into(),
-                error: true
-            }
-        );
-        assert_eq!(
-            days_left(45),
-            Badge {
-                text: "0 days".into(),
-                error: true
-            }
-        );
-
-        assert_eq!(
-            tile_badge(
-                &PhotoListContext::LargeFiles,
-                &photo(None, 1_258_291 * 100),
-                now
-            ),
+        let badge = |text: &str, error| {
             Some(Badge {
-                text: "120 MB".into(),
-                error: false
+                text: text.into(),
+                error,
             })
-        );
-        assert_eq!(tile_badge(&timeline(), &photo(None, 1), now), None);
-        assert_eq!(
-            tile_badge(&PhotoListContext::Trash, &photo(None, 1), now),
-            None
-        );
+        };
+
+        for (context, trashed_days_ago, file_size, expected) in [
+            (PhotoListContext::Trash, Some(0), 1, badge("30 days", false)),
+            (PhotoListContext::Trash, Some(22), 1, badge("8 days", false)),
+            (PhotoListContext::Trash, Some(23), 1, badge("7 days", true)),
+            (PhotoListContext::Trash, Some(29), 1, badge("1 day", true)),
+            (PhotoListContext::Trash, Some(45), 1, badge("0 days", true)),
+            (PhotoListContext::Trash, None, 1, None),
+            (
+                PhotoListContext::LargeFiles,
+                None,
+                125_829_100,
+                badge("120 MB", false),
+            ),
+            (timeline(), None, 1, None),
+        ] {
+            let photo = photo(trashed_days_ago, file_size);
+            assert_eq!(
+                tile_badge(&context, &photo, now),
+                expected,
+                "{context:?} {trashed_days_ago:?} {file_size}"
+            );
+        }
     }
 
     #[test]
     fn test_month_labels() {
+        let this_year = format!("{}-03", OffsetDateTime::now_utc().year());
         let (label, with_year) = month_labels("2022-03");
-        assert_eq!(label, "March 2022");
-        assert_eq!(with_year, "March 2022");
-        let (label, _) = month_labels(&format!("{}-03", OffsetDateTime::now_utc().year()));
-        assert_eq!(label, "March");
+        assert_eq!(
+            (label.as_str(), with_year.as_str()),
+            ("March 2022", "March 2022")
+        );
+        assert_eq!(month_labels(&this_year).0, "March");
         assert_eq!(
             month_labels("garbage"),
             ("garbage".into(), "garbage".into())
@@ -707,62 +562,44 @@ mod tests {
 
     #[sqlx::test]
     async fn test_month_fragment_pages_and_indices(pool: SqlitePool) {
-        let app = TestApp::new(pool).await;
+        let server = TestServer::new(pool).await;
         let times: Vec<_> = (0..250)
             .map(|i| datetime!(2024-06-30 00:00:00 UTC) - Duration::minutes(i))
             .chain([datetime!(2024-05-03 10:00:00 UTC)])
             .collect();
-        app.insert_photos(&times, None).await;
-        let cookie = app.login("alice").await;
+        insert_photos(&server, &times, None).await;
+        let alice = server.login("alice").await;
+        let month = async |query: &str| {
+            let response = alice
+                .get(&format!("/ui/grid/month?ctx=timeline:all&{query}"))
+                .await;
+            let response = response.assert_status(StatusCode::OK);
+            (response.count_testid("photo-tile"), response.text())
+        };
 
-        let (status, _, body) = app
-            .get(
-                "/ui/grid/month?ctx=timeline:all&month=2024-06&offset=0",
-                Some(&cookie),
-            )
-            .await;
-        assert_eq!(status, StatusCode::OK);
-        assert_eq!(body.matches(r#"data-testid="photo-tile""#).count(), 200);
-        assert!(body.contains(r#"data-index="0""#));
-        assert!(body.contains(r#"data-index="199""#));
-        assert!(body.contains(r#"<div class="month__more" data-next-offset="200"></div>"#));
+        let (tiles, html) = month("month=2024-06&offset=0").await;
+        assert_eq!(tiles, 200);
+        assert!(html.contains(r#"data-index="0""#) && html.contains(r#"data-index="199""#));
+        assert!(html.contains(r#"<div class="month__more" data-next-offset="200"></div>"#));
 
-        let (_, _, body) = app
-            .get(
-                "/ui/grid/month?ctx=timeline:all&month=2024-06&offset=200",
-                Some(&cookie),
-            )
-            .await;
-        assert_eq!(body.matches(r#"data-testid="photo-tile""#).count(), 50);
-        assert!(body.contains(r#"data-index="200""#));
-        assert!(body.contains(r#"data-index="249""#));
-        assert!(!body.contains("month__more"));
+        let (tiles, html) = month("month=2024-06&offset=200").await;
+        assert_eq!(tiles, 50);
+        assert!(html.contains(r#"data-index="200""#) && html.contains(r#"data-index="249""#));
+        assert!(!html.contains("month__more"));
 
         // The index of an older month starts after the newer ones, whatever the client says
-        let (_, _, body) = app
-            .get(
-                "/ui/grid/month?ctx=timeline:all&month=2024-05&offset=0&start_index=7",
-                Some(&cookie),
-            )
-            .await;
-        assert_eq!(body.matches(r#"data-testid="photo-tile""#).count(), 1);
-        assert!(body.contains(r#"data-index="250""#));
+        let (tiles, html) = month("month=2024-05&offset=0&start_index=7").await;
+        assert_eq!(tiles, 1);
+        assert!(html.contains(r#"data-index="250""#));
 
         // A month without photos gives an empty fragment
-        let (status, _, body) = app
-            .get(
-                "/ui/grid/month?ctx=timeline:all&month=1999-01",
-                Some(&cookie),
-            )
-            .await;
-        assert_eq!(status, StatusCode::OK);
-        assert!(!body.contains("photo-tile"));
+        assert_eq!(month("month=1999-01").await.0, 0);
     }
 
     #[sqlx::test]
     async fn test_month_fragment_rejects_bad_input(pool: SqlitePool) {
-        let app = TestApp::new(pool).await;
-        let cookie = app.login("alice").await;
+        let server = TestServer::new(pool).await;
+        let alice = server.login("alice").await;
 
         for uri in [
             "/ui/grid/month?ctx=timeline:all&month=2024-6",
@@ -773,55 +610,55 @@ mod tests {
             "/ui/grid/month",
             "/ui/grid/month-picker?ctx=trash",
         ] {
-            let (status, _, _) = app.get(uri, Some(&cookie)).await;
-            assert_eq!(status, StatusCode::BAD_REQUEST, "{uri}");
+            assert_eq!(
+                alice.get(uri).await.status,
+                StatusCode::BAD_REQUEST,
+                "{uri}"
+            );
         }
     }
 
     #[sqlx::test]
     async fn test_fragments_check_access(pool: SqlitePool) {
-        let app = TestApp::new(pool).await;
-        let folder_id = create_test_folder(&app.state.write_pool, Some("alice"), "Private")
+        let server = TestServer::new(pool).await;
+        let folder_id = create_test_folder(server.pool(), Some("alice"), "Private")
             .await
             .id;
-        app.insert_photos(&[datetime!(2024-06-08 14:00:00 UTC)], Some(folder_id))
-            .await;
-        let alice = app.login("alice").await;
-        let bob = app.login("bob").await;
+        insert_photos(
+            &server,
+            &[datetime!(2024-06-08 14:00:00 UTC)],
+            Some(folder_id),
+        )
+        .await;
+        let alice = server.login("alice").await;
+        let bob = server.login("bob").await;
 
         let uri = format!("/ui/grid/month?ctx=folder:{folder_id}&month=2024-06");
-        let (status, _, body) = app.get(&uri, Some(&alice)).await;
-        assert_eq!(status, StatusCode::OK);
-        assert_eq!(body.matches(r#"data-testid="photo-tile""#).count(), 1);
+        let response = alice.get(&uri).await.assert_status(StatusCode::OK);
+        assert_eq!(response.count_testid("photo-tile"), 1);
 
         // Bob can't see alice's private folder
-        let (status, _, _) = app.get(&uri, Some(&bob)).await;
-        assert_eq!(status, StatusCode::NOT_FOUND);
-        let (status, _, _) = app
-            .get(
-                &format!("/ui/grid/month-picker?ctx=folder:{folder_id}"),
-                Some(&bob),
-            )
-            .await;
-        assert_eq!(status, StatusCode::NOT_FOUND);
+        bob.get(&uri).await.assert_status(StatusCode::NOT_FOUND);
+        let picker = format!("/ui/grid/month-picker?ctx=folder:{folder_id}");
+        bob.get(&picker).await.assert_status(StatusCode::NOT_FOUND);
     }
 
     #[sqlx::test]
     async fn test_fragments_redirect_to_login_when_logged_out(pool: SqlitePool) {
-        let app = TestApp::new(pool).await;
+        let server = TestServer::new(pool).await;
+        let current_url = [(
+            HeaderName::from_static("hx-current-url"),
+            "http://localhost:8080/?filter=family",
+        )];
 
         for uri in [
             "/ui/grid/month?ctx=timeline:all&month=2024-06",
             "/ui/grid/month-picker?ctx=timeline:all",
         ] {
-            let request = Request::get(uri)
-                .header("hx-current-url", "http://localhost:8080/?filter=family")
-                .body(Body::empty())
-                .unwrap();
-            let response = app.router.clone().oneshot(request).await.unwrap();
-            assert_eq!(response.status(), StatusCode::UNAUTHORIZED, "{uri}");
+            let response = server.anonymous().get_with(uri, &current_url).await;
+            let response = response.assert_status(StatusCode::UNAUTHORIZED);
             assert_eq!(
-                response.headers().get("hx-redirect").unwrap(),
+                response.header(HeaderName::from_static("hx-redirect")),
                 "/login?next=%2F%3Ffilter%3Dfamily"
             );
         }
@@ -829,23 +666,27 @@ mod tests {
 
     #[sqlx::test]
     async fn test_month_picker_lists_every_month(pool: SqlitePool) {
-        let app = TestApp::new(pool).await;
-        let ids = app.insert_photos(&sample_times(), None).await;
-        let cookie = app.login("alice").await;
+        let server = TestServer::new(pool).await;
+        let ids = insert_photos(&server, &sample_times(), None).await;
+        let alice = server.login("alice").await;
 
-        let (status, _, body) = app
-            .get("/ui/grid/month-picker?ctx=timeline:all", Some(&cookie))
-            .await;
-        assert_eq!(status, StatusCode::OK);
-        assert!(body.contains("Select a Month"));
-        assert_eq!(body.matches(r#"data-testid="month-picker-row""#).count(), 3);
-        assert!(body.contains(r#"data-month="2024-06""#));
-        assert!(body.contains("June 2024"));
-        assert!(body.contains("3 photos"));
-        assert!(body.contains("1 photo<"));
-        assert!(body.contains(&format!("/api/preview/{}", ids[1])));
-        let june = body.find("2024-06").unwrap();
-        let december = body.find("2022-12").unwrap();
-        assert!(june < december, "newest month first");
+        let response = alice.get("/ui/grid/month-picker?ctx=timeline:all").await;
+        let response = response.assert_status(StatusCode::OK);
+        assert_eq!(response.count_testid("month-picker-row"), 3);
+        let html = response.text();
+        for expected in [
+            "Select a Month",
+            r#"data-month="2024-06""#,
+            "June 2024",
+            "3 photos",
+            "1 photo<",
+            &format!("/api/preview/{}", ids[1]),
+        ] {
+            assert!(html.contains(expected), "{expected}");
+        }
+        assert!(
+            html.find("2024-06").unwrap() < html.find("2022-12").unwrap(),
+            "newest first"
+        );
     }
 }

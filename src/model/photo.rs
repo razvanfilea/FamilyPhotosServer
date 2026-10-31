@@ -20,10 +20,6 @@ pub struct Photo {
 }
 
 impl Photo {
-    pub fn id(&self) -> i64 {
-        self.id
-    }
-
     pub fn full_name(&self, folder_name: Option<&str>) -> String {
         Self::construct_full_name(&self.name, folder_name)
     }
