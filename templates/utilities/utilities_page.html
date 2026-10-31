@@ -5,7 +5,7 @@
 {% block page_title %}Utilities{% endblock %}
 
 {% macro tool(testid, href, label, icon, tone) -%}
-<a href="{{ href }}" class="fp-tool" hx-boost="false" data-testid="tool-{{ testid }}">
+<a href="{{ href }}" class="fp-tool" data-testid="tool-{{ testid }}">
     <span class="fp-tool__icon fp-tool__icon--{{ tone }}">{% call icons::icon(icon, true) %}{% endcall %}</span>
     <span class="fp-tool__label">{{ label }}</span>
 </a>

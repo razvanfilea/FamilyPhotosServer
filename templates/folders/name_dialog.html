@@ -4,7 +4,7 @@
    server refuses it (422); the `folder-name-form` component (assets/js/folders/name-dialog.js) only keeps the
    button and the visibility warning in line, and hands the choice back when `return_only` #}
 <form class="fp-folder-form" data-component="folder-name-form" data-testid="folder-name-form" autocomplete="off"
-      data-initial-public="{{ is_public }}"
+      data-initial-public="{{ is_public }}" hx-boost="false"
       {%- if return_only %} data-return
       {%- else %}{% if let Some(id) = folder_id %} hx-post="/ui/folders/{{ id }}"{% else %} hx-post="/ui/folders"{% endif %}
       hx-status:422="swap:outerHTML" hx-disable="find [data-testid=folder-name-confirm]"

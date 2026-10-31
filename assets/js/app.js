@@ -52,10 +52,20 @@ function keepPageOnViewerTraversal() {
     document.addEventListener('htmx:after:history:update', () => {
         current = pageOf(location.href);
     });
+    // HTMX refetches the page on a traversal, so the browser's own scroll restoration finds nothing to scroll
+    // yet: the position is kept in the entry that is left and applied once the restored page is in.
+    document.addEventListener('htmx:before:history:update', () => {
+        history.replaceState({ ...history.state, scrollY }, '');
+    });
     document.addEventListener('htmx:before:history:restore', (event) => {
         const next = pageOf(event.detail.path);
-        if (next === current) event.preventDefault();
-        else current = next;
+        if (next === current) {
+            event.preventDefault();
+            return;
+        }
+        current = next;
+        const y = history.state?.scrollY ?? 0;
+        document.addEventListener('htmx:after:swap', () => scrollTo(0, y), { once: true });
     });
 }
 
