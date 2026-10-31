@@ -139,7 +139,7 @@ export function openMoveDialog({ ids }) {
                     closeDialog('confirm');
                 } catch (failure) {
                     setBusy(false);
-                    error.textContent = failure.message;
+                    error.textContent = failure instanceof Error ? failure.message : String(failure);
                     error.hidden = false;
                 }
             });

@@ -104,7 +104,7 @@ export function openDeleteDialog({ ids, permanent = false, onConfirm, title, mes
         } catch (failure) {
             setBusy(false);
             setStatus('');
-            error.textContent = failure?.message || t('genericError');
+            error.textContent = (failure instanceof Error && failure.message) || t('genericError');
             error.hidden = false;
         }
     });

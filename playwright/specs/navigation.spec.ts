@@ -53,4 +53,15 @@ test.describe('in-place tab navigation', () => {
         await expect.poll(() => page.evaluate(() => scrollY)).toBe(0);
         expect(await page.evaluate(() => (window as any).__kept)).toBe(true);
     });
+
+    test('a second tap on Photos returns the "On this day" row to its first card', async ({ alicePage: page }) => {
+        await gotoReady(page, '/');
+        const memories = page.getByTestId('memories');
+        await expect(memories).toBeVisible();
+        await memories.evaluate((element) => { element.style.width = '100px'; element.scrollLeft = 80; });
+        const left = () => memories.evaluate((element) => element.scrollLeft);
+        expect(await left()).toBeGreaterThan(0);
+        await page.getByTestId('nav-photos').or(page.getByTestId('bottom-nav-photos')).locator('visible=true').click();
+        await expect.poll(left).toBeLessThan(8);
+    });
 });

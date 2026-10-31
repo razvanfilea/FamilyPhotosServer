@@ -78,13 +78,19 @@ register('login-form', (/** @type {HTMLFormElement} */ form) => {
     });
 });
 
-/** Tapping the tab that is already open scrolls to the top (captured, so the link doesn't reload the page). */
+/**
+ * Tapping the tab that is already open scrolls to the top (captured, so the link doesn't reload the page).
+ * A second tap on Photos, once at the top, brings the "On this day" row back to its first card.
+ */
 register('nav-top', (nav) => {
     nav.addEventListener('click', (event) => {
         const link = /** @type {Element} */ (event.target).closest('a[aria-current="page"]');
         if (!link || event.ctrlKey || event.metaKey || event.shiftKey) return;
         event.preventDefault();
         event.stopPropagation();
-        scrollTo({ top: 0, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+        const behavior = matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+        const memories = link.getAttribute('href') === '/' && scrollY < 2 ? document.querySelector('.memories') : null;
+        if (memories) memories.scrollTo({ left: 0, behavior });
+        else scrollTo({ top: 0, behavior });
     }, true);
 });

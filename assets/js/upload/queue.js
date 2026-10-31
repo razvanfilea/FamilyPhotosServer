@@ -115,11 +115,11 @@ export class UploadQueue {
                 await this.wait(this.delays[attempt], signal);
             }
         } catch (error) {
-            if (error?.name === 'AbortError') {
+            if (error instanceof Error && error.name === 'AbortError') {
                 item.phase = 'cancelled';
             } else {
                 item.phase = 'failed';
-                item.error = error?.message ?? String(error);
+                item.error = error instanceof Error ? error.message : String(error);
             }
         } finally {
             this.active.delete(item);

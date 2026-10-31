@@ -12,6 +12,11 @@ export class ApiError extends Error {
 }
 
 /** Sends the browser to the login page, coming back to the current page afterwards. */
+/** @param {unknown} error */
+export function isAbortError(error) {
+    return error instanceof Error && error.name === 'AbortError';
+}
+
 export function redirectToLogin() {
     const next = location.pathname + location.search;
     location.assign(next === '/' ? '/login' : `/login?next=${encodeURIComponent(next)}`);
@@ -50,7 +55,7 @@ export async function api(path, { method = 'GET', json, body, query, headers, si
     try {
         response = await fetch(url, { method, body, headers: requestHeaders, signal, credentials: 'same-origin' });
     } catch (error) {
-        if (error.name === 'AbortError') throw error;
+        if (isAbortError(error)) throw error;
         if (!silent) toast(t('networkError'), { type: 'error' });
         throw new ApiError(0, t('networkError'));
     }
