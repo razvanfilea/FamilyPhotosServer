@@ -37,6 +37,8 @@ export default defineConfig({
     globalTeardown: './harness/global-teardown.ts',
     use: {
         baseURL,
+        // A worker answers requests itself, which hides them from `page.route`; service-worker.spec.ts opts in
+        serviceWorkers: 'block',
         trace: 'on-first-retry',
     },
     projects: [

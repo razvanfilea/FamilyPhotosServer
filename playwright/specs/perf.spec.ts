@@ -24,7 +24,7 @@ let cdp: CDPSession;
 const report: Record<string, unknown> = {};
 
 test.beforeAll(async ({ browser }) => {
-    const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    const context = await browser.newContext({ serviceWorkers: 'block', viewport: { width: 1440, height: 900 } });
     const login = await context.request.post('/api/login', {
         form: { user_id: 'alice', password: process.env.PERF_PASSWORD ?? 'perf' },
     });

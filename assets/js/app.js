@@ -8,6 +8,7 @@ import { register as registerShortcut } from './core/keyboard.js';
 import { errorMessage, redirectToLogin } from './core/api.js';
 import { t } from './core/strings.js';
 import { initFlashToasts } from './core/flash.js';
+import { initServiceWorker } from './core/service-worker.js';
 import './components/shell.js';
 // The destination picker (and the folder browser and name dialog it uses) is opened from dialogs on many pages
 import './destination-picker/picker.js';
@@ -85,6 +86,7 @@ initDialog();
 initHtmxErrors();
 initFlashToasts();
 keepPageOnViewerTraversal();
+initServiceWorker();
 // The login page has no shell to navigate to
 if (document.getElementById('main')) {
     initShortcuts();

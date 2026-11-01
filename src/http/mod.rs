@@ -7,6 +7,7 @@ use axum::extract::{DefaultBodyLimit, Request};
 use axum::http::{HeaderValue, header};
 use axum::middleware::{self, Next};
 use axum::response::Response;
+use axum::routing::get;
 use axum_login::AuthManagerLayerBuilder;
 use axum_login::tower_sessions::{Expiry, SessionManagerLayer};
 use sqlx::SqlitePool;
@@ -28,6 +29,7 @@ mod fragments;
 mod page_context;
 mod pages;
 mod prefs;
+mod service_worker;
 mod session_activity;
 mod template_into_response;
 mod utils;
@@ -84,6 +86,7 @@ pub fn router(
     Router::new()
         .merge(pages::router(app_state))
         .nest("/api", api::router(app_state))
+        .route("/sw.js", get(service_worker::script))
         .nest(
             "/assets",
             Router::new()

@@ -34,7 +34,7 @@ export async function gotoReady(page: Page, url: string) {
 async function userPage(browser: Browser, testInfo: TestInfo, id: UserId) {
     const { viewport, userAgent, deviceScaleFactor, isMobile, hasTouch, baseURL } = testInfo.project.use;
     const context = await browser.newContext({
-        viewport, userAgent, deviceScaleFactor, isMobile, hasTouch, baseURL,
+        viewport, userAgent, deviceScaleFactor, isMobile, hasTouch, baseURL, serviceWorkers: 'block',
         storageState: storageStatePath(id),
     });
     return context.newPage();

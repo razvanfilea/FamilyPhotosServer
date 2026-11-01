@@ -6,7 +6,8 @@
 {% block page_title %}Settings{% endblock %}
 
 {% block content %}
-<div class="fp-settings" data-component="settings" data-testid="settings-page" data-message-saved="Saved">
+<div class="fp-settings" data-component="settings" data-testid="settings-page" data-message-saved="Saved"
+     data-message-cleared="Cached previews cleared">
 
     <section class="fp-settings-section" aria-labelledby="settings-account">
         <h2 id="settings-account" class="fp-settings-section__title">Account</h2>
@@ -65,6 +66,22 @@
             <div class="fp-settings-row" data-pref-group="fview">
                 <span class="fp-settings-row__label" id="setting-fview-label">Folder view</span>
                 {% call ui::segmented("fview", [("grid", "Grid"), ("list", "List")], ctx.prefs.folder_view.as_str()) %}{% endcall %}
+            </div>
+        </div>
+    </section>
+
+    <section class="fp-settings-section" aria-labelledby="settings-storage" data-role="storage" hidden>
+        <h2 id="settings-storage" class="fp-settings-section__title">Storage</h2>
+        <div class="fp-settings-card">
+            <div class="fp-settings-row">
+                <div>
+                    <span class="fp-settings-row__label">Cached previews</span>
+                    <p class="fp-settings-row__hint">Thumbnails kept on this device so photos appear instantly.</p>
+                </div>
+                <button type="button" class="btn btn-outline btn-sm" data-action="clear-previews"
+                        data-testid="settings-clear-previews">
+                    Clear
+                </button>
             </div>
         </div>
     </section>

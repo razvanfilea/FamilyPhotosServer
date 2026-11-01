@@ -337,3 +337,21 @@ async fn test_wasm_csp_only_on_upload_page_and_hash_worker(pool: SqlitePool) {
     let response = send(&router, get("/upload")).await;
     assert!(!header_value(&response, "content-security-policy").contains("wasm-unsafe-eval"));
 }
+
+#[sqlx::test]
+async fn test_service_worker_script(pool: SqlitePool) {
+    let router = test_router(pool).await;
+
+    // Reachable logged out (the login page registers it), revalidated on every check
+    let response = send(&router, get("/sw.js")).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        header_value(&response, "content-type"),
+        "text/javascript; charset=utf-8"
+    );
+    assert_eq!(header_value(&response, "cache-control"), "no-cache");
+
+    let body = body_text(response).await;
+    assert!(body.contains("const VERSION = 'dev';"), "{body}");
+    assert!(body.contains(r#"const PRECACHE = ["/assets/offline.html"];"#));
+}

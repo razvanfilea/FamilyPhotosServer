@@ -3,6 +3,7 @@
 import { register } from '../core/registry.js';
 import { confirm } from '../core/dialog.js';
 import { api } from '../core/api.js';
+import { clearPreviews } from '../core/service-worker.js';
 
 /** <details> menus: close on outside click, Escape, and after choosing an item. */
 register('dropdown', (/** @type {HTMLDetailsElement} */ details) => {
@@ -30,6 +31,7 @@ register('dropdown', (/** @type {HTMLDetailsElement} */ details) => {
 
 async function signOut() {
     await api('/api/logout', { method: 'POST' });
+    await clearPreviews();
     location.assign('/login');
 }
 

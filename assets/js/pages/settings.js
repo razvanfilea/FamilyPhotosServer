@@ -3,6 +3,7 @@
 import { register } from '../core/registry.js';
 import { setPref } from '../core/prefs.js';
 import { toast } from '../core/toast.js';
+import { clearPreviews } from '../core/service-worker.js';
 
 register('settings', (root) => {
     const texts = root.dataset;
@@ -13,6 +14,15 @@ register('settings', (root) => {
         if (!key) return;
         setPref(key, input.value);
         toast(texts.messageSaved, { type: 'success' });
+    });
+
+    // Only where the browser can keep a cache (not on plain HTTP outside localhost)
+    if (globalThis.caches) root.querySelector('[data-role="storage"]').hidden = false;
+
+    root.addEventListener('click', async (event) => {
+        if (!/** @type {Element} */ (event.target).closest('[data-action="clear-previews"]')) return;
+        await clearPreviews();
+        toast(texts.messageCleared, { type: 'success' });
     });
 
     // A refused password change: the cursor goes to the field the error is about
