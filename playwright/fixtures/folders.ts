@@ -61,7 +61,7 @@ export const test = base.extend<{ folders: TempFolders }>({
         const prefix = ({ chromium: 'D', firefox: 'F' } as Record<string, string>)[testInfo.project.name] ?? 'M';
         const suffix = `${prefix}${Date.now() % 1_000_000}`;
         const folders = new TempFolders(
-            (user) => browser.newContext({ baseURL, storageState: storageStatePath(user) }),
+            (user) => browser.newContext({ baseURL, serviceWorkers: 'block', storageState: storageStatePath(user) }),
             suffix,
         );
         await use(folders);
