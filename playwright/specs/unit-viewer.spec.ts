@@ -6,6 +6,7 @@ import {
     fitContain,
     formatTime,
     hasExtension,
+    releaseVelocity,
     swipeOutcome,
     zoomAbout,
 } from '../../assets/js/viewer/math.js';
@@ -38,14 +39,49 @@ test('clampTranslation keeps the edges outside the box', () => {
     expect(clampTranslation({ x: 10, y: 20, scale: 2 }, content, box)).toEqual({ x: 10, y: 20, scale: 2 });
 });
 
+test.describe('releaseVelocity', () => {
+    const at = (...points: [number, number][]) => points.map(([x, time]) => ({ x, time }));
+
+    test('is the speed over the last 100 ms, not the whole gesture', () => {
+        // A slow drag (200 px in 1 s), then 60 px in the last 60 ms
+        const samples = at([0, 0], [100, 500], [200, 940], [230, 970], [260, 1000]);
+        expect(releaseVelocity(samples, 1000)).toBeCloseTo(60 / 60);
+        expect(releaseVelocity(at([0, 0], [260, 1000]), 1000)).toBe(0);
+    });
+
+    test('is signed by the direction', () => {
+        expect(releaseVelocity(at([300, 920], [200, 1000]), 1000)).toBeCloseTo(-100 / 80);
+    });
+
+    test('a finger that rested before lifting is at rest', () => {
+        const samples = at([0, 0], [100, 50], [101, 60]);
+        expect(releaseVelocity(samples, 400)).toBe(0);
+    });
+
+    test('one sample, or none, is no speed; noise within a few ms is damped', () => {
+        expect(releaseVelocity([], 100)).toBe(0);
+        expect(releaseVelocity(at([5, 90]), 100)).toBe(0);
+        expect(releaseVelocity(at([0, 90], [3, 91]), 100)).toBeCloseTo(3 / 10);
+    });
+});
+
 test.describe('swipeOutcome', () => {
-    const swipe = { dx: 0, dy: 0, duration: 500, width: 400, axis: 'x' as const, hasPrevious: true, hasNext: true };
+    const swipe = { dx: 0, dy: 0, vx: 0, width: 400, axis: 'x' as const, hasPrevious: true, hasNext: true };
 
     test('navigates past a quarter of the width or when fast', () => {
         expect(swipeOutcome({ ...swipe, dx: -120 })).toBe('next');
         expect(swipeOutcome({ ...swipe, dx: 120 })).toBe('previous');
         expect(swipeOutcome({ ...swipe, dx: -90 })).toBe('cancel');
-        expect(swipeOutcome({ ...swipe, dx: -90, duration: 100 })).toBe('next');
+        expect(swipeOutcome({ ...swipe, dx: -90, vx: -0.9 })).toBe('next');
+        expect(swipeOutcome({ ...swipe, dx: 40, vx: 0.4 })).toBe('previous');
+        expect(swipeOutcome({ ...swipe, dx: -90, vx: -0.2 })).toBe('cancel');
+    });
+
+    test('a flick back against the drag cancels, whatever the distance', () => {
+        expect(swipeOutcome({ ...swipe, dx: -200, vx: 0.8 })).toBe('cancel');
+        expect(swipeOutcome({ ...swipe, dx: 200, vx: -0.8 })).toBe('cancel');
+        // A slow drift back doesn't
+        expect(swipeOutcome({ ...swipe, dx: -200, vx: 0.1 })).toBe('next');
     });
 
     test('does nothing past the ends', () => {

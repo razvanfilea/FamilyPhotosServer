@@ -25,7 +25,9 @@
         }
     }
 
+    /* Always on the right, also when it wraps below the search: the sort menu opens leftwards from here */
     .fp-folder-controls__options {
+        margin-left: auto;
         display: flex;
         align-items: center;
         gap: 0.25rem;
@@ -182,6 +184,49 @@
     }
 
     /* ---------- Folder page ---------- */
+
+    /* On phones the back button and the actions share the first row; the title and badges drop to a row below */
+    .fp-topbar:has(.fp-folder-title) {
+        flex-wrap: wrap;
+        padding-bottom: 0.5rem;
+
+        @variant md {
+            flex-wrap: nowrap;
+            padding-bottom: 0;
+        }
+
+        .fp-topbar__title,
+        .fp-folder-title {
+            display: contents;
+
+            @variant md {
+                display: flex;
+            }
+        }
+
+        .fp-topbar__title {
+            @variant md {
+                display: block;
+            }
+        }
+
+        .fp-topbar__actions {
+            order: 1;
+            margin-left: auto;
+        }
+
+        .fp-folder-title__text {
+            order: 2;
+            flex-basis: 100%;
+            padding-left: 0.5rem;
+
+            @variant md {
+                order: 0;
+                flex-basis: auto;
+                padding-left: 0;
+            }
+        }
+    }
 
     .fp-folder-title {
         display: flex;

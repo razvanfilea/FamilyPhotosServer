@@ -244,6 +244,38 @@ test.describe('navigation', () => {
         await expectShowing(page, photos.at(-1)!.id);
     });
 
+    test('a flick at release navigates after a short, slow drag; a pause before lifting does not', async ({ alicePage: page, isMobile }) => {
+        test.skip(!isMobile, 'Touch');
+        const photos = timeline('alice');
+        await gotoViewer(page, `/?photo=${photos[0].id}`, photos[0].id);
+        const cdp = await page.context().newCDPSession(page);
+        const { width, height } = page.viewportSize()!;
+        const y = height / 2;
+        let now = Date.now() / 1000;
+        const touch = (type: 'touchStart' | 'touchMove' | 'touchEnd', x: number | undefined, afterMs: number) => {
+            now += afterMs / 1000;
+            return cdp.send('Input.dispatchTouchEvent', {
+                type, timestamp: now, touchPoints: x === undefined ? [] : [{ x, y, id: 1 }],
+            });
+        };
+        // 18% of the width: under the distance threshold, and slower than the flick speed on average
+        const drag = async (releaseAfterMs: number) => {
+            await touch('touchStart', width * 0.7, 0);
+            await touch('touchMove', width * 0.65, 500);
+            await touch('touchMove', width * 0.6, 500);
+            // 12% in the last 40 ms
+            await touch('touchMove', width * 0.58, 20);
+            await touch('touchMove', width * 0.52, 20);
+            await touch('touchEnd', undefined, releaseAfterMs);
+        };
+
+        await drag(500);
+        await expectPhoto(page, photos[0]);
+
+        await drag(5);
+        await expectPhoto(page, photos[1]);
+    });
+
     test('swipe left shows the next photo, swipe down closes', async ({ alicePage: page, isMobile }) => {
         test.skip(!isMobile, 'Touch');
         const photos = timeline('alice');
