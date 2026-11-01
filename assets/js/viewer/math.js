@@ -4,6 +4,10 @@
 const SWIPE_DISTANCE = 0.25;
 /** Release speed (px/ms) past which a swipe navigates whatever its distance */
 const SWIPE_VELOCITY = 0.3;
+/** The last stretch (ms) of a gesture that its release velocity is measured over */
+export const VELOCITY_WINDOW = 100;
+/** Samples closer than this (ms) are too noisy to give a speed */
+const MIN_SAMPLE_SPAN = 10;
 /** Downward drag (px) past which the viewer closes */
 export const SWIPE_CLOSE_DISTANCE = 120;
 
@@ -49,19 +53,35 @@ export function zoomAbout(state, scale, point) {
 }
 
 /**
+ * The horizontal speed (px/ms, positive to the right) at the moment of release: over the last
+ * `VELOCITY_WINDOW` ms only, so a slow drag ending in a flick is a flick, and a finger that
+ * stopped before lifting is at rest.
+ * @param {{x: number, time: number}[]} samples pointer positions, oldest first
+ * @param {number} releaseTime in ms, on the clock of the samples
+ */
+export function releaseVelocity(samples, releaseTime) {
+    const recent = samples.filter((sample) => releaseTime - sample.time <= VELOCITY_WINDOW);
+    if (recent.length < 2) return 0;
+    const first = recent[0];
+    const last = recent[recent.length - 1];
+    return (last.x - first.x) / Math.max(last.time - first.time, MIN_SAMPLE_SPAN);
+}
+
+/**
  * What a finished touch swipe does.
- * @param {{dx: number, dy: number, duration: number, width: number, axis: 'x'|'y', hasPrevious: boolean, hasNext: boolean}} swipe
- *   `duration` in ms; `axis` is the direction the swipe was locked to. The velocity is the
- *   average over the whole gesture, not the one at release: a slow drag ending in a flick only
- *   navigates past the distance threshold.
+ * @param {{dx: number, dy: number, vx: number, width: number, axis: 'x'|'y', hasPrevious: boolean, hasNext: boolean}} swipe
+ *   `vx` is the horizontal speed at release (`releaseVelocity`, px/ms); `axis` is the direction the
+ *   swipe was locked to. A flick navigates whatever the distance, unless it goes back against the
+ *   drag, which cancels.
  * @returns {'next'|'previous'|'close'|'cancel'}
  */
-export function swipeOutcome({ dx, dy, duration, width, axis, hasPrevious, hasNext }) {
+export function swipeOutcome({ dx, dy, vx, width, axis, hasPrevious, hasNext }) {
     if (axis === 'y') {
         return dy > SWIPE_CLOSE_DISTANCE ? 'close' : 'cancel';
     }
-    const velocity = Math.abs(dx) / Math.max(duration, 1);
-    const far = Math.abs(dx) > width * SWIPE_DISTANCE || velocity > SWIPE_VELOCITY;
+    const flick = Math.abs(vx) > SWIPE_VELOCITY;
+    if (flick && Math.sign(vx) !== Math.sign(dx)) return 'cancel';
+    const far = Math.abs(dx) > width * SWIPE_DISTANCE || flick;
     if (!far || dx === 0) return 'cancel';
     if (dx < 0) return hasNext ? 'next' : 'cancel';
     return hasPrevious ? 'previous' : 'cancel';

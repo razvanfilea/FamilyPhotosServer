@@ -22,7 +22,7 @@ import { createZoom } from './zoom.js';
 import { createVideo, SEEK_STEP } from './video.js';
 import { createInfoPanel } from './info.js';
 import { openDeleteDialog } from './delete-dialog.js';
-import { SWIPE_CLOSE_DISTANCE, fitContain, hasExtension, swipeOutcome } from './math.js';
+import { SWIPE_CLOSE_DISTANCE, VELOCITY_WINDOW, fitContain, hasExtension, releaseVelocity, swipeOutcome } from './math.js';
 
 const SCOPE = 'viewer';
 /** Mouse inactivity after which the bars hide (desktop) */
@@ -658,7 +658,10 @@ register('viewer', (root) => {
             swipe = null;
             return;
         }
-        swipe = { id: event.pointerId, x: event.clientX, y: event.clientY, time: event.timeStamp, axis: null, dx: 0, dy: 0 };
+        swipe = {
+            id: event.pointerId, x: event.clientX, y: event.clientY, axis: null, dx: 0, dy: 0,
+            samples: [{ x: event.clientX, time: event.timeStamp }],
+        };
     }, listen);
 
     stage.addEventListener('pointermove', (event) => {
@@ -669,6 +672,8 @@ register('viewer', (root) => {
         }
         swipe.dx = event.clientX - swipe.x;
         swipe.dy = event.clientY - swipe.y;
+        swipe.samples.push({ x: event.clientX, time: event.timeStamp });
+        while (event.timeStamp - swipe.samples[0].time > VELOCITY_WINDOW) swipe.samples.shift();
         if (!swipe.axis) {
             if (Math.hypot(swipe.dx, swipe.dy) < SWIPE_LOCK_DISTANCE) return;
             swipe.axis = Math.abs(swipe.dx) >= Math.abs(swipe.dy) ? 'x' : 'y';
@@ -700,7 +705,7 @@ register('viewer', (root) => {
         const outcome = event.type === 'pointercancel' ? 'cancel' : swipeOutcome({
             dx: finished.dx,
             dy: finished.dy,
-            duration: event.timeStamp - finished.time,
+            vx: releaseVelocity(finished.samples, event.timeStamp),
             width: stage.clientWidth,
             axis: finished.axis,
             hasPrevious: index > 0,

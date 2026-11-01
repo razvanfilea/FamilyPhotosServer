@@ -430,12 +430,19 @@
 
     .fp-chips {
         display: flex;
-        flex-wrap: wrap;
+        flex-wrap: nowrap;
         gap: 0.5rem;
+        overflow-x: auto;
+        scrollbar-width: none;
+
+        &::-webkit-scrollbar {
+            display: none;
+        }
     }
 
     .fp-chip {
         @apply btn btn-sm rounded-lg font-medium;
+        flex-shrink: 0;
         border-color: var(--fp-outline);
         background-color: transparent;
         color: var(--color-neutral-content);
