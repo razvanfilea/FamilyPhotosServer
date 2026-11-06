@@ -7,20 +7,45 @@ use crate::repo::{
     FolderEventLogRepo, FolderEventLogTransactionRepo, FoldersRepo, PhotosRepo,
     PhotosTransactionRepo, UserEventLogError,
 };
-use axum::extract::{Query, State};
-use axum::http::StatusCode;
-use axum::response::IntoResponse;
+use axum::extract::{Query, Request, State};
+use axum::http::{HeaderName, HeaderValue, StatusCode};
+use axum::middleware::{self, Next};
+use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 use sqlx::SqliteTransaction;
 use std::collections::HashMap;
 
-pub fn router() -> Router<AppStateRef> {
+/// Announces the latest Android app release (its `versionCode`) to the app, which offers the update
+/// while its own version is lower. Only when the APK can be downloaded from `/api/app/download`.
+pub const APP_LATEST_VERSION_HEADER: HeaderName = HeaderName::from_static("x-app-latest-version");
+
+pub fn router(app_state: AppStateRef) -> Router<AppStateRef> {
     Router::new()
         .route("/full", get(full_photos_list))
         .route("/partial", get(partial_photos_list))
+        // On every response of the two routes above, the 409 of a stale cursor included
+        .route_layer(middleware::from_fn_with_state(
+            app_state,
+            app_latest_version_header,
+        ))
         .route("/folders", post(sync_folders))
+}
+
+async fn app_latest_version_header(
+    State(state): State<AppStateRef>,
+    request: Request,
+    next: Next,
+) -> Response {
+    let mut response = next.run(request).await;
+    if let Some(release) = state.available_app_release().await {
+        response.headers_mut().insert(
+            APP_LATEST_VERSION_HEADER,
+            HeaderValue::from(release.version),
+        );
+    }
+    response
 }
 
 /// GET /sync/full — returns all personal + public photos. Used as a fallback when the
