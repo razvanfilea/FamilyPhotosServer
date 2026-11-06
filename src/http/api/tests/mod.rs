@@ -1,6 +1,7 @@
 //! Handler-level tests: the whole router (auth included) driven with `oneshot`.
 
 mod android;
+mod app_update;
 mod context;
 mod files;
 mod folders;
@@ -13,6 +14,7 @@ use crate::http::{AppState, AppStateRef, router};
 use crate::model::photo::Photo;
 use crate::model::user::User;
 use crate::repo::tests::{USERS, create_test_user};
+use crate::utils::env_reader::AppRelease;
 use crate::utils::password_hash::generate_hash_from_password;
 use crate::utils::storage_resolver::StorageResolver;
 use axum::Router;
@@ -39,7 +41,28 @@ pub(crate) struct TestServer {
 
 impl TestServer {
     pub(crate) async fn new(pool: SqlitePool) -> Self {
+        Self::build(pool, None).await
+    }
+
+    /// Configured with `APP_LATEST_VERSION=version` and an `APP_APK_PATH` in the temporary
+    /// directory that holds `apk`, or doesn't exist when it's `None`
+    pub(crate) async fn with_app_release(
+        pool: SqlitePool,
+        version: u32,
+        apk: Option<&[u8]>,
+    ) -> Self {
+        Self::build(pool, Some((version, apk))).await
+    }
+
+    async fn build(pool: SqlitePool, app_release: Option<(u32, Option<&[u8]>)>) -> Self {
         let storage_dir = TempDir::new().unwrap();
+        let app_release = app_release.map(|(version, apk)| {
+            let apk_path = storage_dir.path().join("app-release.apk");
+            if let Some(apk) = apk {
+                std::fs::write(&apk_path, apk).unwrap();
+            }
+            AppRelease { version, apk_path }
+        });
         let storage = StorageResolver::new(
             storage_dir.path().join("storage"),
             storage_dir.path().join("previews"),
@@ -48,7 +71,9 @@ impl TestServer {
         let session_store = SessionStore::new(pool.clone(), pool.clone());
         session_store.migrate().await.unwrap();
 
-        let state: AppStateRef = Box::leak(Box::new(AppState::new(pool.clone(), pool, storage)));
+        let state: AppStateRef = Box::leak(Box::new(
+            AppState::new(pool.clone(), pool, storage).with_app_release(app_release),
+        ));
         for (id, name) in USERS {
             let user = User {
                 password_hash: PASSWORD_HASH.clone(),

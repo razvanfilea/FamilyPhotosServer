@@ -31,6 +31,65 @@ pub struct EnvVariables {
     pub scan_new_files: bool,
     pub background_threads_count: usize,
     pub allowed_origins: Vec<String>,
+    pub app_release: Option<AppRelease>,
+}
+
+/// The latest Android app release, announced to the app and served by `/api/app/download`
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AppRelease {
+    /// The Android `versionCode`
+    pub version: u32,
+    pub apk_path: PathBuf,
+}
+
+impl AppRelease {
+    /// Whether the APK can be served. Checked on every use, so the APK can be replaced (or put in
+    /// place) without a restart, and users are never told to update to a file that is missing.
+    pub async fn is_available(&self) -> bool {
+        tokio::fs::metadata(&self.apk_path)
+            .await
+            .is_ok_and(|metadata| metadata.is_file())
+    }
+
+    /// Reads `APP_LATEST_VERSION` and `APP_APK_PATH`. `Err` when the config is set but incomplete
+    /// or invalid; empty values count as unset.
+    fn parse(version: Option<&str>, apk_path: Option<&str>) -> Result<Option<Self>, String> {
+        let version = version.map(str::trim).filter(|v| !v.is_empty());
+        let apk_path = apk_path.filter(|p| !p.trim().is_empty());
+
+        match (version, apk_path) {
+            (None, None) => Ok(None),
+            (Some(_), None) => Err("APP_LATEST_VERSION is set but APP_APK_PATH isn't".to_string()),
+            (None, Some(_)) => Err("APP_APK_PATH is set but APP_LATEST_VERSION isn't".to_string()),
+            (Some(version), Some(apk_path)) => match version.parse::<u32>() {
+                Ok(version) if version > 0 => Ok(Some(Self {
+                    version,
+                    apk_path: PathBuf::from(apk_path),
+                })),
+                _ => Err(format!(
+                    "APP_LATEST_VERSION must be a positive integer, not {version:?}"
+                )),
+            },
+        }
+    }
+
+    fn from_env() -> Option<Self> {
+        let version = std::env::var("APP_LATEST_VERSION").ok();
+        let apk_path = std::env::var("APP_APK_PATH").ok();
+        let release = Self::parse(version.as_deref(), apk_path.as_deref())
+            .inspect_err(|e| warn!("App updates disabled: {e}"))
+            .ok()
+            .flatten()?;
+
+        if !release.apk_path.is_file() {
+            warn!(
+                "APP_APK_PATH {} is not a file: version {} won't be announced until it exists",
+                release.apk_path.display(),
+                release.version
+            );
+        }
+        Some(release)
+    }
 }
 
 impl EnvVariables {
@@ -72,6 +131,41 @@ impl EnvVariables {
             scan_new_files: optional_env_var("SCAN_NEW_FILES", true),
             background_threads_count: optional_env_var("BACKGROUND_THREADS_COUNT", 0),
             allowed_origins,
+            app_release: AppRelease::from_env(),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_app_release() {
+        let release = |version| {
+            Ok(Some(AppRelease {
+                version,
+                apk_path: PathBuf::from("/apk/app.apk"),
+            }))
+        };
+        // (APP_LATEST_VERSION, APP_APK_PATH, expected: Ok(config) or Err)
+        let cases = [
+            (None, None, Ok(None)),
+            (Some(""), Some(" "), Ok(None)),
+            (Some("303"), Some("/apk/app.apk"), release(303)),
+            (Some(" 1 "), Some("/apk/app.apk"), release(1)),
+            (Some("303"), None, Err(())),
+            (Some("303"), Some(""), Err(())),
+            (None, Some("/apk/app.apk"), Err(())),
+            (Some("0"), Some("/apk/app.apk"), Err(())),
+            (Some("-3"), Some("/apk/app.apk"), Err(())),
+            (Some("3.1"), Some("/apk/app.apk"), Err(())),
+            (Some("v303"), Some("/apk/app.apk"), Err(())),
+            (Some("99999999999"), Some("/apk/app.apk"), Err(())),
+        ];
+        for (version, path, expected) in cases {
+            let actual = AppRelease::parse(version, path).map_err(|_| ());
+            assert_eq!(actual, expected, "{version:?} {path:?}");
+        }
     }
 }

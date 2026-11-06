@@ -49,6 +49,10 @@ Variables in bold **must** be specified.
   photos on an HDD but the previews on an SSD) [default: in ${STORAGE_PATH}/.preview]
 - SCAN_NEW_FILES: Scan the storage for external changes at startup and periodically [default: true]
 - BACKGROUND_THREADS_COUNT: Number of threads to use for background tasks [default: number of logical CPUs]
+- APP_LATEST_VERSION: The `versionCode` of the latest Android app, e.g. `303`. Set it together with `APP_APK_PATH`
+  to offer the update to older apps (in the `X-App-Latest-Version` header of the photo sync)
+- APP_APK_PATH: Path to the APK of `APP_LATEST_VERSION`. Anyone can download it from `/api/app/download`, without
+  logging in. The version is only announced while this file exists, so the APK can be replaced without a restart
 
 ### Creating user accounts
 

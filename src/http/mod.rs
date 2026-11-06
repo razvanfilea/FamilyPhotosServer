@@ -1,6 +1,7 @@
 use crate::db::SessionStore;
 use crate::previews::PreviewGenerator;
 use crate::repo::users_repo::UsersRepository;
+use crate::utils::env_reader::AppRelease;
 use crate::utils::storage_resolver::StorageResolver;
 use axum::Router;
 use axum::extract::{DefaultBodyLimit, Request};
@@ -172,6 +173,7 @@ pub struct AppState {
     pub write_pool: SqlitePool,
     pub users_repo: UsersRepository,
     pub previews: PreviewGenerator,
+    pub app_release: Option<AppRelease>,
 }
 
 impl AppState {
@@ -185,7 +187,21 @@ impl AppState {
             read_pool,
             write_pool,
             previews: PreviewGenerator::new(),
+            app_release: None,
         }
+    }
+
+    pub fn with_app_release(self, app_release: Option<AppRelease>) -> Self {
+        Self {
+            app_release,
+            ..self
+        }
+    }
+
+    /// The app version to announce: only when its APK can be downloaded
+    pub async fn available_app_release(&self) -> Option<&AppRelease> {
+        let release = self.app_release.as_ref()?;
+        release.is_available().await.then_some(release)
     }
 }
 

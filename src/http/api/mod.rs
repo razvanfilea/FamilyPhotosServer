@@ -1,3 +1,4 @@
+mod app;
 mod context;
 mod download;
 mod favorite;
@@ -6,7 +7,7 @@ mod move_photos;
 pub mod photos_info;
 mod photos_misc;
 pub(crate) mod sharing;
-mod sync;
+pub(crate) mod sync;
 mod trash;
 mod upload;
 pub(crate) mod users;
@@ -23,7 +24,7 @@ use crate::repo::users_repo::UsersRepository;
 
 pub fn router(app_state: AppStateRef) -> Router {
     let protected_router = Router::new()
-        .nest("/sync", sync::router())
+        .nest("/sync", sync::router(app_state))
         .nest("/context", context::router())
         .nest("/move", move_photos::router())
         .nest("/trash", trash::router())
@@ -40,6 +41,7 @@ pub fn router(app_state: AppStateRef) -> Router {
     Router::new()
         .merge(protected_router)
         .merge(users::public_router())
+        .merge(app::public_router())
         .fallback(async || StatusCode::NOT_FOUND)
         .with_state(app_state)
 }

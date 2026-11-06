@@ -24,6 +24,15 @@ mod utils;
 
 #[tokio::main]
 async fn main() {
+    // Logging comes first so that the warnings about the environment variables are shown
+    dotenvy::dotenv().ok();
+    tracing_subscriber::registry()
+        .with(EnvFilter::new(std::env::var("RUST_LOG").unwrap_or_else(
+            |_| "info,axum_login=off,tower_sessions=off,sqlx=warn,tower_http=info".into(),
+        )))
+        .with(tracing_subscriber::fmt::layer().compact())
+        .init();
+
     let vars = match EnvVariables::get_all() {
         Ok(vars) => vars,
         Err(e) => {
@@ -32,13 +41,6 @@ async fn main() {
         }
     };
     let storage_resolver = StorageResolver::new(vars.storage_path, vars.previews_path);
-
-    tracing_subscriber::registry()
-        .with(EnvFilter::new(std::env::var("RUST_LOG").unwrap_or_else(
-            |_| "info,axum_login=off,tower_sessions=off,sqlx=warn,tower_http=info".into(),
-        )))
-        .with(tracing_subscriber::fmt::layer().compact())
-        .init();
 
     let (read_pool, write_pool) = db::init_pools(&vars.database_url).await;
 
@@ -50,7 +52,8 @@ async fn main() {
         .await
         .expect("Failed to run schema migration for authentication");
 
-    let app_state = AppState::new(read_pool, write_pool, storage_resolver);
+    let app_state =
+        AppState::new(read_pool, write_pool, storage_resolver).with_app_release(vars.app_release);
     let app_state = Box::leak(Box::new(app_state));
 
     session_store
