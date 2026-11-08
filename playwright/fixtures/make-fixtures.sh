@@ -65,6 +65,9 @@ cp "$root/public/duplicate-a.jpg" "$root/public/duplicate-b.jpg"
 mkdir -p "$root/carol/Copies"
 cp "$root/carol/dup-a.jpg" "$root/carol/Copies/dup-b.jpg"
 
+# carol's Personal copy of a Family photo, for the duplicates tool
+cp "$root/public/snow.jpg" "$root/carol/snow-copy.jpg"
+
 # Videos have no EXIF, the server reads their date from the file name
 ffmpeg -loglevel error -f lavfi -i testsrc=duration=2:size=320x240:rate=15 \
     -pix_fmt yuv420p -c:v libx264 -preset veryslow -crf 35 -map_metadata -1 -y \

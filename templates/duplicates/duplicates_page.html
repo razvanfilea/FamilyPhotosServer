@@ -36,10 +36,26 @@
         {% call ui::empty_state("content_copy", "No duplicates found", "") %}{% endcall %}
     </div>
     {%- if !groups.is_empty() %}
-    <div class="fp-duplicates" data-component="duplicates"
+    <div class="fp-dup-page" data-component="duplicates"
          data-message-moved-one="1 duplicate moved to trash" data-message-moved-many="{count} duplicates moved to trash"
-         data-label-position="Group {current} of {total}">
+         data-label-position="Group {current} of {total}"
+         data-label-summary-one="1 group · {size} can be freed" data-label-summary-many="{count} groups · {size} can be freed"
+         data-label-bulk-family="Keep the Family copy ({count})" data-label-bulk-extra="Remove extra copies ({count})"
+         data-message-bulk="{photos} will be moved to the trash, freeing {size}. They are not deleted permanently: you can restore them from the trash."
+         data-confirm-bulk="Move to trash">
+        <div class="fp-dup-toolbar">
+            <p class="fp-dup-toolbar__summary" data-bind="summary" data-testid="dup-summary"></p>
+            <div class="fp-dup-toolbar__actions">
+                <button type="button" class="btn btn-sm btn-outline" data-action="bulk" data-bulk="family" hidden
+                        data-testid="dup-bulk-family"></button>
+                <button type="button" class="btn btn-sm btn-outline" data-action="bulk" data-bulk="extra" hidden
+                        data-testid="dup-bulk-extra"></button>
+            </div>
+        </div>
+        <div class="fp-duplicates">
         <div class="fp-dup-stage" data-slot="stage" data-testid="dup-stage">
+            <span class="loading loading-spinner loading-lg fp-dup-stage__spinner" data-slot="spinner" role="status"
+                  aria-label="Loading photo" data-testid="dup-loading"></span>
             <img class="fp-dup-stage__image" data-slot="image" alt="Selected photo" draggable="false">
             <button type="button" class="fp-dup-stage__nav fp-dup-stage__nav--prev" data-action="prev"
                     aria-label="Previous group" data-testid="dup-prev">{% call icons::icon("chevron_left") %}{% endcall %}</button>
@@ -51,13 +67,14 @@
             {%- for group in groups %}
             <section class="fp-dup-group" data-group hidden data-image-url="{{ group.image_url }}"
                      data-fallback-url="{{ group.fallback_url }}" data-photo-id="{{ group.copies[0].id }}"
-                     data-testid="dup-group">
+                     data-bulk="{{ group.bulk }}" data-freed-bytes="{{ group.freed_bytes }}" data-testid="dup-group">
                 <h2 class="fp-dup-group__title">Which do you want to keep?</h2>
+                <p class="fp-dup-group__frees" data-testid="dup-frees">Frees {{ group.freed }}</p>
                 <ul class="fp-dup-group__copies">
                     {%- for copy in group.copies %}
-                    <li>
+                    <li class="fp-dup-copy-row">
                         <button type="button" class="fp-dup-copy" data-action="keep" data-photo-id="{{ copy.id }}" title="{{ copy.name }}"
-                                data-testid="dup-keep">
+                                {%- if copy.suggested %} data-suggested{% endif %} data-testid="dup-keep">
                             <img src="/api/preview/{{ copy.id }}" alt="" loading="lazy" decoding="async">
                             <span class="fp-dup-copy__text">
                                 <span class="fp-dup-copy__where">
@@ -69,14 +86,23 @@
                                     <em class="fp-dup-copy__folder">No folder</em>
                                     {%- endif %}
                                 </span>
-                                <span class="fp-dup-copy__meta">{{ copy.date }} • {{ copy.size }}</span>
+                                <span class="fp-dup-copy__name" data-testid="dup-name">{{ copy.name }}</span>
+                                <span class="fp-dup-copy__meta">
+                                    <span>{{ copy.date }}</span>
+                                    {%- if copy.suggested %}
+                                    <span class="badge badge-sm badge-primary" data-testid="dup-suggested">Suggested</span>
+                                    {%- endif %}
+                                </span>
                             </span>
                         </button>
+                        <button type="button" class="btn btn-ghost btn-circle" data-action="info" data-photo-id="{{ copy.id }}"
+                                aria-label="Info about {{ copy.name }}" data-testid="dup-copy-info">{% call icons::icon("info") %}{% endcall %}</button>
                     </li>
                     {%- endfor %}
                 </ul>
             </section>
             {%- endfor %}
+        </div>
         </div>
     </div>
     {%- endif %}
