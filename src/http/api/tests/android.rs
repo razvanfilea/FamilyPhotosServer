@@ -39,6 +39,7 @@ async fn test_protected_routes_answer_401(pool: SqlitePool) {
         (Method::POST, "/api/upload/check-hashes"),
         (Method::GET, "/api/duplicates"),
         (Method::POST, "/api/timestamp/1"),
+        (Method::POST, "/api/photos/date"),
         (Method::DELETE, "/api/delete/1"),
         (Method::GET, "/api/exif/1"),
         (Method::GET, "/api/photos/1/info"),
