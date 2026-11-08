@@ -220,3 +220,156 @@ async fn test_move_photos(pool: SqlitePool) {
         assert_eq!(response.status, StatusCode::NOT_FOUND, "{folder}");
     }
 }
+
+#[sqlx::test]
+async fn test_update_photos_date(pool: SqlitePool) {
+    use base64::Engine;
+    use base64::engine::general_purpose::STANDARD;
+
+    let server = TestServer::new(pool).await;
+    let data = Dataset::create(server.pool()).await;
+    let alice = server.login("alice").await;
+    let created_at = async |name: &str| {
+        let photo = server.pool().get_photo(data.id(name)).await.unwrap();
+        photo.unwrap().created_at.unix_timestamp()
+    };
+    let target = 1_600_000_000;
+
+    let skipped = [
+        "shared_1",
+        "shared_delete_1",
+        "own_trashed",
+        "public_trashed",
+        "expired_1",
+        "unshared_1",
+        "carol_root",
+    ];
+    let mut before = Vec::new();
+    for name in skipped {
+        before.push(created_at(name).await);
+    }
+    let cursor = alice.get("/api/sync/full").await.json()["event_log_id"]
+        .as_i64()
+        .unwrap();
+
+    // Own and public photos are updated, the others are skipped without failing the request
+    let mut names = vec!["own_1", "public_a"];
+    names.extend(skipped);
+    let photo_ids: Vec<i64> = names.iter().map(|n| data.id(n)).collect();
+    let response = alice
+        .post(
+            "/api/photos/date",
+            json!({"photo_ids": photo_ids, "created_at": target}),
+        )
+        .await
+        .assert_status(StatusCode::OK);
+    let json = response.json();
+    let mut updated = data.names(ids(&json));
+    updated.sort();
+    assert_eq!(updated, ["own_1", "public_a"]);
+    assert!(
+        json.as_array()
+            .unwrap()
+            .iter()
+            .all(|p| p["created_at"] == target)
+    );
+    for name in ["own_1", "public_a"] {
+        assert_eq!(created_at(name).await, target, "{name}");
+    }
+    for (name, before) in skipped.iter().zip(before) {
+        assert_eq!(created_at(name).await, before, "{name}");
+    }
+
+    // Other devices get the change through the event log
+    let events = alice
+        .get(&format!("/api/sync/partial?last_synced_event_id={cursor}"))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    let events = events["events"].as_array().unwrap();
+    assert_eq!(events.len(), 2, "{events:?}");
+    for event in events {
+        let bytes = STANDARD.decode(event["data"].as_str().unwrap()).unwrap();
+        let photo: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(photo["created_at"], target);
+        assert_eq!(photo["id"], event["photo_id"]);
+    }
+
+    // The folder's photo list changes too, and duplicated ids are harmless
+    let own_1 = data.id("own_1");
+    let response = alice
+        .post(
+            "/api/photos/date",
+            json!({"photo_ids": [own_1, own_1], "created_at": target + 60}),
+        )
+        .await
+        .assert_status(StatusCode::OK);
+    assert_eq!(ids(&response.json()), [own_1]);
+    assert_eq!(created_at("own_1").await, target + 60);
+
+    // Nothing to update is not an error
+    let response = alice
+        .post(
+            "/api/photos/date",
+            json!({"photo_ids": [], "created_at": target}),
+        )
+        .await
+        .assert_status(StatusCode::OK);
+    assert_eq!(response.json(), json!([]));
+}
+
+#[sqlx::test]
+async fn test_update_photos_date_rejects_bad_requests(pool: SqlitePool) {
+    let server = TestServer::new(pool).await;
+    let data = Dataset::create(server.pool()).await;
+    let alice = server.login("alice").await;
+    let own_1 = data.id("own_1");
+    let before = server.pool().get_photo(own_1).await.unwrap().unwrap();
+    let now = OffsetDateTime::now_utc().unix_timestamp();
+
+    // (body, why it is invalid)
+    let cases = [
+        (json!({"photo_ids": [own_1]}), "no date"),
+        (json!({"created_at": 1_600_000_000}), "no ids"),
+        (
+            json!({"photo_ids": [own_1], "created_at": "yesterday"}),
+            "text date",
+        ),
+        (
+            json!({"photo_ids": [own_1], "created_at": 1.5}),
+            "fractional date",
+        ),
+        (
+            json!({"photo_ids": "own_1", "created_at": 1_600_000_000}),
+            "ids not a list",
+        ),
+        (
+            json!({"photo_ids": [own_1], "created_at": now + 3 * 86_400}),
+            "future",
+        ),
+        (
+            json!({"photo_ids": [own_1], "created_at": -9_000_000_000_i64}),
+            "before photography",
+        ),
+        (
+            json!({"photo_ids": [own_1], "created_at": i64::MAX}),
+            "overflow",
+        ),
+        (
+            json!({"photo_ids": vec![1; 1001], "created_at": 1_600_000_000}),
+            "too many ids",
+        ),
+        (json!([own_1]), "not an object"),
+    ];
+    for (body, why) in cases {
+        let response = alice.post("/api/photos/date", body).await;
+        assert_eq!(response.status, StatusCode::BAD_REQUEST, "{why}");
+    }
+    let empty = alice
+        .request(Method::POST, "/api/photos/date", &[], None)
+        .await;
+    assert_eq!(empty.status, StatusCode::BAD_REQUEST, "no body");
+
+    let after = server.pool().get_photo(own_1).await.unwrap().unwrap();
+    assert_eq!(after, before);
+}

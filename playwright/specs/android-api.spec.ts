@@ -94,6 +94,14 @@ test('the endpoints the Android app uses keep their shapes', async ({ playwright
         // Timestamp, favourites, duplicates
         const stamped = await json(await frank.post(`/api/timestamp/${rootId}?time_created=1700001000`));
         expect(stamped.created_at).toBe(1_700_001_000);
+        // Bulk date change: partial success returns only the updated photos
+        const dated = await json(await frank.post('/api/photos/date', {
+            data: { photo_ids: [rootId, 999_999_999], created_at: 1_700_002_000 },
+        }));
+        expect(dated.map((p: { id: number }) => p.id)).toEqual([rootId]);
+        expect(dated[0].created_at).toBe(1_700_002_000);
+        expectShape(dated[0], PHOTO);
+        expect((await frank.post('/api/photos/date', { data: { photo_ids: [rootId] } })).status()).toBe(400);
         expect((await frank.post(`/api/favorite/${rootId}`)).status()).toBe(200);
         expect(await json(await frank.get('/api/favorite'))).toEqual([rootId]);
         expect((await frank.delete(`/api/favorite/${rootId}`)).status()).toBe(200);
