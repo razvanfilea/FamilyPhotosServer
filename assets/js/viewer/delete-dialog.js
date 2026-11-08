@@ -38,11 +38,11 @@ function thumbnails(list, ids) {
 }
 
 /**
- * @param {{ids: number[], permanent?: boolean, onConfirm: (helpers: {setStatus: (text: string) => void}) => Promise<void>|void, title?: string, message?: string}} options
- *   `title` / `message` replace the default texts; `setStatus` shows a progress line (e.g. "3 of 10").
+ * @param {{ids: number[], permanent?: boolean, onConfirm: (helpers: {setStatus: (text: string) => void}) => Promise<void>|void, title?: string, message?: string, confirm?: string}} options
+ *   `title` / `message` / `confirm` replace the default texts; `setStatus` shows a progress line (e.g. "3 of 10").
  * @returns {Promise<boolean>} true once deleted, false when cancelled
  */
-export function openDeleteDialog({ ids, permanent = false, onConfirm, title, message }) {
+export function openDeleteDialog({ ids, permanent = false, onConfirm, title, message, confirm }) {
     const template = /** @type {HTMLTemplateElement} */ (document.getElementById('delete-dialog-template'));
     const texts = template.dataset;
     const fragment = /** @type {DocumentFragment} */ (template.content.cloneNode(true));
@@ -63,7 +63,7 @@ export function openDeleteDialog({ ids, permanent = false, onConfirm, title, mes
     const cancelButton = slot('cancel');
     const status = slot('status');
     const error = slot('error');
-    confirmButton.textContent = permanent ? texts.confirmPermanent : texts.confirm;
+    confirmButton.textContent = confirm ?? (permanent ? texts.confirmPermanent : texts.confirm);
 
     const dialog = document.getElementById('app-dialog');
     const backdrop = dialog.querySelector('.modal-backdrop button');

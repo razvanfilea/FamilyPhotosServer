@@ -152,6 +152,27 @@
         }
     }
 
+    .fp-dup-toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem 1rem;
+        max-width: 72rem;
+        margin: 0 auto 1rem;
+    }
+
+    .fp-dup-toolbar__summary {
+        font-size: 0.875rem;
+        color: var(--color-neutral-content);
+    }
+
+    .fp-dup-toolbar__actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
     .fp-dup-stage {
         position: relative;
         flex: 1 1 auto;
@@ -166,6 +187,13 @@
         @variant lg {
             height: min(calc(100dvh - var(--fp-topbar-height) - 3rem), 48rem);
         }
+    }
+
+    .fp-dup-stage__spinner {
+        position: absolute;
+        inset: 50% auto auto 50%;
+        translate: -50% -50%;
+        color: #fff;
     }
 
     .fp-dup-stage__image {
@@ -193,6 +221,7 @@
 
     .fp-dup-choices {
         flex: 0 0 auto;
+        min-width: 0;
 
         @variant lg {
             width: 24rem;
@@ -204,16 +233,34 @@
         margin-bottom: 0.75rem;
     }
 
+    .fp-dup-group__frees {
+        margin: -0.5rem 0 0.75rem;
+        font-size: 0.875rem;
+        color: var(--color-neutral-content);
+    }
+
     .fp-dup-group__copies {
         display: grid;
+        grid-template-columns: minmax(0, 1fr);
         gap: 0.5rem;
+    }
+
+    .fp-dup-copy-row {
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+
+        > .btn {
+            flex: none;
+        }
     }
 
     .fp-dup-copy {
         display: flex;
         align-items: center;
         gap: 0.75rem;
-        width: 100%;
+        flex: 1 1 auto;
+        min-width: 0;
         padding: 0.5rem;
         border-radius: var(--radius-box);
         background-color: var(--color-base-200);
@@ -254,7 +301,20 @@
         color: var(--color-neutral-content);
     }
 
+    .fp-dup-copy[data-suggested] {
+        outline: 2px solid var(--color-primary);
+        outline-offset: -2px;
+    }
+
+    .fp-dup-copy__name {
+        @apply truncate;
+        font-size: 0.875rem;
+    }
+
     .fp-dup-copy__meta {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
         font-size: 0.875rem;
         color: var(--color-neutral-content);
     }

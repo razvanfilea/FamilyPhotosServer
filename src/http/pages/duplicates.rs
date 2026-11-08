@@ -21,7 +21,53 @@ struct CopyView {
     /// `None` for photos outside folders
     folder_name: Option<String>,
     date: String,
-    size: String,
+    /// The copy to keep unless the user decides otherwise
+    suggested: bool,
+}
+
+/// A bulk action that applies to a group, see [`bulk_kind`]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+enum BulkKind {
+    /// A Personal and a Family copy: the Personal one goes
+    KeepFamily,
+    /// Same owner and folder: only the suggested copy stays
+    RemoveExtra,
+}
+
+impl BulkKind {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::KeepFamily => "family",
+            Self::RemoveExtra => "extra",
+        }
+    }
+}
+
+type Copies = [(Photo, Option<String>)];
+
+/// The copy to keep: the Family copy, then a copy in a folder, then the lowest id (the oldest upload)
+fn suggested_index(photos: &Copies) -> usize {
+    photos
+        .iter()
+        .enumerate()
+        .min_by_key(|(_, (photo, _))| {
+            (photo.user_id.is_some(), photo.folder_id.is_none(), photo.id)
+        })
+        .map_or(0, |(index, _)| index)
+}
+
+/// The bulk action that resolves the group, if any. Both keep the suggested copy.
+fn bulk_kind(photos: &Copies) -> Option<BulkKind> {
+    let public = photos.iter().filter(|(p, _)| p.user_id.is_none()).count();
+    if photos.len() == 2 && public == 1 {
+        return Some(BulkKind::KeepFamily);
+    }
+
+    let (first, _) = photos.first()?;
+    let same_place = photos
+        .iter()
+        .all(|(p, _)| p.user_id == first.user_id && p.folder_id == first.folder_id);
+    (photos.len() >= 2 && same_place).then_some(BulkKind::RemoveExtra)
 }
 
 /// Photos with the same content
@@ -31,12 +77,24 @@ struct GroupView {
     image_url: String,
     /// Shown when the large image fails to load
     fallback_url: String,
+    /// The bulk action for this group ("family", "extra"), empty when there is none
+    bulk: &'static str,
+    /// The size of the copies that would go to the trash: all but the suggested one
+    freed_bytes: i64,
+    freed: String,
 }
 
 impl GroupView {
-    fn new(photos: &[(Photo, Option<String>)]) -> Self {
+    fn new(photos: &Copies) -> Self {
         let first = &photos[0].0;
         let preview_url = format!("/api/preview/{}", first.id);
+        let suggested = suggested_index(photos);
+        let freed_bytes = photos
+            .iter()
+            .enumerate()
+            .filter(|(index, _)| *index != suggested)
+            .map(|(_, (photo, _))| photo.file_size)
+            .sum();
 
         Self {
             image_url: if is_video(&first.name) {
@@ -45,9 +103,13 @@ impl GroupView {
                 format!("/api/screen/{}", first.id)
             },
             fallback_url: preview_url,
+            bulk: bulk_kind(photos).map_or("", BulkKind::as_str),
+            freed_bytes,
+            freed: format_bytes(freed_bytes),
             copies: photos
                 .iter()
-                .map(|(photo, folder_name)| {
+                .enumerate()
+                .map(|(index, (photo, folder_name))| {
                     let public = photo.user_id.is_none();
                     CopyView {
                         id: photo.id,
@@ -56,7 +118,7 @@ impl GroupView {
                         type_label: if public { "Family" } else { "Personal" },
                         folder_name: folder_name.clone(),
                         date: format_date(photo.created_at, DateStyle::Day),
-                        size: format_bytes(photo.file_size),
+                        suggested: index == suggested,
                     }
                 })
                 .collect(),
@@ -196,6 +258,16 @@ mod tests {
             .text();
         assert!(html.contains(&format!("/api/screen/{}", first.id)));
         assert_eq!(html.matches("data-testid=\"dup-keep\"").count(), 2);
+        // The Family copy is the suggested one, and the file names are shown
+        assert_eq!(html.matches("data-testid=\"dup-suggested\"").count(), 1);
+        assert!(html.contains(&format!(
+            "data-photo-id=\"{}\" title=\"second.mp4\" data-suggested",
+            second.id
+        )));
+        assert!(html.contains(">first.jpg</span>") && html.contains(">second.mp4</span>"));
+        // Personal + Family pair: the Personal copy can be trashed in bulk
+        assert!(html.contains("data-bulk=\"family\""));
+        assert!(html.contains("Frees "));
         assert!(html.contains(&format!("data-photo-id=\"{}\"", second.id)));
         assert!(html.contains("No folder"));
         assert!(!html.contains("Failed to load duplicates"));
@@ -209,6 +281,96 @@ mod tests {
             .text();
         assert!(html.contains("No duplicates found"));
         assert!(!html.contains("dup-keep"));
+    }
+
+    fn copy(id: i64, user_id: Option<&str>, folder_id: Option<i64>) -> (Photo, Option<String>) {
+        (
+            Photo {
+                id,
+                folder_id,
+                file_size: 100 * id,
+                ..photo(user_id, "copy.jpg")
+            },
+            None,
+        )
+    }
+
+    #[test]
+    fn test_suggested_copy() {
+        // The Family copy, even when the Personal one is in a folder and older
+        let group = [copy(1, Some("alice"), Some(5)), copy(2, None, None)];
+        assert_eq!(suggested_index(&group), 1);
+        // Then a copy in a folder
+        let group = [
+            copy(1, Some("alice"), None),
+            copy(2, Some("alice"), Some(5)),
+        ];
+        assert_eq!(suggested_index(&group), 1);
+        let group = [
+            copy(3, None, None),
+            copy(4, None, Some(5)),
+            copy(5, None, Some(5)),
+        ];
+        assert_eq!(suggested_index(&group), 1);
+        // Then the oldest upload
+        let group = [copy(7, Some("alice"), None), copy(6, Some("alice"), None)];
+        assert_eq!(suggested_index(&group), 1);
+        let group = [copy(6, Some("alice"), None), copy(7, Some("alice"), None)];
+        assert_eq!(suggested_index(&group), 0);
+    }
+
+    #[test]
+    fn test_bulk_kind() {
+        let alice = Some("alice");
+        // One Personal and one Family copy
+        assert_eq!(
+            bulk_kind(&[copy(1, alice, Some(5)), copy(2, None, None)]),
+            Some(BulkKind::KeepFamily)
+        );
+        // Same owner and folder, public or not
+        assert_eq!(
+            bulk_kind(&[
+                copy(1, alice, None),
+                copy(2, alice, None),
+                copy(3, alice, None)
+            ]),
+            Some(BulkKind::RemoveExtra)
+        );
+        assert_eq!(
+            bulk_kind(&[copy(1, None, Some(5)), copy(2, None, Some(5))]),
+            Some(BulkKind::RemoveExtra)
+        );
+        // Different folders, or three copies with both owners
+        assert_eq!(
+            bulk_kind(&[copy(1, alice, Some(5)), copy(2, alice, None)]),
+            None
+        );
+        assert_eq!(
+            bulk_kind(&[copy(1, None, Some(5)), copy(2, None, Some(6))]),
+            None
+        );
+        assert_eq!(
+            bulk_kind(&[
+                copy(1, alice, None),
+                copy(2, alice, None),
+                copy(3, None, None)
+            ]),
+            None
+        );
+        assert_eq!(bulk_kind(&[]), None);
+    }
+
+    #[test]
+    fn test_group_view_frees_all_but_the_suggested_copy() {
+        let group = [copy(1, Some("alice"), None), copy(2, None, None)];
+        let view = GroupView::new(&group);
+        assert_eq!(view.freed_bytes, 100);
+        assert_eq!(view.freed, "100 B");
+        assert_eq!(view.bulk, "family");
+        assert_eq!(
+            view.copies.iter().map(|c| c.suggested).collect::<Vec<_>>(),
+            [false, true]
+        );
     }
 
     #[test]
