@@ -1,6 +1,6 @@
 ARG TARGET_ARCH=x86_64-unknown-linux-musl
 
-FROM rust:1.99-alpine AS base
+FROM rust:1.100-alpine AS base
 ARG TARGET_ARCH
 USER root
 

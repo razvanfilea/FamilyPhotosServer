@@ -8,8 +8,8 @@
     "test:ui": "PLAYWRIGHT_BROWSERS_PATH=0 npx playwright test --config playwright/playwright.config.ts --ui"
   },
   "devDependencies": {
-    "daisyui": "5.5.23",
-    "@tailwindcss/cli": "4.3.1",
-    "@playwright/test": "1.61.0"
+    "daisyui": "5.8.0",
+    "@tailwindcss/cli": "4.3.5",
+    "@playwright/test": "1.65.1"
   }
 }

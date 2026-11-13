@@ -246,7 +246,7 @@ dependencies = [
 [[package]]
 name = "axum-login"
 version = "0.18.0"
-source = "git+https://github.com/maxcountryman/axum-login?rev=151c72d7a1b4646830f86b4332e6bd6e34d719a7#151c72d7a1b4646830f86b4332e6bd6e34d719a7"
+source = "git+https://github.com/maxcountryman/axum-login?rev=3f8142718fbf9a2346a6b330bb08c58d3c39fca1#3f8142718fbf9a2346a6b330bb08c58d3c39fca1"
 dependencies = [
  "axum",
  "form_urlencoded",
@@ -2376,8 +2376,8 @@ dependencies = [
 
 [[package]]
 name = "tower-sessions-sqlx-store"
-version = "0.15.0"
-source = "git+https://github.com/maxcountryman/tower-sessions-stores?rev=d18c9bf76f1d4fb73130dbe5aa643197f14b5d2d#d18c9bf76f1d4fb73130dbe5aa643197f14b5d2d"
+version = "0.16.0"
+source = "git+https://github.com/maxcountryman/tower-sessions-stores?rev=800590e1be8b70383bdd99a819ac13af5cc9d26d#800590e1be8b70383bdd99a819ac13af5cc9d26d"
 dependencies = [
  "async-trait",
  "rmp-serde",
