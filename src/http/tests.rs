@@ -1,118 +1,62 @@
 //! Router-level tests of the page shell: auth redirects, fragments, fallbacks and headers.
 
-use crate::db::SessionStore;
-use crate::http::{AppState, asset_cache_control, router};
-use crate::model::user::User;
-use crate::repo::users_repo::UsersRepository;
-use crate::utils::password_hash::generate_hash_from_password;
-use crate::utils::storage_resolver::StorageResolver;
-use axum::Router;
-use axum::body::{Body, to_bytes};
-use axum::http::{Request, StatusCode, header};
-use axum::response::Response;
+use crate::http::api::tests::{PASSWORD, TestServer};
+use crate::http::asset_cache_control;
+use axum::http::{HeaderName, StatusCode, header};
 use sqlx::SqlitePool;
-use tower::ServiceExt;
 
-async fn test_router(pool: SqlitePool) -> Router {
-    let dir = tempfile::tempdir().unwrap().keep();
-    let storage = StorageResolver::new(dir.join("storage"), dir.join("previews"));
-
-    UsersRepository::new(pool.clone(), pool.clone())
-        .insert_user(&User {
-            id: "alice".to_string(),
-            name: "Alice".to_string(),
-            password_hash: generate_hash_from_password("alice-password"),
-        })
-        .await
-        .unwrap();
-
-    let session_store = SessionStore::new(pool.clone(), pool.clone());
-    session_store.migrate().await.unwrap();
-
-    let app_state = Box::leak(Box::new(AppState::new(pool.clone(), pool, storage)));
-    router(app_state, session_store, Vec::new())
+fn hx(name: &'static str) -> HeaderName {
+    HeaderName::from_static(name)
 }
 
-async fn send(router: &Router, request: Request<Body>) -> Response {
-    router.clone().oneshot(request).await.unwrap()
-}
+const HX_REQUEST: (HeaderName, &str) = (HeaderName::from_static("hx-request"), "true");
 
-fn get(uri: &str) -> Request<Body> {
-    Request::get(uri).body(Body::empty()).unwrap()
-}
-
-fn login_request(form: &str, htmx: bool) -> Request<Body> {
-    let mut request = Request::post("/api/login")
-        .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded");
-    if htmx {
-        request = request.header("hx-request", "true");
+#[sqlx::test]
+async fn test_session_cookie_attributes(pool: SqlitePool) {
+    let server = TestServer::new(pool).await;
+    let response = server
+        .login_with(&format!("user_id=alice&password={PASSWORD}"), &[])
+        .await;
+    let cookie = response.header(header::SET_COOKIE);
+    // Lax: sent when the installed app is opened or a link is followed from another app
+    for attribute in ["SameSite=Lax", "Secure", "HttpOnly", "Max-Age="] {
+        assert!(cookie.contains(attribute), "{attribute}: {cookie}");
     }
-    request.body(Body::from(form.to_string())).unwrap()
-}
-
-async fn body_text(response: Response) -> String {
-    String::from_utf8(
-        to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap()
-            .to_vec(),
-    )
-    .unwrap()
-}
-
-fn header_value<'a>(response: &'a Response, name: &str) -> &'a str {
-    response.headers().get(name).unwrap().to_str().unwrap()
-}
-
-/// Logs in and returns the session cookie
-async fn login(router: &Router) -> String {
-    let response = send(
-        router,
-        login_request("user_id=alice&password=alice-password", false),
-    )
-    .await;
-    assert_eq!(response.status(), StatusCode::OK);
-    let cookie = header_value(&response, "set-cookie");
-    cookie.split(';').next().unwrap().to_string()
 }
 
 #[sqlx::test]
-async fn test_pages_redirect_to_login(pool: SqlitePool) {
-    let router = test_router(pool).await;
+async fn test_logged_out_pages_and_fragments_go_to_login(pool: SqlitePool) {
+    let server = TestServer::new(pool).await;
+    let anonymous = server.anonymous();
 
-    let response = send(&router, get("/utilities?x=1")).await;
-    assert!(response.status().is_redirection());
+    let response = anonymous.get("/utilities?x=1").await;
+    assert!(response.status.is_redirection());
     assert_eq!(
-        header_value(&response, "location"),
+        response.header(header::LOCATION),
         "/login?next=%2Futilities%3Fx%3D1"
     );
-}
 
-#[sqlx::test]
-async fn test_fragments_answer_401_with_hx_redirect(pool: SqlitePool) {
-    let router = test_router(pool).await;
-
-    let request = Request::get("/ui/dialogs/shortcuts")
-        .header("hx-request", "true")
-        .header("hx-current-url", "http://localhost:8080/folders/3?photo=9")
-        .body(Body::empty())
-        .unwrap();
-    let response = send(&router, request).await;
-    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
-    assert_eq!(
-        header_value(&response, "hx-redirect"),
-        "/login?next=%2Ffolders%2F3%3Fphoto%3D9"
+    let current_url = (
+        hx("hx-current-url"),
+        "http://localhost:8080/folders/3?photo=9",
     );
-
-    let response = send(&router, get("/ui/dialogs/shortcuts")).await;
-    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
-    assert_eq!(header_value(&response, "hx-redirect"), "/login");
+    for (headers, location) in [
+        (
+            &[HX_REQUEST, current_url][..],
+            "/login?next=%2Ffolders%2F3%3Fphoto%3D9",
+        ),
+        (&[], "/login"),
+    ] {
+        let response = anonymous.get_with("/ui/dialogs/shortcuts", headers).await;
+        let response = response.assert_status(StatusCode::UNAUTHORIZED);
+        assert_eq!(response.header(hx("hx-redirect")), location);
+    }
 }
 
 #[sqlx::test]
 async fn test_pages_and_fragments_render_when_logged_in(pool: SqlitePool) {
-    let router = test_router(pool).await;
-    let cookie = login(&router).await;
+    let server = TestServer::new(pool).await;
+    let alice = server.login("alice").await;
 
     for (uri, heading) in [
         ("/", "Photos"),
@@ -125,141 +69,110 @@ async fn test_pages_and_fragments_render_when_logged_in(pool: SqlitePool) {
         ("/settings", "Settings"),
         ("/upload", "Upload"),
     ] {
-        let request = Request::get(uri)
-            .header(header::COOKIE, &cookie)
-            .body(Body::empty())
-            .unwrap();
-        let response = send(&router, request).await;
-        assert_eq!(response.status(), StatusCode::OK, "{uri}");
-        let body = body_text(response).await;
+        let html = alice.get(uri).await.assert_status(StatusCode::OK).text();
         assert!(
-            body.contains(&format!(r#"fp-topbar__heading">{heading}</h1>"#)),
+            html.contains(&format!(r#"fp-topbar__heading">{heading}</h1>"#)),
             "{uri}"
         );
-        assert!(body.contains("Alice"), "{uri}");
+        assert!(html.contains("Alice"), "{uri}");
     }
 
-    let request = Request::get("/ui/dialogs/shortcuts")
-        .header(header::COOKIE, &cookie)
-        .body(Body::empty())
-        .unwrap();
-    let response = send(&router, request).await;
-    assert_eq!(response.status(), StatusCode::OK);
-    assert!(body_text(response).await.contains("Keyboard shortcuts"));
+    // Alice has no photos: the grid pages show their empty state
+    for (uri, empty) in [
+        ("/favorites", "No favorites yet"),
+        ("/large-files", "No files larger than 50 MB"),
+        ("/trash", "Trash is empty"),
+    ] {
+        let html = alice.get(uri).await.assert_status(StatusCode::OK).text();
+        assert!(html.contains(empty), "{uri}");
+        assert!(!html.contains("data-grid-empty hidden"), "{uri}");
+    }
+    let html = alice.get("/trash").await.text();
+    assert!(html.contains(r#"data-testid="trash-restore-all" disabled"#));
+    assert!(html.contains(r#"data-testid="trash-empty" disabled"#));
+
+    let response = alice.get("/ui/dialogs/shortcuts").await;
+    assert!(
+        response
+            .assert_status(StatusCode::OK)
+            .text()
+            .contains("Keyboard shortcuts")
+    );
 }
 
 #[sqlx::test]
 async fn test_not_found(pool: SqlitePool) {
-    let router = test_router(pool).await;
+    let server = TestServer::new(pool).await;
+    let anonymous = server.anonymous();
+    let alice = server.login("alice").await;
 
-    let response = send(&router, get("/missing")).await;
-    assert_eq!(response.status(), StatusCode::NOT_FOUND);
-    assert!(header_value(&response, "content-security-policy").contains("script-src 'self'"));
-    let body = body_text(response).await;
-    assert!(body.contains("Page not found"));
-    assert!(!body.contains("fp-topbar"));
-
-    let cookie = login(&router).await;
-    let request = Request::get("/missing")
-        .header(header::COOKIE, &cookie)
-        .body(Body::empty())
-        .unwrap();
-    let response = send(&router, request).await;
-    assert_eq!(response.status(), StatusCode::NOT_FOUND);
-    assert!(body_text(response).await.contains("fp-topbar"));
+    let response = anonymous
+        .get("/missing")
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+    assert!(response.text().contains("Page not found"));
+    assert!(!response.text().contains("fp-topbar"));
+    let response = alice
+        .get("/missing")
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+    assert!(response.text().contains("fp-topbar"));
 
     // The API keeps plain 404s
-    let response = send(&router, get("/api/missing")).await;
-    assert_eq!(response.status(), StatusCode::NOT_FOUND);
-    assert_eq!(body_text(response).await, "");
+    let response = anonymous
+        .get("/api/missing")
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+    assert_eq!(response.text(), "");
+
+    // The old folder URLs redirect
+    let response = anonymous.get("/folder/7").await;
+    let response = response.assert_status(StatusCode::PERMANENT_REDIRECT);
+    assert_eq!(response.header(header::LOCATION), "/folders/7");
+    for (client, uri) in [(&anonymous, "/folder/abc"), (&alice, "/folders/abc")] {
+        let response = client.get(uri).await.assert_status(StatusCode::NOT_FOUND);
+        assert!(response.text().contains("Page not found"), "{uri}");
+    }
 }
 
 #[sqlx::test]
-async fn test_legacy_folder_redirect(pool: SqlitePool) {
-    let router = test_router(pool).await;
+async fn test_login(pool: SqlitePool) {
+    let server = TestServer::new(pool).await;
+    let login = async |form: &str, htmx: bool| {
+        let headers = if htmx { &[HX_REQUEST][..] } else { &[] };
+        server.login_with(form, headers).await
+    };
+    let alice = format!("user_id=alice&password={PASSWORD}");
 
-    let response = send(&router, get("/folder/7")).await;
-    assert_eq!(response.status(), StatusCode::PERMANENT_REDIRECT);
-    assert_eq!(header_value(&response, "location"), "/folders/7");
-
-    let response = send(&router, get("/folder/abc")).await;
-    assert_eq!(response.status(), StatusCode::NOT_FOUND);
-    assert!(body_text(response).await.contains("Page not found"));
-
-    let cookie = login(&router).await;
-    let request = Request::get("/folders/abc")
-        .header(header::COOKIE, &cookie)
-        .body(Body::empty())
-        .unwrap();
-    let response = send(&router, request).await;
-    assert_eq!(response.status(), StatusCode::NOT_FOUND);
-    assert!(body_text(response).await.contains("Page not found"));
-}
-
-#[sqlx::test]
-async fn test_login_normalizes_the_user_id(pool: SqlitePool) {
-    let router = test_router(pool).await;
-
-    let response = send(
-        &router,
-        login_request("user_id=%20Alice%20&password=alice-password", false),
-    )
-    .await;
-    assert_eq!(response.status(), StatusCode::OK);
+    // The user id is normalized
+    let response = login(&format!("user_id=%20Alice%20&password={PASSWORD}"), false).await;
+    let response = response.assert_status(StatusCode::OK);
     assert_eq!(
-        body_text(response).await,
+        response.text(),
         r#"{"user_id":"alice","display_name":"Alice"}"#
     );
-}
 
-#[sqlx::test]
-async fn test_login_htmx_redirects_to_safe_next(pool: SqlitePool) {
-    let router = test_router(pool).await;
+    // The JSON errors of the Android app
+    login("user_id=alice&password=wrong", false)
+        .await
+        .assert_status(StatusCode::UNAUTHORIZED);
+    login("user_id=&password=x", false)
+        .await
+        .assert_status(StatusCode::BAD_REQUEST);
 
-    let response = send(
-        &router,
-        login_request(
-            "user_id=alice&password=alice-password&next=%2Ffolders%3Fq%3Da",
-            true,
-        ),
-    )
-    .await;
-    assert_eq!(response.status(), StatusCode::OK);
-    assert_eq!(header_value(&response, "hx-redirect"), "/folders?q=a");
-
-    let response = send(
-        &router,
-        login_request(
-            "user_id=alice&password=alice-password&next=%2F%2Fevil.com",
-            true,
-        ),
-    )
-    .await;
-    assert_eq!(header_value(&response, "hx-redirect"), "/");
-
-    let response = send(&router, login_request("user_id=alice&password=wrong", true)).await;
-    assert_eq!(response.status(), StatusCode::OK);
-    assert!(response.headers().get("hx-redirect").is_none());
-    assert!(
-        body_text(response)
-            .await
-            .contains("Invalid username or password.")
-    );
-}
-
-#[sqlx::test]
-async fn test_login_json_errors_are_unchanged(pool: SqlitePool) {
-    let router = test_router(pool).await;
-
-    let response = send(
-        &router,
-        login_request("user_id=alice&password=wrong", false),
-    )
-    .await;
-    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
-
-    let response = send(&router, login_request("user_id=&password=x", false)).await;
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    // HTMX goes to a safe `next`
+    for (next, location) in [
+        ("%2Ffolders%3Fq%3Da", "/folders?q=a"),
+        ("%2F%2Fevil.com", "/"),
+    ] {
+        let response = login(&format!("{alice}&next={next}"), true).await;
+        let response = response.assert_status(StatusCode::OK);
+        assert_eq!(response.header(hx("hx-redirect")), location, "{next}");
+    }
+    let response = login("user_id=alice&password=wrong", true).await;
+    let response = response.assert_status(StatusCode::OK);
+    assert!(!response.headers.contains_key("hx-redirect"));
+    assert!(response.text().contains("Invalid username or password."));
 }
 
 #[test]
@@ -295,8 +208,8 @@ fn test_asset_cache_control() {
 
 #[sqlx::test]
 async fn test_strict_csp_everywhere(pool: SqlitePool) {
-    let router = test_router(pool).await;
-    let cookie = login(&router).await;
+    let server = TestServer::new(pool).await;
+    let alice = server.login("alice").await;
 
     for uri in [
         "/",
@@ -308,30 +221,34 @@ async fn test_strict_csp_everywhere(pool: SqlitePool) {
         "/missing",
         "/assets/js/upload/missing.js",
     ] {
-        let request = Request::get(uri)
-            .header(header::COOKIE, &cookie)
-            .body(Body::empty())
-            .unwrap();
-        let response = send(&router, request).await;
-        let csp = header_value(&response, "content-security-policy");
+        let response = alice.get(uri).await;
+        let csp = response.header(header::CONTENT_SECURITY_POLICY);
         assert!(csp.contains("script-src 'self';"), "{uri}: {csp}");
     }
+    let response = server.anonymous().get("/missing").await;
+    assert!(
+        response
+            .header(header::CONTENT_SECURITY_POLICY)
+            .contains("script-src 'self';")
+    );
 }
 
 #[sqlx::test]
 async fn test_service_worker_script(pool: SqlitePool) {
-    let router = test_router(pool).await;
+    let server = TestServer::new(pool).await;
 
     // Reachable logged out (the login page registers it), revalidated on every check
-    let response = send(&router, get("/sw.js")).await;
-    assert_eq!(response.status(), StatusCode::OK);
+    let response = server
+        .anonymous()
+        .get("/sw.js")
+        .await
+        .assert_status(StatusCode::OK);
     assert_eq!(
-        header_value(&response, "content-type"),
+        response.header(header::CONTENT_TYPE),
         "text/javascript; charset=utf-8"
     );
-    assert_eq!(header_value(&response, "cache-control"), "no-cache");
-
-    let body = body_text(response).await;
+    assert_eq!(response.header(header::CACHE_CONTROL), "no-cache");
+    let body = response.text();
     assert!(body.contains("const VERSION = 'dev';"), "{body}");
     assert!(body.contains(r#"const PRECACHE = ["/assets/offline.html"];"#));
 }

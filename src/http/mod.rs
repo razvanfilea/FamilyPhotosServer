@@ -10,6 +10,7 @@ use axum::middleware::{self, Next};
 use axum::response::Response;
 use axum::routing::get;
 use axum_login::AuthManagerLayerBuilder;
+use axum_login::tower_sessions::cookie::SameSite;
 use axum_login::tower_sessions::{Expiry, SessionManagerLayer};
 use sqlx::SqlitePool;
 use time::Duration;
@@ -51,8 +52,13 @@ pub fn router(
     session_store: SessionStore,
     allowed_origins: Vec<String>,
 ) -> Router {
+    // Lax, not the default Strict: a Strict cookie isn't sent on navigations that don't start on the
+    // site, like opening the installed web app (Firefox on Android) or a link from a chat app, so
+    // those always landed on the login page. Cross-site writes are still refused (no cookie on a
+    // cross-site POST, plus the Origin check on /ui).
     let session_layer = SessionManagerLayer::new(session_store)
-        .with_expiry(Expiry::OnInactivity(Duration::days(60)));
+        .with_expiry(Expiry::OnInactivity(Duration::days(60)))
+        .with_same_site(SameSite::Lax);
 
     let auth_layer =
         AuthManagerLayerBuilder::new(app_state.users_repo.clone(), session_layer).build();
